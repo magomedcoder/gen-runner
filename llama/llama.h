@@ -26,6 +26,20 @@ void *load_model(
 
 void llama_binding_free_model(void *state);
 
+int get_model_n_vocab(void *state_ptr);
+
+int get_model_n_ctx_train(void *state_ptr);
+
+int get_model_n_embd(void *state_ptr);
+
+int get_model_n_layer(void *state_ptr);
+
+long long get_model_size(void *state_ptr);
+
+long long get_model_n_params(void *state_ptr);
+
+int get_model_description(void *state_ptr, char *buf, int buf_size);
+
 #ifdef __cplusplus
 }
 #endif
