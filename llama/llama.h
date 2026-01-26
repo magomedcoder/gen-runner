@@ -90,6 +90,18 @@ void llama_free_params(void *params_ptr);
 
 int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug);
 
+int llama_tokenize_string(void *params_ptr, void *state_pr, int *result);
+
+int get_embeddings(void *params_ptr, void *state_pr, float *res_embeddings);
+
+int get_token_embeddings(
+    void *params_ptr,
+    void *state_pr,
+    int *tokens,
+    int tokenSize,
+    float *res_embeddings
+);
+
 #ifdef __cplusplus
 }
 #endif
