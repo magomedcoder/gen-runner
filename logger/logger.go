@@ -76,12 +76,20 @@ func (l *Logger) I(format string, args ...any) {
 	l.output(LevelInfo, levelNames[LevelInfo], format, args...)
 }
 
+func (l *Logger) W(format string, args ...any) {
+	l.output(LevelWarning, levelNames[LevelWarning], format, args...)
+}
+
 func (l *Logger) E(format string, args ...any) {
 	l.output(LevelError, levelNames[LevelError], format, args...)
 }
 
 func I(format string, args ...any) {
 	Default.I(format, args...)
+}
+
+func W(format string, args ...any) {
+	Default.W(format, args...)
 }
 
 func E(format string, args ...any) {

@@ -14,6 +14,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const MetadataRunnerToken = "x-llm-runner-token"
+
 type Server struct {
 	pb.UnimplementedLLMRunnerServiceServer
 	textProvider     provider.TextProvider
@@ -227,6 +229,43 @@ func (s *Server) Unregister(ctx context.Context, req *pb.UnregisterRunnerRequest
 	}
 
 	return &pb.Empty{}, nil
+}
+
+func (s *Server) CheckConnection(ctx context.Context, _ *pb.Empty) (*pb.ConnectionResponse, error) {
+	ok := false
+	if s.textProvider != nil {
+		ok, _ = s.textProvider.CheckConnection(ctx)
+	}
+
+	return &pb.ConnectionResponse{IsConnected: ok}, nil
+}
+
+func (s *Server) SendMessage(req *pb.SendMessageRequest, stream pb.LLMRunnerService_SendMessageServer) error {
+	if s.textProvider == nil {
+		return status.Error(codes.Unavailable, "Поставщик текста не задан")
+	}
+
+	if req == nil || len(req.Messages) == 0 {
+		return stream.Send(&pb.ChatResponse{Done: true})
+	}
+
+	ctx := stream.Context()
+	messages := domain.AIMessagesFromProto(req.Messages, req.SessionId)
+	ch, err := s.textProvider.SendMessage(ctx, req.SessionId, req.Model, messages, req.GetStopSequences(), nil)
+	if err != nil {
+		_ = stream.Send(&pb.ChatResponse{Done: true})
+		return err
+	}
+
+	for chunk := range ch {
+		if chunk != "" {
+			if err := stream.Send(&pb.ChatResponse{Content: chunk, Done: false}); err != nil {
+				return err
+			}
+		}
+	}
+
+	return stream.Send(&pb.ChatResponse{Done: true})
 }
 
 func buildGenParamsFromRequest(req *pb.GenerateRequest) *domain.GenerationParams {

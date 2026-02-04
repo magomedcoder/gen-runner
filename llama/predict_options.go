@@ -120,6 +120,14 @@ var Debug PredictOption = func(p *PredictOptions) {
 	p.DebugMode = true
 }
 
+var EnablePromptCacheAll PredictOption = func(p *PredictOptions) {
+	p.PromptCacheAll = true
+}
+
+var EnablePromptCacheRO PredictOption = func(p *PredictOptions) {
+	p.PromptCacheRO = true
+}
+
 var IgnoreEOS PredictOption = func(p *PredictOptions) {
 	p.IgnoreEOS = true
 }

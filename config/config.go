@@ -17,7 +17,9 @@ type LogConfig struct {
 }
 
 type Config struct {
+	CoreAddr                 string    `yaml:"core_addr"`
 	ListenAddr               string    `yaml:"listen_addr"`
+	RegistrationToken        string    `yaml:"registration_token"`
 	Log                      LogConfig `yaml:"log"`
 	Llama                    Llama     `yaml:"llama"`
 	MaxConcurrentGenerations int       `yaml:"max_concurrent_generations"`
