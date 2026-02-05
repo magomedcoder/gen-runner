@@ -1,13 +1,21 @@
 #ifdef __cplusplus
+#include <vector>
+#include <string>
 extern "C" {
 #endif
 
 #include <stdbool.h>
 
+extern unsigned char tokenCallback(void *, char *);
+
+int load_state(void *ctx, char *statefile, char *modes);
+
+void save_state(void *ctx, char *dst, char *modes);
+
 void *load_model(
     const char *fname,
     int n_ctx,
-    int seed,
+    int n_seed,
     bool memory_f16,
     bool mlock,
     bool embeddings,
@@ -20,25 +28,18 @@ void *load_model(
     bool numa,
     float rope_freq_base,
     float rope_freq_scale,
-    const char *lora,
-    const char *lora_base
+    const char *lora, const char *lora_base
 );
 
-void llama_binding_free_model(void *state);
+int get_embeddings(void *params_ptr, void *state_pr, float *res_embeddings);
 
-int get_model_n_vocab(void *state_ptr);
-
-int get_model_n_ctx_train(void *state_ptr);
-
-int get_model_n_embd(void *state_ptr);
-
-int get_model_n_layer(void *state_ptr);
-
-long long get_model_size(void *state_ptr);
-
-long long get_model_n_params(void *state_ptr);
-
-int get_model_description(void *state_ptr, char *buf, int buf_size);
+int get_token_embeddings(
+    void *params_ptr,
+    void *state_pr,
+    int *tokens,
+    int tokenSize,
+    float *res_embeddings
+);
 
 void *llama_allocate_params(
     const char *prompt,
@@ -88,26 +89,40 @@ void *llama_allocate_params(
 
 void llama_free_params(void *params_ptr);
 
-int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug);
+void llama_binding_free_model(void *state);
 
 int llama_tokenize_string(void *params_ptr, void *state_pr, int *result);
 
-int get_embeddings(void *params_ptr, void *state_pr, float *res_embeddings);
+int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug);
 
-int get_token_embeddings(
-    void *params_ptr,
-    void *state_pr,
-    int *tokens,
-    int tokenSize,
-    float *res_embeddings
+int get_model_n_vocab(void *state_ptr);
+
+int get_model_n_ctx_train(void *state_ptr);
+
+int get_model_n_embd(void *state_ptr);
+
+int get_model_n_layer(void *state_ptr);
+
+long long get_model_size(void *state_ptr);
+
+long long get_model_n_params(void *state_ptr);
+
+int get_model_description(void *state_ptr, char *buf, int buf_size);
+
+int get_model_chat_template(void *state_ptr, const char *name, char *buf, int buf_size);
+
+int apply_chat_template(
+    void *state_ptr,
+    const char *tmpl,
+    const char *messages_json,
+    bool add_generation_prompt,
+    char *result,
+    int result_size
 );
-
-int load_state(void *ctx, char *statefile, char *modes);
-
-void save_state(void *ctx, char *dst, char *modes);
-
-extern unsigned char tokenCallback(void *, char *);
 
 #ifdef __cplusplus
 }
+
+std::vector<std::string> create_vector(const char** strings, int count);
+void delete_vector(std::vector<std::string>* vec);
 #endif

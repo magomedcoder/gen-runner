@@ -1,0 +1,9 @@
+//go:build llama && cublas
+// +build llama,cublas
+
+package llama
+
+/*
+#cgo LDFLAGS: -lcublas -lcudart -L/usr/local/cuda/lib64/
+*/
+import "C"

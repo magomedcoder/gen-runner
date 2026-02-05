@@ -3,7 +3,7 @@
 
 package llama
 
-var DefaultOptions = PredictOptions{
+var DefaultOptions PredictOptions = PredictOptions{
 	Seed:              -1,
 	Threads:           4,
 	Tokens:            128,
@@ -34,15 +34,15 @@ var DefaultOptions = PredictOptions{
 	TopNSigma:         0.0,
 }
 
-func SetPredictionTensorSplit(s string) PredictOption {
+func SetPredictionTensorSplit(maingpu string) PredictOption {
 	return func(p *PredictOptions) {
-		p.TensorSplit = s
+		p.TensorSplit = maingpu
 	}
 }
 
-func SetPredictionMainGPU(s string) PredictOption {
+func SetPredictionMainGPU(maingpu string) PredictOption {
 	return func(p *PredictOptions) {
-		p.MainGPU = s
+		p.MainGPU = maingpu
 	}
 }
 
@@ -163,27 +163,39 @@ func SetStopWords(stop ...string) PredictOption {
 }
 
 func SetSeed(seed int) PredictOption {
-	return func(p *PredictOptions) { p.Seed = seed }
+	return func(p *PredictOptions) {
+		p.Seed = seed
+	}
 }
 
 func SetThreads(threads int) PredictOption {
-	return func(p *PredictOptions) { p.Threads = threads }
+	return func(p *PredictOptions) {
+		p.Threads = threads
+	}
 }
 
 func SetTokens(tokens int) PredictOption {
-	return func(p *PredictOptions) { p.Tokens = tokens }
+	return func(p *PredictOptions) {
+		p.Tokens = tokens
+	}
 }
 
 func SetTopK(topk int) PredictOption {
-	return func(p *PredictOptions) { p.TopK = topk }
+	return func(p *PredictOptions) {
+		p.TopK = topk
+	}
 }
 
 func SetTopP(topp float32) PredictOption {
-	return func(p *PredictOptions) { p.TopP = topp }
+	return func(p *PredictOptions) {
+		p.TopP = topp
+	}
 }
 
 func SetTemperature(temp float32) PredictOption {
-	return func(p *PredictOptions) { p.Temperature = temp }
+	return func(p *PredictOptions) {
+		p.Temperature = temp
+	}
 }
 
 func SetPathPromptCache(f string) PredictOption {

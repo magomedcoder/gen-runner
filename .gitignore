@@ -1,2 +1,7 @@
 .idea
 /pb/
+/build
+.DS_Store
+/models
+/vendor
+/runtime

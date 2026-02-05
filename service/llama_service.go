@@ -65,6 +65,7 @@ func NewLlamaService(modelPath string, opts ...LlamaOption) *LlamaService {
 			modelsDir = filepath.Dir(modelPath)
 		}
 	}
+
 	s := &LlamaService{
 		modelsDir: modelsDir,
 		chunkSize: defaultChunkSize,
@@ -84,12 +85,13 @@ func NewLlamaService(modelPath string, opts ...LlamaOption) *LlamaService {
 func (s *LlamaService) ensureModel(modelName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.modelsDir == "" {
-		return fmt.Errorf("llama: каталог моделей не задан")
+		return fmt.Errorf("llama: путь к папке с моделями не задан")
 	}
 
 	if modelName == "" {
-		return fmt.Errorf("llama: требуется название модели")
+		return fmt.Errorf("llama: укажите модель (доступные: %s)", strings.Join(s.modelNamesLocked(), ", "))
 	}
 
 	fullPath := filepath.Join(s.modelsDir, modelName)
@@ -110,7 +112,7 @@ func (s *LlamaService) ensureModel(modelName string) error {
 
 	m, err := llama.New(fullPath, modelOpts...)
 	if err != nil {
-		return fmt.Errorf("llama: модель загрузки %q: %w", modelName, err)
+		return fmt.Errorf("llama: не удалось загрузить модель %q: %w", modelName, err)
 	}
 
 	s.model = m
@@ -147,7 +149,7 @@ func (s *LlamaService) modelNamesLocked() []string {
 func (s *LlamaService) CheckConnection(ctx context.Context) (bool, error) {
 	models, err := s.GetModels(ctx)
 	if err != nil || len(models) == 0 {
-		return false, fmt.Errorf("llama: нет моделей в %q", s.modelsDir)
+		return false, fmt.Errorf("llama: нет моделей в папке %q", s.modelsDir)
 	}
 
 	if err := s.ensureModel(models[0]); err != nil {
@@ -168,7 +170,7 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 	if s.maxContextTokens > 0 {
 		approxTokens := len(prompt)/4 + 1
 		if approxTokens > s.maxContextTokens {
-			return nil, fmt.Errorf("llama: слишком широкий контекст")
+			return nil, fmt.Errorf("llama: контекст слишком велик (≈%d токенов, лимит %d)", approxTokens, s.maxContextTokens)
 		}
 	}
 
@@ -230,8 +232,11 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 			}
 		}))
 		s.mu.Lock()
-		_, _ = s.model.Predict(prompt, opts...)
+		_, err := s.model.Predict(prompt, opts...)
 		s.mu.Unlock()
+		if err != nil {
+			return
+		}
 	}()
 	return out, nil
 }

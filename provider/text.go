@@ -11,7 +11,9 @@ type Text struct {
 }
 
 func NewText(backend TextBackend) *Text {
-	return &Text{backend: backend}
+	return &Text{
+		backend: backend,
+	}
 }
 
 func (t *Text) CheckConnection(ctx context.Context) (bool, error) {

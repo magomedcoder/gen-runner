@@ -3,6 +3,7 @@ module github.com/magomedcoder/llm-runner
 go 1.25.0
 
 require (
+	github.com/NVIDIA/go-nvml v0.13.0-1
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1

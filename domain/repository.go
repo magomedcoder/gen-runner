@@ -1,5 +1,7 @@
 package domain
 
+import "context"
+
 type ResponseFormat struct {
 	Type   string
 	Schema *string
@@ -24,4 +26,12 @@ type GenerationParams struct {
 	TopP           *float32
 	ResponseFormat *ResponseFormat
 	Tools          []Tool
+}
+
+type LLMProvider interface {
+	CheckConnection(ctx context.Context) (bool, error)
+
+	GetModels(ctx context.Context) ([]string, error)
+
+	SendMessage(ctx context.Context, sessionID int64, model string, messages []*AIChatMessage, stopSequences []string, timeoutSeconds int32, genParams *GenerationParams) (chan string, error)
 }

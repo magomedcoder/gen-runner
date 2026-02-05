@@ -26,19 +26,19 @@ func WithEmbeddings(enable bool) LlamaOption {
 }
 
 func (s *LlamaService) CheckConnection(ctx context.Context) (bool, error) {
-	return false, fmt.Errorf("llama")
+	return false, fmt.Errorf("llama отключена")
 }
 
 func (s *LlamaService) GetModels(ctx context.Context) ([]string, error) {
-	return nil, fmt.Errorf("llama")
+	return nil, fmt.Errorf("llama отключена")
 }
 
 func (s *LlamaService) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error) {
 	ch := make(chan string)
 	close(ch)
-	return ch, fmt.Errorf("llama")
+	return ch, fmt.Errorf("llama отключена")
 }
 
 func (s *LlamaService) Embed(ctx context.Context, model string, text string) ([]float32, error) {
-	return nil, fmt.Errorf("llama")
+	return nil, fmt.Errorf("llama отключена")
 }

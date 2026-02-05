@@ -27,6 +27,7 @@ type Config struct {
 
 func Load() (*Config, error) {
 	c := &Config{}
+
 	configPath := os.Getenv("LLM_RUNNER_CONFIG")
 	if configPath == "" {
 		configPath = "./config.yaml"
@@ -35,11 +36,11 @@ func Load() (*Config, error) {
 	if _, err := os.Stat(configPath); err == nil {
 		data, err := os.ReadFile(configPath)
 		if err != nil {
-			return nil, fmt.Errorf("read config: %w", err)
+			return nil, fmt.Errorf("ошибка чтения конфигурационного файла %s: %w", configPath, err)
 		}
 
 		if err := yaml.Unmarshal(data, c); err != nil {
-			return nil, fmt.Errorf("parse config: %w", err)
+			return nil, fmt.Errorf("ошибка парсинга конфигурационного файла %s: %w", configPath, err)
 		}
 	}
 

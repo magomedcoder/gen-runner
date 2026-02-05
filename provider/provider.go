@@ -31,8 +31,9 @@ type TextProvider interface {
 
 func NewTextProvider(cfg *config.Config) (TextProvider, error) {
 	if cfg.Llama.ModelPath == "" {
-		return nil, fmt.Errorf("llama.model_path обязательно")
+		return nil, fmt.Errorf("задайте llama.model_path")
 	}
+
 	var opts []service.LlamaOption
 	if cfg.Llama.MaxContextTokens > 0 {
 		opts = append(opts, service.WithMaxContextTokens(cfg.Llama.MaxContextTokens))

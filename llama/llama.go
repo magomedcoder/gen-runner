@@ -3,12 +3,11 @@
 
 package llama
 
-/*
-#cgo CFLAGS: -I${SRCDIR}
-#cgo LDFLAGS: -L${SRCDIR} -lllama -lm -lstdc++
-#include "llama.h"
-#include <stdlib.h>
-*/
+// #cgo CXXFLAGS: -I${SRCDIR}/llama_lib/common -I${SRCDIR}/llama_lib/include -I${SRCDIR}/llama_lib/ggml/include -I${SRCDIR}/llama_lib -std=c++17
+// #cgo LDFLAGS: -L${SRCDIR}/ -lllama -lm -lstdc++
+// #cgo linux LDFLAGS: -fopenmp
+// #include "llama.h"
+// #include <stdlib.h>
 import "C"
 import (
 	"fmt"
@@ -27,15 +26,12 @@ type LLama struct {
 func New(model string, opts ...ModelOption) (*LLama, error) {
 	mo := NewModelOptions(opts...)
 	modelPath := C.CString(model)
-
 	defer C.free(unsafe.Pointer(modelPath))
 
 	loraBase := C.CString(mo.LoraBase)
-
 	defer C.free(unsafe.Pointer(loraBase))
 
 	loraAdapter := C.CString(mo.LoraAdapter)
-
 	defer C.free(unsafe.Pointer(loraAdapter))
 
 	result := C.load_model(
@@ -56,15 +52,17 @@ func New(model string, opts ...ModelOption) (*LLama, error) {
 		C.float(mo.FreqRopeScale),
 		loraAdapter, loraBase,
 	)
+
 	if result == nil {
 		return nil, fmt.Errorf("не удалось загрузить модель")
 	}
 
-	return &LLama{
+	ll := &LLama{
 		state:       result,
 		contextSize: mo.ContextSize,
 		embeddings:  mo.Embeddings,
-	}, nil
+	}
+	return ll, nil
 }
 
 func (l *LLama) Free() {
@@ -84,6 +82,7 @@ type ModelInfo struct {
 func (l *LLama) GetModelInfo() ModelInfo {
 	descBuf := make([]byte, 256)
 	C.get_model_description(l.state, (*C.char)(unsafe.Pointer(&descBuf[0])), C.int(len(descBuf)))
+
 	return ModelInfo{
 		VocabSize:     int(C.get_model_n_vocab(l.state)),
 		ContextLength: int(C.get_model_n_ctx_train(l.state)),
@@ -95,13 +94,28 @@ func (l *LLama) GetModelInfo() ModelInfo {
 	}
 }
 
+func (l *LLama) GetChatTemplate(name string) string {
+	buf := make([]byte, 4096)
+	var cName *C.char
+	if name != "" {
+		cName = C.CString(name)
+		defer C.free(unsafe.Pointer(cName))
+	}
+
+	ret := C.get_model_chat_template(l.state, cName, (*C.char)(unsafe.Pointer(&buf[0])), C.int(len(buf)))
+	if ret <= 0 {
+		return ""
+	}
+
+	return string(buf[:ret])
+}
+
 func cStrLen(b []byte) int {
 	for i, v := range b {
 		if v == 0 {
 			return i
 		}
 	}
-
 	return len(b)
 }
 
@@ -109,10 +123,12 @@ func (l *LLama) LoadState(state string) error {
 	d := C.CString(state)
 	w := C.CString("rb")
 	result := C.load_state(l.state, d, w)
+
 	defer C.free(unsafe.Pointer(d))
 	defer C.free(unsafe.Pointer(w))
+
 	if result != 0 {
-		return fmt.Errorf("состояние загрузки не удалось")
+		return fmt.Errorf("ошибка при загрузке состояния")
 	}
 
 	return nil
@@ -121,38 +137,38 @@ func (l *LLama) LoadState(state string) error {
 func (l *LLama) SaveState(dst string) error {
 	d := C.CString(dst)
 	w := C.CString("wb")
+
 	C.save_state(l.state, d, w)
+
 	defer C.free(unsafe.Pointer(d))
 	defer C.free(unsafe.Pointer(w))
-	_, err := os.Stat(dst)
 
+	_, err := os.Stat(dst)
 	return err
 }
 
-func (l *LLama) Predict(text string, opts ...PredictOption) (string, error) {
+func (l *LLama) TokenEmbeddings(tokens []int, opts ...PredictOption) ([]float32, error) {
+	if !l.embeddings {
+		return []float32{}, fmt.Errorf("модель загружена без поддержки эмбеддингов")
+	}
+
 	po := NewPredictOptions(opts...)
-	if po.TokenCallback != nil {
-		setCallback(l.state, po.TokenCallback)
-	}
 
-	input := C.CString(text)
-	defer C.free(unsafe.Pointer(input))
+	outSize := po.Tokens
 	if po.Tokens == 0 {
-		po.Tokens = 99999999
+		outSize = 9999999
 	}
 
-	out := make([]byte, po.Tokens)
-	reverseCount := len(po.StopPrompts)
-	reversePrompt := make([]*C.char, reverseCount)
-	var pass **C.char
-	for i, s := range po.StopPrompts {
-		cs := C.CString(s)
-		reversePrompt[i] = cs
-		pass = &reversePrompt[0]
+	floats := make([]float32, outSize)
+
+	myArray := (*C.int)(C.malloc(C.size_t(len(tokens)) * C.sizeof_int))
+
+	for i, v := range tokens {
+		(*[1<<31 - 1]int32)(unsafe.Pointer(myArray))[i] = int32(v)
 	}
 
 	params := C.llama_allocate_params(
-		input,
+		C.CString(""),
 		C.int(po.Seed),
 		C.int(po.Threads),
 		C.int(po.Tokens),
@@ -166,118 +182,7 @@ func (l *LLama) Predict(text string, opts ...PredictOption) (string, error) {
 		C.bool(po.F16KV),
 		C.int(po.Batch),
 		C.int(po.NKeep),
-		pass,
-		C.int(reverseCount),
-		C.float(po.TailFreeSamplingZ),
-		C.float(po.TypicalP),
-		C.float(po.FrequencyPenalty),
-		C.float(po.PresencePenalty),
-		C.int(po.Mirostat),
-		C.float(po.MirostatETA),
-		C.float(po.MirostatTAU),
-		C.bool(po.PenalizeNL),
-		C.CString(po.LogitBias),
-		C.CString(po.PathPromptCache),
-		C.bool(po.PromptCacheAll),
-		C.bool(po.MLock),
-		C.bool(po.MMap),
-		C.CString(po.MainGPU),
-		C.CString(po.TensorSplit),
-		C.bool(po.PromptCacheRO),
-		C.CString(po.Grammar),
-		C.float(po.RopeFreqBase),
-		C.float(po.RopeFreqScale),
-		C.int(po.NDraft),
-		C.float(po.XTCProbability),
-		C.float(po.XTCThreshold),
-		C.float(po.DRYMultiplier),
-		C.float(po.DRYBase),
-		C.int(po.DRYAllowedLength),
-		C.int(po.DRYPenaltyLastN),
-		C.float(po.TopNSigma),
-	)
-
-	defer C.llama_free_params(params)
-	ret := C.llama_predict(params, l.state, (*C.char)(unsafe.Pointer(&out[0])), C.bool(po.DebugMode))
-
-	for _, c := range reversePrompt {
-		C.free(unsafe.Pointer(c))
-	}
-
-	if ret != 0 {
-		return "", fmt.Errorf("прогнозирование не удалось")
-	}
-
-	res := strings.TrimPrefix(C.GoString((*C.char)(unsafe.Pointer(&out[0]))), " ")
-	res = strings.TrimPrefix(res, text)
-	res = strings.TrimPrefix(res, "\n")
-	for _, s := range po.StopPrompts {
-		res = strings.TrimRight(res, s)
-	}
-
-	if po.TokenCallback != nil {
-		setCallback(l.state, nil)
-	}
-
-	return res, nil
-}
-
-func (l *LLama) SetTokenCallback(callback func(token string) bool) {
-	setCallback(l.state, callback)
-}
-
-var (
-	callbacksMu sync.RWMutex
-	callbacks   = map[uintptr]func(string) bool{}
-)
-
-//export tokenCallback
-func tokenCallback(statePtr unsafe.Pointer, token *C.char) bool {
-	callbacksMu.RLock()
-	defer callbacksMu.RUnlock()
-	if cb, ok := callbacks[uintptr(statePtr)]; ok {
-		return cb(C.GoString(token))
-	}
-
-	return true
-}
-
-func setCallback(statePtr unsafe.Pointer, callback func(string) bool) {
-	callbacksMu.Lock()
-	defer callbacksMu.Unlock()
-	if callback == nil {
-		delete(callbacks, uintptr(statePtr))
-	} else {
-		callbacks[uintptr(statePtr)] = callback
-	}
-}
-
-func (l *LLama) TokenizeString(text string, opts ...PredictOption) (int32, []int32, error) {
-	po := NewPredictOptions(opts...)
-	input := C.CString(text)
-	defer C.free(unsafe.Pointer(input))
-	if po.Tokens == 0 {
-		po.Tokens = 4096
-	}
-
-	out := make([]C.int, po.Tokens)
-	var fakeDblPtr **C.char
-	params := C.llama_allocate_params(
-		input,
-		C.int(po.Seed),
-		C.int(po.Threads),
-		C.int(po.Tokens),
-		C.int(po.TopK),
-		C.float(po.TopP),
-		C.float(po.MinP),
-		C.float(po.Temperature),
-		C.float(po.Penalty),
-		C.int(po.Repeat),
-		C.bool(po.IgnoreEOS),
-		C.bool(po.F16KV),
-		C.int(po.Batch),
-		C.int(po.NKeep),
-		fakeDblPtr,
+		nil,
 		C.int(0),
 		C.float(po.TailFreeSamplingZ),
 		C.float(po.TypicalP),
@@ -307,30 +212,22 @@ func (l *LLama) TokenizeString(text string, opts ...PredictOption) (int32, []int
 		C.int(po.DRYPenaltyLastN),
 		C.float(po.TopNSigma),
 	)
-	defer C.llama_free_params(params)
-	tokRet := C.llama_tokenize_string(params, l.state, (*C.int)(unsafe.Pointer(&out[0])))
-	if tokRet < 0 {
-		return int32(tokRet), nil, fmt.Errorf("tokenize вернул %d", tokRet)
+	ret := C.get_token_embeddings(params, l.state, myArray, C.int(len(tokens)), (*C.float)(&floats[0]))
+	if ret != 0 {
+		return floats, fmt.Errorf("ошибка вывода эмбеддингов")
 	}
 
-	gTokRet := int32(tokRet)
-	gLenOut := min(len(out), int(gTokRet))
-	goSlice := make([]int32, gLenOut)
-	for i := 0; i < gLenOut; i++ {
-		goSlice[i] = int32(out[i])
-	}
-
-	return gTokRet, goSlice, nil
+	return floats, nil
 }
 
 func (l *LLama) Embeddings(text string, opts ...PredictOption) ([]float32, error) {
 	if !l.embeddings {
-		return nil, fmt.Errorf("модель не загружена с эмбеддингами")
+		return []float32{}, fmt.Errorf("модель загружена без поддержки эмбеддингов")
 	}
 
 	po := NewPredictOptions(opts...)
+
 	input := C.CString(text)
-	defer C.free(unsafe.Pointer(input))
 	if po.Tokens == 0 {
 		po.Tokens = 99999999
 	}
@@ -391,39 +288,38 @@ func (l *LLama) Embeddings(text string, opts ...PredictOption) ([]float32, error
 		C.float(po.TopNSigma),
 	)
 
-	defer C.llama_free_params(params)
-	for _, c := range reversePrompt {
-		C.free(unsafe.Pointer(c))
-	}
-
 	ret := C.get_embeddings(params, l.state, (*C.float)(&floats[0]))
 	if ret != 0 {
-		return floats, fmt.Errorf("Не удалось выполнить эмбеддинг")
+		return floats, fmt.Errorf("ошибка вывода эмбеддингов")
 	}
 
 	return floats, nil
 }
 
-func (l *LLama) TokenEmbeddings(tokens []int, opts ...PredictOption) ([]float32, error) {
-	if !l.embeddings {
-		return nil, fmt.Errorf("модель не загружена с эмбеддингами")
-	}
-
+func (l *LLama) Predict(text string, opts ...PredictOption) (string, error) {
 	po := NewPredictOptions(opts...)
-	outSize := po.Tokens
-	if outSize == 0 {
-		outSize = 9999999
+
+	if po.TokenCallback != nil {
+		setCallback(l.state, po.TokenCallback)
 	}
 
-	floats := make([]float32, outSize)
-	myArray := (*C.int)(C.malloc(C.size_t(len(tokens)) * C.sizeof_int))
-	defer C.free(unsafe.Pointer(myArray))
-	for i, v := range tokens {
-		(*[1<<31 - 1]int32)(unsafe.Pointer(myArray))[i] = int32(v)
+	input := C.CString(text)
+	if po.Tokens == 0 {
+		po.Tokens = 99999999
+	}
+	out := make([]byte, po.Tokens)
+
+	reverseCount := len(po.StopPrompts)
+	reversePrompt := make([]*C.char, reverseCount)
+	var pass **C.char
+	for i, s := range po.StopPrompts {
+		cs := C.CString(s)
+		reversePrompt[i] = cs
+		pass = &reversePrompt[0]
 	}
 
 	params := C.llama_allocate_params(
-		C.CString(""),
+		input,
 		C.int(po.Seed),
 		C.int(po.Threads),
 		C.int(po.Tokens),
@@ -437,7 +333,88 @@ func (l *LLama) TokenEmbeddings(tokens []int, opts ...PredictOption) ([]float32,
 		C.bool(po.F16KV),
 		C.int(po.Batch),
 		C.int(po.NKeep),
-		nil,
+		pass,
+		C.int(reverseCount),
+		C.float(po.TailFreeSamplingZ),
+		C.float(po.TypicalP),
+		C.float(po.FrequencyPenalty),
+		C.float(po.PresencePenalty),
+		C.int(po.Mirostat),
+		C.float(po.MirostatETA),
+		C.float(po.MirostatTAU),
+		C.bool(po.PenalizeNL),
+		C.CString(po.LogitBias),
+		C.CString(po.PathPromptCache),
+		C.bool(po.PromptCacheAll),
+		C.bool(po.MLock),
+		C.bool(po.MMap),
+		C.CString(po.MainGPU),
+		C.CString(po.TensorSplit),
+		C.bool(po.PromptCacheRO),
+		C.CString(po.Grammar),
+		C.float(po.RopeFreqBase),
+		C.float(po.RopeFreqScale),
+		C.int(po.NDraft),
+		C.float(po.XTCProbability),
+		C.float(po.XTCThreshold),
+		C.float(po.DRYMultiplier),
+		C.float(po.DRYBase),
+		C.int(po.DRYAllowedLength),
+		C.int(po.DRYPenaltyLastN),
+		C.float(po.TopNSigma),
+	)
+	ret := C.llama_predict(params, l.state, (*C.char)(unsafe.Pointer(&out[0])), C.bool(po.DebugMode))
+	if ret != 0 {
+		return "", fmt.Errorf("ошибка вывода")
+	}
+
+	res := C.GoString((*C.char)(unsafe.Pointer(&out[0])))
+
+	res = strings.TrimPrefix(res, " ")
+	res = strings.TrimPrefix(res, text)
+	res = strings.TrimPrefix(res, "\n")
+
+	for _, s := range po.StopPrompts {
+		res = strings.TrimRight(res, s)
+	}
+
+	C.llama_free_params(params)
+
+	if po.TokenCallback != nil {
+		setCallback(l.state, nil)
+	}
+
+	return res, nil
+}
+
+func (l *LLama) TokenizeString(text string, opts ...PredictOption) (int32, []int32, error) {
+	po := NewPredictOptions(opts...)
+
+	input := C.CString(text)
+	if po.Tokens == 0 {
+		po.Tokens = 4096
+	}
+
+	out := make([]C.int, po.Tokens)
+
+	var fakeDblPtr **C.char
+
+	params := C.llama_allocate_params(
+		input,
+		C.int(po.Seed),
+		C.int(po.Threads),
+		C.int(po.Tokens),
+		C.int(po.TopK),
+		C.float(po.TopP),
+		C.float(po.MinP),
+		C.float(po.Temperature),
+		C.float(po.Penalty),
+		C.int(po.Repeat),
+		C.bool(po.IgnoreEOS),
+		C.bool(po.F16KV),
+		C.int(po.Batch),
+		C.int(po.NKeep),
+		fakeDblPtr,
 		C.int(0),
 		C.float(po.TailFreeSamplingZ),
 		C.float(po.TypicalP),
@@ -467,12 +444,53 @@ func (l *LLama) TokenEmbeddings(tokens []int, opts ...PredictOption) ([]float32,
 		C.int(po.DRYPenaltyLastN),
 		C.float(po.TopNSigma),
 	)
-	defer C.llama_free_params(params)
 
-	ret := C.get_token_embeddings(params, l.state, myArray, C.int(len(tokens)), (*C.float)(&floats[0]))
-	if ret != 0 {
-		return floats, fmt.Errorf("токен эмбеддинг не сработал")
+	tokRet := C.llama_tokenize_string(params, l.state, (*C.int)(unsafe.Pointer(&out[0])))
+
+	if tokRet < 0 {
+		return int32(tokRet), []int32{}, fmt.Errorf("llama_tokenize_string вернул отрицательное количество %d", tokRet)
 	}
 
-	return floats, nil
+	gTokRet := int32(tokRet)
+
+	gLenOut := min(len(out), int(gTokRet))
+
+	goSlice := make([]int32, gLenOut)
+	for i := 0; i < gLenOut; i++ {
+		goSlice[i] = int32(out[i])
+	}
+
+	return gTokRet, goSlice, nil
+}
+
+func (l *LLama) SetTokenCallback(callback func(token string) bool) {
+	setCallback(l.state, callback)
+}
+
+var (
+	m         sync.RWMutex
+	callbacks = map[uintptr]func(string) bool{}
+)
+
+//export tokenCallback
+func tokenCallback(statePtr unsafe.Pointer, token *C.char) bool {
+	m.RLock()
+	defer m.RUnlock()
+
+	if callback, ok := callbacks[uintptr(statePtr)]; ok {
+		return callback(C.GoString(token))
+	}
+
+	return true
+}
+
+func setCallback(statePtr unsafe.Pointer, callback func(string) bool) {
+	m.Lock()
+	defer m.Unlock()
+
+	if callback == nil {
+		delete(callbacks, uintptr(statePtr))
+	} else {
+		callbacks[uintptr(statePtr)] = callback
+	}
 }
