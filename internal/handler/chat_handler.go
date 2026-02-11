@@ -64,7 +64,7 @@ func (h *ChatHandler) SendMessage(req *pb.SendMessageRequest, stream pb.ChatServ
 	lastMessage := req.Messages[len(req.Messages)-1]
 	userMessage := lastMessage.Content
 
-	responseChan, messageID, err := h.chatUseCase.SendMessage(ctx, userID, req.SessionId, userMessage)
+	responseChan, messageId, err := h.chatUseCase.SendMessage(ctx, userID, req.SessionId, userMessage)
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
@@ -73,7 +73,7 @@ func (h *ChatHandler) SendMessage(req *pb.SendMessageRequest, stream pb.ChatServ
 
 	for chunk := range responseChan {
 		err := stream.Send(&pb.ChatResponse{
-			Id:        messageID,
+			Id:        messageId,
 			Content:   chunk,
 			Role:      "assistant",
 			CreatedAt: createdAt,
@@ -85,7 +85,7 @@ func (h *ChatHandler) SendMessage(req *pb.SendMessageRequest, stream pb.ChatServ
 	}
 
 	return stream.Send(&pb.ChatResponse{
-		Id:        messageID,
+		Id:        messageId,
 		Content:   "",
 		Role:      "assistant",
 		CreatedAt: createdAt,
