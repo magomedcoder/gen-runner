@@ -10,10 +10,13 @@ import 'package:grpc/grpc.dart';
 abstract class IChatRemoteDataSource {
   Future<bool> checkConnection();
 
+  Future<List<String>> getModels();
+
   Stream<String> sendChatMessage(
     String sessionId,
-    List<Map<String, dynamic>> messages,
-  );
+    List<Map<String, dynamic>> messages, {
+    String? model,
+  });
 
   Future<ChatSession> createSession(String title);
 
@@ -56,10 +59,30 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   }
 
   @override
+  Future<List<String>> getModels() async {
+    try {
+      final response = await _client.getModels(
+        grpc.Empty(),
+        options: CallOptions(timeout: const Duration(seconds: 5)),
+      );
+
+      return response.models;
+    } on GrpcError catch (e) {
+      if (e.code == StatusCode.unavailable) {
+        throw NetworkFailure('Ошибка подключения gRPC');
+      }
+      throw NetworkFailure('Ошибка gRPC: ${e.message}');
+    } catch (e) {
+      throw ApiFailure('Ошибка получения списка моделей: $e');
+    }
+  }
+
+  @override
   Stream<String> sendChatMessage(
     String sessionId,
-    List<Map<String, dynamic>> messages,
-  ) async* {
+    List<Map<String, dynamic>> messages, {
+    String? model,
+  }) async* {
     try {
       final chatMessages = messages.map((msg) {
         final message = grpc.ChatMessage()
@@ -73,6 +96,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       final request = grpc.SendMessageRequest()
         ..sessionId = sessionId
         ..messages.addAll(chatMessages);
+      if (model != null && model.isNotEmpty) {
+        request.model = model;
+      }
 
       final responseStream = _client.sendMessage(
         request,

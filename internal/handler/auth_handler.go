@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/magomedcoder/gen/api/pb"
+	"github.com/magomedcoder/gen/internal/mappers"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,11 +24,11 @@ func NewAuthHandler(authUseCase *usecase.AuthUseCase) *AuthHandler {
 func (a *AuthHandler) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error) {
 	user, accessToken, refreshToken, err := a.authUseCase.Login(ctx, req.Username, req.Password)
 	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, err.Error())
+		return nil, ToStatusError(codes.Unauthenticated, err)
 	}
 
 	return &pb.LoginResponse{
-		User:         userToProto(user),
+		User:         mappers.UserToProto(user),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
@@ -36,7 +37,7 @@ func (a *AuthHandler) Login(ctx context.Context, req *pb.LoginRequest) (*pb.Logi
 func (a *AuthHandler) RefreshToken(ctx context.Context, req *pb.RefreshTokenRequest) (*pb.RefreshTokenResponse, error) {
 	accessToken, refreshToken, err := a.authUseCase.RefreshToken(ctx, req.RefreshToken)
 	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, err.Error())
+		return nil, ToStatusError(codes.Unauthenticated, err)
 	}
 
 	return &pb.RefreshTokenResponse{
@@ -67,7 +68,7 @@ func (a *AuthHandler) ChangePassword(ctx context.Context, req *pb.ChangePassword
 	}
 
 	if err := a.authUseCase.ChangePassword(ctx, user.Id, req.OldPassword, req.NewPassword); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, ToStatusError(codes.InvalidArgument, err)
 	}
 
 	return &pb.ChangePasswordResponse{Success: true}, nil

@@ -18,8 +18,10 @@ gen:
 		./api/proto/*.proto
 
 	protoc --proto_path=./llm-runner \
-		--go_out=paths=source_relative:./api/pb \
-		--go-grpc_out=paths=source_relative:./api/pb \
+		--go_opt=Mllmrunner.proto=github.com/magomedcoder/gen/api/pb/llmrunner \
+		--go-grpc_opt=Mllmrunner.proto=github.com/magomedcoder/gen/api/pb/llmrunner \
+		--go_out=module=github.com/magomedcoder/gen:. \
+		--go-grpc_out=module=github.com/magomedcoder/gen:. \
 		./llm-runner/llmrunner.proto
 
 .PHONY: run

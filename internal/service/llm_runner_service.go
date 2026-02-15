@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 
-	"github.com/magomedcoder/gen/api/pb/llmrunner"
+	llmrunner "github.com/magomedcoder/gen/api/pb/llmrunner"
 	"github.com/magomedcoder/gen/internal/domain"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -50,11 +50,28 @@ func (s *LLMRunnerService) CheckConnection(ctx context.Context) (bool, error) {
 	return resp.IsConnected, nil
 }
 
-func (s *LLMRunnerService) SendMessage(ctx context.Context, sessionID string, messages []*domain.Message) (chan string, error) {
+func (s *LLMRunnerService) GetModels(ctx context.Context) ([]string, error) {
+	resp, err := s.client.GetModels(ctx, &llmrunner.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner GetModels: %w", err)
+	}
+
+	if resp == nil {
+		return nil, nil
+	}
+
+	return resp.Models, nil
+}
+
+func (s *LLMRunnerService) SendMessage(ctx context.Context, sessionID string, model string, messages []*domain.Message) (chan string, error) {
+	modelName := model
+	if modelName == "" {
+		modelName = s.model
+	}
 	req := &llmrunner.SendMessageRequest{
 		SessionId: sessionIDToInt64(sessionID),
 		Messages:  domainMessagesToProto(messages),
-		Model:     s.model,
+		Model:     modelName,
 	}
 
 	stream, err := s.client.SendMessage(ctx, req)

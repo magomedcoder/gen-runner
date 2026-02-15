@@ -23,8 +23,12 @@ func (r *LLMRunnerRepository) CheckConnection(ctx context.Context) (bool, error)
 	return r.client.CheckConnection(ctx)
 }
 
-func (r *LLMRunnerRepository) SendMessage(ctx context.Context, sessionID string, messages []*domain.Message) (chan string, error) {
-	return r.client.SendMessage(ctx, sessionID, messages)
+func (r *LLMRunnerRepository) GetModels(ctx context.Context) ([]string, error) {
+	return r.client.GetModels(ctx)
+}
+
+func (r *LLMRunnerRepository) SendMessage(ctx context.Context, sessionID string, model string, messages []*domain.Message) (chan string, error) {
+	return r.client.SendMessage(ctx, sessionID, model, messages)
 }
 
 func (r *LLMRunnerRepository) Close() error {

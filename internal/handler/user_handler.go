@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/magomedcoder/gen/api/pb"
+	"github.com/magomedcoder/gen/internal/mappers"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -30,14 +31,14 @@ func (u *UserHandler) GetUsers(ctx context.Context, req *pb.GetUsersRequest) (*p
 
 	users, total, err := u.userUseCase.GetUsers(ctx, req.Page, req.PageSize)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, ToStatusError(codes.Internal, err)
 	}
 
 	resp := &pb.GetUsersResponse{
 		Total: total,
 	}
 	for _, user := range users {
-		resp.Users = append(resp.Users, userToProto(user))
+		resp.Users = append(resp.Users, mappers.UserToProto(user))
 	}
 
 	return resp, nil
@@ -50,10 +51,10 @@ func (u *UserHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest)
 
 	user, err := u.userUseCase.CreateUser(ctx, req.Username, req.Password, req.Name, req.Surname, req.Role)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, ToStatusError(codes.InvalidArgument, err)
 	}
 
-	return &pb.CreateUserResponse{User: userToProto(user)}, nil
+	return &pb.CreateUserResponse{User: mappers.UserToProto(user)}, nil
 }
 
 func (u *UserHandler) EditUser(ctx context.Context, req *pb.EditUserRequest) (*pb.EditUserResponse, error) {
@@ -67,8 +68,8 @@ func (u *UserHandler) EditUser(ctx context.Context, req *pb.EditUserRequest) (*p
 
 	user, err := u.userUseCase.EditUser(ctx, req.Id, req.Username, req.Password, req.Name, req.Surname, req.Role)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, ToStatusError(codes.InvalidArgument, err)
 	}
 
-	return &pb.EditUserResponse{User: userToProto(user)}, nil
+	return &pb.EditUserResponse{User: mappers.UserToProto(user)}, nil
 }

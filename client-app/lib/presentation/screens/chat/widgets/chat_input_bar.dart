@@ -53,6 +53,74 @@ class _ChatInputBarState extends State<ChatInputBar> {
     super.dispose();
   }
 
+  Widget _buildModelSelector(ChatState state) {
+    final models = state.models;
+    final selected = state.selectedModel;
+    if (models.isEmpty) {
+      return Tooltip(
+        message: 'Модели не загружены',
+        child: Icon(
+          Icons.smart_toy_outlined,
+          size: 24,
+          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+        ),
+      );
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 180),
+      child: PopupMenuButton<String>(
+        enabled: widget.isEnabled,
+        tooltip: 'Выбор модели',
+        padding: EdgeInsets.zero,
+        icon: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.smart_toy_outlined,
+              size: 22,
+              color: widget.isEnabled
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                selected ?? models.first,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: widget.isEnabled
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Icon(
+              Icons.arrow_drop_down,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+        onOpened: () {
+          if (state.models.isEmpty) {
+            context.read<ChatBloc>().add(const ChatLoadModels());
+          }
+        },
+        itemBuilder: (context) => [
+          for (final model in models)
+            PopupMenuItem<String>(
+              value: model,
+              child: Text(model, overflow: TextOverflow.ellipsis),
+            ),
+        ],
+        onSelected: (value) {
+          context.read<ChatBloc>().add(ChatSelectModel(value));
+        },
+      ),
+    );
+  }
+
   Widget _buildSendButton(ChatState state) {
     if (state.isStreaming) {
       return FloatingActionButton.small(
@@ -95,6 +163,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              _buildModelSelector(state),
+              const SizedBox(width: 8),
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(

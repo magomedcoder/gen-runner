@@ -17,6 +17,7 @@ import 'package:gen/domain/usecases/auth/refresh_token_usecase.dart';
 import 'package:gen/domain/usecases/chat/connect_usecase.dart';
 import 'package:gen/domain/usecases/chat/create_session_usecase.dart';
 import 'package:gen/domain/usecases/chat/delete_session_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_models_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_session_messages_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_sessions_usecase.dart';
 import 'package:gen/domain/usecases/chat/send_message_usecase.dart';
@@ -81,6 +82,7 @@ Future<void> init() async {
   sl.registerLazySingleton<UserRepository>(() => UserRepositoryImpl(sl()));
 
   sl.registerFactory(() => ConnectUseCase(sl()));
+  sl.registerFactory(() => GetModelsUseCase(sl()));
   sl.registerFactory(() => SendMessageUseCase(sl()));
   sl.registerFactory(() => CreateSessionUseCase(sl()));
   sl.registerFactory(() => GetSessionsUseCase(sl()));
@@ -99,6 +101,7 @@ Future<void> init() async {
   sl.registerFactory(
     () => ChatBloc(
       connectUseCase: sl(),
+      getModelsUseCase: sl(),
       sendMessageUseCase: sl(),
       createSessionUseCase: sl(),
       getSessionsUseCase: sl(),
