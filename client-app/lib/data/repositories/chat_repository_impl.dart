@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:gen/core/failures.dart';
+import 'package:gen/data/data_sources/local/session_model_local_data_source.dart';
 import 'package:gen/data/data_sources/remote/chat_remote_datasource.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
@@ -8,8 +9,9 @@ import 'package:gen/domain/repositories/chat_repository.dart';
 
 class ChatRepositoryImpl implements ChatRepository {
   final IChatRemoteDataSource dataSource;
+  final SessionModelLocalDataSource localDataSource;
 
-  ChatRepositoryImpl(this.dataSource);
+  ChatRepositoryImpl(this.dataSource, this.localDataSource);
 
   @override
   Future<bool> checkConnection() async {
@@ -36,20 +38,9 @@ class ChatRepositoryImpl implements ChatRepository {
     String? model,
   }) {
     try {
-      final messageList = messages
-          .map(
-            (msg) => {
-              'id': msg.id,
-              'role': msg.role == MessageRole.user ? 'user' : 'assistant',
-              'content': msg.content,
-              'created_at': msg.createdAt.millisecondsSinceEpoch,
-            },
-          )
-          .toList();
-
       return dataSource.sendChatMessage(
         sessionId,
-        messageList,
+        messages,
         model: model,
       );
     } catch (e) {
@@ -58,9 +49,9 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<ChatSession> createSession(String title) async {
+  Future<ChatSession> createSession(String title, {String? model}) async {
     try {
-      return await dataSource.createSession(title);
+      return await dataSource.createSession(title, model: model);
     } catch (e) {
       throw ApiFailure('Ошибка создания сессии: $e');
     }
@@ -78,7 +69,7 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<List<ChatSession>> listSessions(int page, int pageSize) async {
     try {
-      return await dataSource.listSessions(page, pageSize);
+      return await dataSource.getSessions(page, pageSize);
     } catch (e) {
       throw ApiFailure('Ошибка получения списка сессий: $e');
     }
@@ -112,6 +103,33 @@ class ChatRepositoryImpl implements ChatRepository {
       return await dataSource.updateSessionTitle(sessionId, title);
     } catch (e) {
       throw ApiFailure('Ошибка обновления заголовка сессии: $e');
+    }
+  }
+
+  @override
+  Future<ChatSession> updateSessionModel(String sessionId, String model) async {
+    try {
+      return await dataSource.updateSessionModel(sessionId, model);
+    } catch (e) {
+      throw ApiFailure('Ошибка обновления модели сессии: $e');
+    }
+  }
+
+  @override
+  Future<String?> getSessionModel(String sessionId) async {
+    try {
+      return await localDataSource.getSessionModel(sessionId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> setSessionModel(String sessionId, String model) async {
+    try {
+      await localDataSource.setSessionModel(sessionId, model);
+    } catch (e) {
+      throw ApiFailure('Ошибка сохранения модели сессии: $e');
     }
   }
 }

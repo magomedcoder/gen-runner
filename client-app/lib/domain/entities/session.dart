@@ -5,12 +5,14 @@ class ChatSession extends Equatable {
   final String title;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? model;
 
   const ChatSession({
     required this.id,
     required this.title,
     required this.createdAt,
     required this.updatedAt,
+    this.model,
   });
 
   factory ChatSession.fromJson(Map<String, dynamic> json) {
@@ -19,6 +21,7 @@ class ChatSession extends Equatable {
       title: json['title'] as String,
       createdAt: DateTime.fromMillisecondsSinceEpoch(json['created_at'] as int),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(json['updated_at'] as int),
+      model: json['model'] as String?,
     );
   }
 
@@ -27,8 +30,9 @@ class ChatSession extends Equatable {
     'title': title,
     'created_at': createdAt.millisecondsSinceEpoch,
     'updated_at': updatedAt.millisecondsSinceEpoch,
+    if (model != null) 'model': model,
   };
 
   @override
-  List<Object?> get props => [id, title, createdAt, updatedAt];
+  List<Object?> get props => [id, title, createdAt, updatedAt, model];
 }
