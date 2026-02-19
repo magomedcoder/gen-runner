@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/magomedcoder/gen"
 	"github.com/magomedcoder/gen/api/pb"
 	"github.com/magomedcoder/gen/config"
+	"github.com/magomedcoder/gen/internal/bootstrap"
 	"github.com/magomedcoder/gen/internal/handler"
 	"github.com/magomedcoder/gen/internal/repository"
 	"github.com/magomedcoder/gen/internal/repository/postgres"
@@ -26,11 +28,20 @@ func main() {
 	}
 
 	ctx := context.Background()
+
+	if err := bootstrap.CheckDatabase(ctx, cfg.Database.DSN); err != nil {
+		log.Fatalf("Ошибка инициализации базы данных: %v", err)
+	}
+
 	db, err := postgres.NewDB(ctx, cfg.Database.DSN)
 	if err != nil {
 		log.Fatalf("Ошибка подключения к базе данных: %v", err)
 	}
 	defer db.Close()
+
+	if err := bootstrap.RunMigrations(ctx, db, gen.Postgres); err != nil {
+		log.Fatalf("Ошибка применения миграций: %v", err)
+	}
 
 	userRepo := postgres.NewUserRepository(db)
 	tokenRepo := postgres.NewTokenRepository(db)
@@ -38,6 +49,11 @@ func main() {
 	messageRepo := postgres.NewMessageRepository(db)
 
 	jwtService := service.NewJWTService(cfg)
+
+	if err := bootstrap.CreateFirstUser(ctx, userRepo, jwtService); err != nil {
+		log.Fatalf("Ошибка создания первого пользователя: %v", err)
+	}
+
 	llmRepo, err := repository.NewLLMRunnerRepository(cfg.LLMRunner.Address, cfg.LLMRunner.Model)
 	if err != nil {
 		log.Fatalf("Ошибка подключения к llm-runner: %v", err)
