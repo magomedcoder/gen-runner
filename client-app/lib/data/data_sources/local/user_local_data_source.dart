@@ -1,20 +1,26 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:gen/domain/entities/user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-abstract class AuthLocalDataSource {
+abstract class UserLocalDataSource {
   void saveTokens(String accessToken, String refreshToken);
 
   void saveUser(User user);
 
   void clearTokens();
+
+  ThemeMode get themeMode;
+
+  Future<void> setThemeMode(ThemeMode mode);
 }
 
-class AuthLocalDataSourceImpl implements AuthLocalDataSource {
+class UserLocalDataSourceImpl implements UserLocalDataSource {
   static const _keyAccessToken = 'gen_access_token';
   static const _keyRefreshToken = 'gen_refresh_token';
   static const _keyUser = 'gen_user';
+  static const _keyThemeMode = 'gen_theme_mode';
 
   SharedPreferences? _prefs;
   String? _accessToken;
@@ -28,6 +34,12 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   User? get user => _user;
 
   bool get hasToken => _accessToken != null && _accessToken!.isNotEmpty;
+
+  @override
+  ThemeMode get themeMode {
+    final name = _prefs?.getString(_keyThemeMode) ?? 'light';
+    return name == 'dark' ? ThemeMode.dark : ThemeMode.light;
+  }
 
   Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
@@ -67,5 +79,10 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     _prefs?.remove(_keyAccessToken);
     _prefs?.remove(_keyRefreshToken);
     _prefs?.remove(_keyUser);
+  }
+
+  @override
+  Future<void> setThemeMode(ThemeMode mode) async {
+    await _prefs?.setString(_keyThemeMode, mode == ThemeMode.dark ? 'dark' : 'light');
   }
 }

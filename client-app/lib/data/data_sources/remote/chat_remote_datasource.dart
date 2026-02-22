@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:grpc/grpc.dart';
 import 'package:gen/core/failures.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
+import 'package:gen/core/grpc_error_handler.dart';
 import 'package:gen/data/mappers/message_mapper.dart';
 import 'package:gen/data/mappers/session_mapper.dart';
 import 'package:gen/domain/entities/message.dart';
@@ -71,7 +72,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       if (e.code == StatusCode.unavailable) {
         throw NetworkFailure('Ошибка подключения gRPC');
       }
-      throw NetworkFailure('Ошибка gRPC: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка получения списка моделей: $e');
     }
@@ -109,7 +110,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         throw NetworkFailure('Таймаут запроса gRPC');
       }
 
-      throw NetworkFailure('Ошибка gRPC: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка отправки сообщения через gRPC: $e');
     }
@@ -129,7 +130,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
       return SessionMapper.fromProto(response);
     } on GrpcError catch (e) {
-      throw NetworkFailure('Ошибка gRPC при создании сессии: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC при создании сессии: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка создания сессии: $e');
     }
@@ -146,7 +147,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
       return SessionMapper.fromProto(response);
     } on GrpcError catch (e) {
-      throw NetworkFailure('Ошибка gRPC при получении сессии: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC при получении сессии: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка получения сессии: $e');
     }
@@ -167,7 +168,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
       return SessionMapper.listFromProto(response.sessions);
     } on GrpcError catch (e) {
-      throw NetworkFailure('Ошибка gRPC при получении списка сессий: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC при получении списка сессий: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка получения списка сессий: $e');
     }
@@ -190,7 +191,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
       return MessageMapper.listFromProto(response.messages);
     } on GrpcError catch (e) {
-      throw NetworkFailure('Ошибка gRPC при получении сообщений: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC при получении сообщений: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка получения сообщений: $e');
     }
@@ -205,7 +206,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
       await _client.deleteSession(request);
     } on GrpcError catch (e) {
-      throw NetworkFailure('Ошибка gRPC при удалении сессии: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC при удалении сессии: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка удаления сессии: $e');
     }
@@ -223,7 +224,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
       return SessionMapper.fromProto(response);
     } on GrpcError catch (e) {
-      throw NetworkFailure('Ошибка gRPC при обновлении заголовка: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC при обновлении заголовка: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка обновления заголовка: $e');
     }
@@ -241,9 +242,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
       return SessionMapper.fromProto(response);
     } on GrpcError catch (e) {
-      throw NetworkFailure(
-        'Ошибка gRPC при обновлении модели сессии: ${e.message}',
-      );
+      throwGrpcError(e, 'Ошибка gRPC при обновлении модели сессии: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка обновления модели сессии: $e');
     }

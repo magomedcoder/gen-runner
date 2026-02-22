@@ -1,16 +1,20 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/domain/usecases/users/create_user_usecase.dart';
-import 'package:gen/domain/usecases/users/get_users_usecase.dart';
 import 'package:gen/domain/usecases/users/edit_user_usecase.dart';
+import 'package:gen/domain/usecases/users/get_users_usecase.dart';
 import 'package:gen/presentation/screens/admin/bloc/users_admin_event.dart';
 import 'package:gen/presentation/screens/admin/bloc/users_admin_state.dart';
+import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
+import 'package:gen/presentation/utils/request_logout_on_unauthorized.dart';
 
 class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
+  final AuthBloc authBloc;
   final GetUsersUseCase getUsersUseCase;
   final CreateUserUseCase createUserUseCase;
   final EditUserUseCase editUserUseCase;
 
   UsersAdminBloc({
+    required this.authBloc,
     required this.getUsersUseCase,
     required this.createUserUseCase,
     required this.editUserUseCase,
@@ -39,6 +43,7 @@ class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
         pageSize: event.pageSize,
       ));
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(
           isLoading: false,
@@ -68,6 +73,7 @@ class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
         state.pageSize,
       ));
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(
           isLoading: false,
@@ -97,6 +103,7 @@ class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
         pageSize: state.pageSize,
       ));
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(
           isLoading: false,

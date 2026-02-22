@@ -15,13 +15,16 @@ import 'package:gen/domain/usecases/chat/set_session_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_title_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_runners_status_usecase.dart';
+import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
+import 'package:gen/presentation/utils/request_logout_on_unauthorized.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
+  final AuthBloc authBloc;
   final ConnectUseCase connectUseCase;
   final GetModelsUseCase getModelsUseCase;
   final GetSessionModelUseCase getSessionModelUseCase;
@@ -40,6 +43,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   Completer<bool>? _streamCompleter;
 
   ChatBloc({
+    required this.authBloc,
     required this.connectUseCase,
     required this.getModelsUseCase,
     required this.getSessionModelUseCase,
@@ -148,6 +152,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             ),
           );
         } catch (e) {
+          requestLogoutIfUnauthorized(e, authBloc);
           emit(
             state.copyWith(
               isConnected: isConnected,
@@ -167,6 +172,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         );
       }
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(
           isConnected: false,
@@ -210,6 +216,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         ),
       );
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(isLoading: false, error: 'Ошибка создания сессии'),
       );
@@ -230,6 +237,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       emit(state.copyWith(sessions: sessions, isLoading: false, error: null));
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(isLoading: false, error: 'Ошибка загрузки сессий'),
       );
@@ -299,6 +307,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         ),
       );
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(
           isLoading: false,
@@ -327,6 +336,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         state.copyWith(messages: allMessages, isLoading: false, error: null),
       );
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(
           isLoading: false,
@@ -380,6 +390,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           ),
         );
       } catch (e) {
+        requestLogoutIfUnauthorized(e, authBloc);
         emit(
           state.copyWith(error: 'Ошибка создания сессии', isLoading: false),
         );
@@ -471,7 +482,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           ),
         );
       }
-    } on Object catch (_) {
+    } on Object catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(
           isLoading: false,
@@ -511,6 +523,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         ),
       );
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(isLoading: false, error: 'Ошибка удаления сессии'),
       );
@@ -544,6 +557,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         ),
       );
     } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
       emit(
         state.copyWith(
           isLoading: false,

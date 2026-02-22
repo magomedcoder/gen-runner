@@ -2,7 +2,7 @@ import 'package:get_it/get_it.dart';
 import 'package:gen/core/auth_interceptor.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/server_config.dart';
-import 'package:gen/data/data_sources/local/auth_local_data_source.dart';
+import 'package:gen/data/data_sources/local/user_local_data_source.dart';
 import 'package:gen/data/data_sources/local/session_model_local_data_source.dart';
 import 'package:gen/data/data_sources/remote/auth_remote_datasource.dart';
 import 'package:gen/data/data_sources/remote/chat_remote_datasource.dart';
@@ -41,18 +41,19 @@ import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_bloc.dart';
 import 'package:gen/presentation/screens/admin/bloc/users_admin_bloc.dart';
+import 'package:gen/presentation/theme/theme_cubit.dart';
 
 final sl = GetIt.instance;
 
 Future<void> init() async {
-  sl.registerLazySingleton<AuthLocalDataSourceImpl>(() => AuthLocalDataSourceImpl());
-  await sl<AuthLocalDataSourceImpl>().init();
+  sl.registerLazySingleton<UserLocalDataSourceImpl>(() => UserLocalDataSourceImpl());
+  await sl<UserLocalDataSourceImpl>().init();
 
   sl.registerLazySingleton<ServerConfig>(() => ServerConfig());
   await sl<ServerConfig>().init();
 
   sl.registerLazySingleton<AuthInterceptor>(
-    () => AuthInterceptor(sl<AuthLocalDataSourceImpl>()),
+    () => AuthInterceptor(sl<UserLocalDataSourceImpl>()),
   );
 
   sl.registerLazySingleton<GrpcChannelManager>(
@@ -111,8 +112,19 @@ Future<void> init() async {
   sl.registerFactory(() => CreateUserUseCase(sl()));
   sl.registerFactory(() => EditUserUseCase(sl()));
 
+  sl.registerLazySingleton<AuthBloc>(
+    () => AuthBloc(
+      loginUseCase: sl(),
+      refreshTokenUseCase: sl(),
+      logoutUseCase: sl(),
+      tokenStorage: sl<UserLocalDataSourceImpl>(),
+      channelManager: sl(),
+    ),
+  );
+
   sl.registerFactory(
     () => ChatBloc(
+      authBloc: sl<AuthBloc>(),
       connectUseCase: sl(),
       getModelsUseCase: sl(),
       getSessionModelUseCase: sl(),
@@ -129,17 +141,8 @@ Future<void> init() async {
   );
 
   sl.registerFactory(
-    () => AuthBloc(
-      loginUseCase: sl(),
-      refreshTokenUseCase: sl(),
-      logoutUseCase: sl(),
-      tokenStorage: sl(),
-      channelManager: sl(),
-    ),
-  );
-
-  sl.registerFactory(
     () => UsersAdminBloc(
+      authBloc: sl<AuthBloc>(),
       getUsersUseCase: sl(),
       createUserUseCase: sl(),
       editUserUseCase: sl(),
@@ -152,4 +155,6 @@ Future<void> init() async {
       setRunnerEnabledUseCase: sl(),
     ),
   );
+
+  sl.registerFactory(() => ThemeCubit(sl<UserLocalDataSourceImpl>()));
 }

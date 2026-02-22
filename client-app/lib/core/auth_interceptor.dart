@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'dart:async';
+
 import 'package:grpc/grpc.dart';
-import 'package:gen/data/data_sources/local/auth_local_data_source.dart';
+import 'package:gen/data/data_sources/local/user_local_data_source.dart';
 
 class AuthInterceptor implements ClientInterceptor {
-  final AuthLocalDataSourceImpl tokenStorage;
+  final UserLocalDataSourceImpl tokenStorage;
 
   AuthInterceptor(this.tokenStorage);
 

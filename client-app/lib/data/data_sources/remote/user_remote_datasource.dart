@@ -1,6 +1,7 @@
 import 'package:grpc/grpc.dart';
 import 'package:gen/core/failures.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
+import 'package:gen/core/grpc_error_handler.dart';
 import 'package:gen/data/mappers/user_mapper.dart';
 import 'package:gen/domain/entities/user.dart';
 import 'package:gen/generated/grpc_pb/user.pbgrpc.dart' as grpc;
@@ -47,11 +48,7 @@ class UserRemoteDataSource implements IUserRemoteDataSource {
         throw NetworkFailure('Доступ разрешён только администратору');
       }
 
-      if (e.code == StatusCode.unauthenticated) {
-        throw NetworkFailure('Сессия истекла, войдите снова');
-      }
-
-      throw NetworkFailure('Ошибка gRPC: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка получения пользователей: $e');
     }
@@ -84,11 +81,7 @@ class UserRemoteDataSource implements IUserRemoteDataSource {
         throw NetworkFailure('Доступ разрешён только администратору');
       }
 
-      if (e.code == StatusCode.unauthenticated) {
-        throw NetworkFailure('Сессия истекла, войдите снова');
-      }
-
-      throw NetworkFailure('Ошибка gRPC: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка создания пользователя: $e');
     }
@@ -123,11 +116,7 @@ class UserRemoteDataSource implements IUserRemoteDataSource {
         throw NetworkFailure('Доступ разрешён только администратору');
       }
 
-      if (e.code == StatusCode.unauthenticated) {
-        throw NetworkFailure('Сессия истекла, войдите снова');
-      }
-
-      throw NetworkFailure('Ошибка gRPC: ${e.message}');
+      throwGrpcError(e, 'Ошибка gRPC: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка обновления пользователя: $e');
     }
