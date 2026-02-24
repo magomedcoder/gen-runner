@@ -1,4 +1,5 @@
 import 'package:get_it/get_it.dart';
+import 'package:gen/core/auth_guard.dart';
 import 'package:gen/core/auth_interceptor.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/server_config.dart';
@@ -56,12 +57,29 @@ Future<void> init() async {
     () => AuthInterceptor(sl<UserLocalDataSourceImpl>()),
   );
 
+  sl.registerLazySingleton<AuthGuard>(
+    () => AuthGuard(
+      () async {
+        final storage = sl<UserLocalDataSourceImpl>();
+        final refreshToken = storage.refreshToken;
+        if (refreshToken == null || refreshToken.isEmpty) return false;
+        try {
+          final tokens = await sl<RefreshTokenUseCase>()(refreshToken);
+          storage.saveTokens(tokens.accessToken, tokens.refreshToken);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      },
+    ),
+  );
+
   sl.registerLazySingleton<GrpcChannelManager>(
     () => GrpcChannelManager(sl<ServerConfig>(), sl<AuthInterceptor>()),
   );
 
   sl.registerLazySingleton<IChatRemoteDataSource>(
-    () => ChatRemoteDataSource(sl<GrpcChannelManager>()),
+    () => ChatRemoteDataSource(sl<GrpcChannelManager>(), sl<AuthGuard>()),
   );
 
   sl.registerLazySingleton<IAuthRemoteDataSource>(
@@ -69,11 +87,11 @@ Future<void> init() async {
   );
 
   sl.registerLazySingleton<IUserRemoteDataSource>(
-    () => UserRemoteDataSource(sl<GrpcChannelManager>()),
+    () => UserRemoteDataSource(sl<GrpcChannelManager>(), sl<AuthGuard>()),
   );
 
   sl.registerLazySingleton<IRunnersRemoteDataSource>(
-    () => RunnersRemoteDataSource(sl()),
+    () => RunnersRemoteDataSource(sl<GrpcChannelManager>(), sl<AuthGuard>()),
   );
 
   sl.registerLazySingleton<SessionModelLocalDataSource>(
@@ -119,6 +137,7 @@ Future<void> init() async {
       logoutUseCase: sl(),
       tokenStorage: sl<UserLocalDataSourceImpl>(),
       channelManager: sl(),
+      authGuard: sl<AuthGuard>(),
     ),
   );
 

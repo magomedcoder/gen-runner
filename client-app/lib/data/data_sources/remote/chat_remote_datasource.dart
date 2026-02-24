@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:grpc/grpc.dart';
+import 'package:gen/core/auth_guard.dart';
 import 'package:gen/core/failures.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/grpc_error_handler.dart';
@@ -43,8 +44,9 @@ abstract class IChatRemoteDataSource {
 
 class ChatRemoteDataSource implements IChatRemoteDataSource {
   final GrpcChannelManager _channelManager;
+  final AuthGuard _authGuard;
 
-  ChatRemoteDataSource(this._channelManager);
+  ChatRemoteDataSource(this._channelManager, this._authGuard);
 
   grpc.ChatServiceClient get _client => _channelManager.chatClient;
 
@@ -52,7 +54,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   Future<bool> checkConnection() async {
     Logs().d('ChatRemote: checkConnection');
     try {
-      final response = await _client.checkConnection(grpc.Empty(),);
+      final response = await _authGuard.execute(
+        () => _client.checkConnection(grpc.Empty()),
+      );
       Logs().i('ChatRemote: checkConnection isConnected=${response.isConnected}');
       return response.isConnected;
     } on GrpcError catch (e) {
@@ -71,7 +75,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   Future<List<String>> getModels() async {
     Logs().d('ChatRemote: getModels');
     try {
-      final response = await _client.getModels(grpc.Empty());
+      final response = await _authGuard.execute(
+        () => _client.getModels(grpc.Empty()),
+      );
       Logs().i('ChatRemote: getModels получено ${response.models.length}');
       return response.models;
     } on GrpcError catch (e) {
@@ -137,7 +143,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         request.model = model;
       }
 
-      final response = await _client.createSession(request);
+      final response = await _authGuard.execute(
+        () => _client.createSession(request),
+      );
       Logs().i('ChatRemote: createSession успешен');
       return SessionMapper.fromProto(response);
     } on GrpcError catch (e) {
@@ -156,7 +164,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         sessionId: sessionId
       );
 
-      final response = await _client.getSession(request);
+      final response = await _authGuard.execute(
+        () => _client.getSession(request),
+      );
 
       return SessionMapper.fromProto(response);
     } on GrpcError catch (e) {
@@ -178,7 +188,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         pageSize: pageSize,
       );
 
-      final response = await _client.getSessions(request);
+      final response = await _authGuard.execute(
+        () => _client.getSessions(request),
+      );
       Logs().i('ChatRemote: getSessions получено ${response.sessions.length}');
       return SessionMapper.listFromProto(response.sessions);
     } on GrpcError catch (e) {
@@ -203,7 +215,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         pageSize: pageSize,
       );
 
-      final response = await _client.getSessionMessages(request);
+      final response = await _authGuard.execute(
+        () => _client.getSessionMessages(request),
+      );
 
       return MessageMapper.listFromProto(response.messages);
     } on GrpcError catch (e) {
@@ -220,7 +234,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         sessionId: sessionId
       );
 
-      await _client.deleteSession(request);
+      await _authGuard.execute(() => _client.deleteSession(request));
     } on GrpcError catch (e) {
       throwGrpcError(e, 'Ошибка gRPC при удалении сессии: ${e.message}');
     } catch (e) {
@@ -236,7 +250,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         title: title
       );
 
-      final response = await _client.updateSessionTitle(request);
+      final response = await _authGuard.execute(
+        () => _client.updateSessionTitle(request),
+      );
 
       return SessionMapper.fromProto(response);
     } on GrpcError catch (e) {
@@ -254,7 +270,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         model: model,
       );
 
-      final response = await _client.updateSessionModel(request);
+      final response = await _authGuard.execute(
+        () => _client.updateSessionModel(request),
+      );
 
       return SessionMapper.fromProto(response);
     } on GrpcError catch (e) {

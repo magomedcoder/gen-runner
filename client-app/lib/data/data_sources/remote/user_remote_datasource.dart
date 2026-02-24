@@ -1,4 +1,5 @@
 import 'package:grpc/grpc.dart';
+import 'package:gen/core/auth_guard.dart';
 import 'package:gen/core/failures.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/grpc_error_handler.dart';
@@ -30,8 +31,9 @@ abstract class IUserRemoteDataSource {
 
 class UserRemoteDataSource implements IUserRemoteDataSource {
   final GrpcChannelManager _channelManager;
+  final AuthGuard _authGuard;
 
-  UserRemoteDataSource(this._channelManager);
+  UserRemoteDataSource(this._channelManager, this._authGuard);
 
   grpc.UserServiceClient get _client => _channelManager.userClient;
 
@@ -43,7 +45,7 @@ class UserRemoteDataSource implements IUserRemoteDataSource {
         page: page,
         pageSize: pageSize,
       );
-      final resp = await _client.getUsers(req);
+      final resp = await _authGuard.execute(() => _client.getUsers(req));
       Logs().i('UserRemote: getUsers получено ${resp.users.length}');
       return UserMapper.listFromProto(resp.users);
     } on GrpcError catch (e) {
@@ -75,7 +77,7 @@ class UserRemoteDataSource implements IUserRemoteDataSource {
         surname: surname,
         role: role,
       );
-      final resp = await _client.createUser(req);
+      final resp = await _authGuard.execute(() => _client.createUser(req));
       Logs().i('UserRemote: createUser успешен');
       return UserMapper.fromProto(resp.user);
     } on GrpcError catch (e) {
@@ -113,7 +115,7 @@ class UserRemoteDataSource implements IUserRemoteDataSource {
         surname: surname,
         role: role,
       );
-      final resp = await _client.editUser(req);
+      final resp = await _authGuard.execute(() => _client.editUser(req));
       Logs().i('UserRemote: editUser успешен');
       return UserMapper.fromProto(resp.user);
     } on GrpcError catch (e) {
