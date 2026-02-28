@@ -7,11 +7,11 @@ import 'package:gen/core/failures.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/jwt_util.dart';
 import 'package:gen/core/log/logs.dart';
-import 'package:gen/generated/grpc_pb/auth.pb.dart' as auth_pb;
 import 'package:gen/data/data_sources/local/user_local_data_source.dart';
 import 'package:gen/domain/usecases/auth/login_usecase.dart';
 import 'package:gen/domain/usecases/auth/logout_usecase.dart';
 import 'package:gen/domain/usecases/auth/refresh_token_usecase.dart';
+import 'package:gen/generated/grpc_pb/auth.pb.dart' as auth_pb;
 import 'package:gen/presentation/screens/auth/bloc/auth_event.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_state.dart';
 
@@ -336,10 +336,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   Future<bool> _checkVersion(GrpcChannelManager channelManager) async {
     try {
-      final request = auth_pb.CheckVersionRequest()
-        ..clientBuild = app_version.appBuildNumber;
-      final response =
-          await channelManager.authClientForVersionCheck.checkVersion(request);
+      final request = auth_pb.CheckVersionRequest(
+          clientBuild: app_version.appBuildNumber
+      );
+      final response = await channelManager.authClientForVersionCheck.checkVersion(request);
       return response.compatible;
     } catch (e) {
       Logs().w('AuthBloc: ошибка проверки версии', exception: e);

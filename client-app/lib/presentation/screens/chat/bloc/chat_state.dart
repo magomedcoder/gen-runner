@@ -1,6 +1,6 @@
+import 'package:equatable/equatable.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
-import 'package:equatable/equatable.dart';
 
 class ChatState extends Equatable {
   final bool isConnected;

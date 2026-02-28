@@ -41,7 +41,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
     final text = _textController.text.trim();
     final hasFile = _selectedFile != null;
 
-    if (text.isEmpty && !hasFile) return;
+    if (text.isEmpty && !hasFile) {
+      return;
+    }
 
     if (hasFile) {
       final file = _selectedFile!;
@@ -56,6 +58,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
         }
         return;
       }
+
       if (bytes.length > AttachmentSettings.maxFileSizeBytes) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -66,8 +69,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
           );
         }
+
         return;
       }
+
       if (!AttachmentSettings.isBinaryDocument(file.name)) {
         try {
           utf8.decode(bytes);
@@ -97,14 +102,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _pickFile() async {
-    if (!widget.isEnabled) return;
+    if (!widget.isEnabled) {
+      return;
+    }
+
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: AttachmentSettings.textFileExtensions,
       allowMultiple: false,
       withData: true,
     );
-    if (result == null) return;
+
+    if (result == null) {
+      return;
+    }
     final file = result.files.single;
     if (file.bytes == null) {
       if (mounted) {
@@ -169,8 +180,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
               Icons.attach_file_rounded,
               size: 22,
               color: widget.isEnabled
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                ? theme.colorScheme.onSurfaceVariant
+                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
             ),
           ),
         ),
@@ -216,8 +227,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: canSend
-                ? theme.colorScheme.primary
-                : theme.colorScheme.surfaceContainerHighest,
+              ? theme.colorScheme.primary
+              : theme.colorScheme.surfaceContainerHighest,
             shape: BoxShape.circle,
             border: Border.all(
               color: theme.colorScheme.outline.withValues(alpha: 0.2),
@@ -228,8 +239,8 @@ class _ChatInputBarState extends State<ChatInputBar> {
             Icons.send_rounded,
             size: 22,
             color: canSend
-                ? theme.colorScheme.onPrimary
-                : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              ? theme.colorScheme.onPrimary
+              : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
           ),
         ),
       ),
@@ -317,64 +328,64 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: theme.colorScheme.outline.withValues(alpha: 0.15),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.shadowColor.withValues(alpha: 0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                        border: Border.all(
+                          color: theme.colorScheme.outline.withValues(alpha: 0.15),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.shadowColor.withValues(alpha: 0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: Shortcuts(
-                    shortcuts: const <ShortcutActivator, Intent>{
-                      SingleActivator(LogicalKeyboardKey.enter): _SendMessageIntent(),
-                    },
-                    child: Actions(
-                      actions: <Type, Action<Intent>>{
-                        _SendMessageIntent: CallbackAction<_SendMessageIntent>(
-                          onInvoke: (_) {
-                            _sendMessage();
-                            return null;
+                      child: Shortcuts(
+                        shortcuts: const <ShortcutActivator, Intent>{
+                          SingleActivator(LogicalKeyboardKey.enter): _SendMessageIntent(),
+                        },
+                        child: Actions(
+                          actions: <Type, Action<Intent>>{
+                            _SendMessageIntent: CallbackAction<_SendMessageIntent>(
+                              onInvoke: (_) {
+                                _sendMessage();
+                                return null;
+                              },
+                            ),
                           },
-                        ),
-                      },
-                      child: TextField(
-                        controller: _textController,
-                        focusNode: _focusNode,
-                        minLines: 1,
-                        maxLines: 6,
-                        enabled: widget.isEnabled,
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: widget.isEnabled
-                              ? theme.colorScheme.onSurface
-                              : theme.colorScheme.onSurfaceVariant,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: widget.isEnabled
-                              ? 'Напишите сообщение...'
-                              : 'Обрабатываю...',
-                          hintStyle: TextStyle(
-                            fontSize: 15,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                          child: TextField(
+                            controller: _textController,
+                            focusNode: _focusNode,
+                            minLines: 1,
+                            maxLines: 6,
+                            enabled: widget.isEnabled,
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: widget.isEnabled
+                                ? theme.colorScheme.onSurface
+                                : theme.colorScheme.onSurfaceVariant,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: widget.isEnabled
+                                ? 'Напишите сообщение...'
+                                : 'Обрабатываю...',
+                              hintStyle: TextStyle(
+                                fontSize: 15,
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                              ),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                            ),
+                            textInputAction: TextInputAction.newline,
+                            onSubmitted: (_) => _sendMessage(),
+                            onTapOutside: (_) => _focusNode.unfocus(),
                           ),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
                         ),
-                        textInputAction: TextInputAction.newline,
-                        onSubmitted: (_) => _sendMessage(),
-                        onTapOutside: (_) => _focusNode.unfocus(),
                       ),
                     ),
-                    ),
                   ),
-                ),
                   const SizedBox(width: 10),
                   _buildSendButton(state),
                 ],

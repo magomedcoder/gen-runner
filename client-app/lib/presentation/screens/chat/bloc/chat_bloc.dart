@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:bloc_concurrency/bloc_concurrency.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:gen/core/log/logs.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/usecases/chat/connect_usecase.dart';
@@ -19,9 +22,6 @@ import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/utils/request_logout_on_unauthorized.dart';
-import 'package:bloc_concurrency/bloc_concurrency.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:gen/core/log/logs.dart';
 import 'package:uuid/uuid.dart';
 
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
@@ -75,7 +75,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   Future<void> _onChatStarted(
     ChatStarted event,
     Emitter<ChatState> emit,
-) async {
+  ) async {
     Logs().d('ChatBloc: старт загрузки чата');
     emit(state.copyWith(isLoading: true));
 
@@ -91,10 +91,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       if (isConnected) {
         try {
-          final sessionsFuture = getSessionsUseCase(
-            page: 1,
-            pageSize: 20,
-          );
+          final sessionsFuture = getSessionsUseCase(page: 1, pageSize: 20);
           final modelsFuture = getModelsUseCase();
 
           final sessions = await sessionsFuture;
@@ -120,9 +117,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             );
             messages = sessionMessages;
 
-            if (selectedModel == null &&
-                models.isNotEmpty &&
-                sessions.isNotEmpty) {
+            if (selectedModel == null && models.isNotEmpty && sessions.isNotEmpty) {
               final firstSession = sessions.first;
               if (firstSession.model != null &&
                   firstSession.model!.isNotEmpty &&
@@ -130,8 +125,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
                 selectedModel = firstSession.model;
               } else {
                 try {
-                  final savedModel =
-                      await getSessionModelUseCase(currentSessionId);
+                  final savedModel = await getSessionModelUseCase(
+                    currentSessionId,
+                  );
                   if (savedModel != null && models.contains(savedModel)) {
                     selectedModel = savedModel;
                   }
@@ -198,12 +194,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     try {
       final session = await createSessionUseCase(
         title: event.title,
-        model: state.selectedModel ??
-            (state.models.isNotEmpty ? state.models.first : null),
+        model: state.selectedModel ?? (state.models.isNotEmpty ? state.models.first : null),
       );
 
-      final modelToSave = state.selectedModel ??
-          (state.models.isNotEmpty ? state.models.first : null);
+      final modelToSave = state.selectedModel ?? (state.models.isNotEmpty ? state.models.first : null);
       if (modelToSave != null) {
         try {
           await setSessionModelUseCase(session.id, modelToSave);
@@ -213,21 +207,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final updatedSessions = [session, ...state.sessions];
 
       Logs().i('ChatBloc: сессия создана id=${session.id}');
-      emit(
-        state.copyWith(
-          sessions: updatedSessions,
-          currentSessionId: session.id,
-          isLoading: false,
-          messages: const [],
-          error: null,
-        ),
-      );
+      emit(state.copyWith(
+        sessions: updatedSessions,
+        currentSessionId: session.id,
+        isLoading: false,
+        messages: const [],
+        error: null,
+      ));
     } catch (e) {
       Logs().e('ChatBloc: ошибка создания сессии', exception: e);
       requestLogoutIfUnauthorized(e, authBloc);
-      emit(
-        state.copyWith(isLoading: false, error: 'Ошибка создания сессии'),
-      );
+      emit(state.copyWith(isLoading: false, error: 'Ошибка создания сессии'));
     }
   }
 
@@ -246,9 +236,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       emit(state.copyWith(sessions: sessions, isLoading: false, error: null));
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
-      emit(
-        state.copyWith(isLoading: false, error: 'Ошибка загрузки сессий'),
-      );
+      emit(state.copyWith(isLoading: false, error: 'Ошибка загрузки сессий'));
     }
   }
 
@@ -285,14 +273,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             break;
           }
         }
+
         if (serverSession?.model != null &&
             serverSession!.model!.isNotEmpty &&
             state.models.contains(serverSession.model)) {
           modelForSession = serverSession.model;
         } else {
           try {
-            final savedModel =
-                await getSessionModelUseCase(event.sessionId);
+            final savedModel = await getSessionModelUseCase(event.sessionId);
             if (savedModel != null && state.models.contains(savedModel)) {
               modelForSession = savedModel;
             } else if (modelForSession == null ||
@@ -317,10 +305,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
       emit(
-        state.copyWith(
-          isLoading: false,
-          error: 'Ошибка загрузки сообщений',
-        ),
+        state.copyWith(isLoading: false, error: 'Ошибка загрузки сообщений'),
       );
     }
   }
@@ -346,10 +331,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
       emit(
-        state.copyWith(
-          isLoading: false,
-          error: 'Ошибка загрузки сообщений',
-        ),
+        state.copyWith(isLoading: false, error: 'Ошибка загрузки сообщений'),
       );
     }
   }
@@ -359,10 +341,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     Emitter<ChatState> emit,
   ) async {
     final text = event.text.trim();
-    final hasAttachment = event.attachmentFileName != null &&
-        event.attachmentContent != null &&
-        event.attachmentContent!.isNotEmpty;
-    if (text.isEmpty && !hasAttachment) return;
+    final hasAttachment = event.attachmentFileName != null && event.attachmentContent != null && event.attachmentContent!.isNotEmpty;
+    if (text.isEmpty && !hasAttachment) {
+      return;
+    }
 
     await _streamSubscription?.cancel();
     if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
@@ -375,13 +357,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (sessionId.isEmpty) {
       try {
         final session = await createSessionUseCase(
-          model: state.selectedModel ??
-              (state.models.isNotEmpty ? state.models.first : null),
+          model: state.selectedModel ?? (state.models.isNotEmpty ? state.models.first : null),
         );
         sessionId = session.id;
 
-        final modelToSave = state.selectedModel ??
-            (state.models.isNotEmpty ? state.models.first : null);
+        final modelToSave = state.selectedModel ?? (state.models.isNotEmpty ? state.models.first : null);
         if (modelToSave != null) {
           try {
             await setSessionModelUseCase(sessionId, modelToSave);
@@ -399,9 +379,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         );
       } catch (e) {
         requestLogoutIfUnauthorized(e, authBloc);
-        emit(
-          state.copyWith(error: 'Ошибка создания сессии', isLoading: false),
-        );
+        emit(state.copyWith(error: 'Ошибка создания сессии', isLoading: false));
         return;
       }
     }
@@ -413,8 +391,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       createdAt: DateTime.now(),
       attachmentFileName: event.attachmentFileName,
       attachmentContent: event.attachmentContent != null
-          ? Uint8List.fromList(event.attachmentContent!)
-          : null,
+        ? Uint8List.fromList(event.attachmentContent!)
+        : null,
     );
 
     final updatedMessages = [...state.messages, userMessage];
@@ -517,8 +495,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       await deleteSessionUseCase(event.sessionId);
 
       final updatedSessions = state.sessions
-          .where((session) => session.id != event.sessionId)
-          .toList();
+        .where((session) => session.id != event.sessionId)
+        .toList();
 
       final shouldClearCurrent = state.currentSessionId == event.sessionId;
 
@@ -533,9 +511,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       );
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
-      emit(
-        state.copyWith(isLoading: false, error: 'Ошибка удаления сессии'),
-      );
+      emit(state.copyWith(isLoading: false, error: 'Ошибка удаления сессии'));
     }
   }
 
@@ -568,10 +544,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
       emit(
-        state.copyWith(
-          isLoading: false,
-          error: 'Ошибка обновления заголовка',
-        ),
+        state.copyWith(isLoading: false, error: 'Ошибка обновления заголовка'),
       );
     }
   }
@@ -587,18 +560,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         selectedModel = models.first;
       }
 
-      if (models.isNotEmpty &&
-          selectedModel != null &&
-          !models.contains(selectedModel)) {
+      if (models.isNotEmpty && selectedModel != null && !models.contains(selectedModel)) {
         selectedModel = models.first;
       }
 
-      emit(
-        state.copyWith(
-          models: models,
-          selectedModel: selectedModel ?? state.selectedModel,
-        ),
-      );
+      emit(state.copyWith(
+        models: models,
+        selectedModel: selectedModel ?? state.selectedModel,
+      ));
     } catch (_) {}
   }
 
@@ -627,10 +596,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
       return s;
     }).toList();
-    emit(state.copyWith(
-      selectedModel: event.model,
-      sessions: updatedSessions,
-    ));
+    emit(state.copyWith(selectedModel: event.model, sessions: updatedSessions));
   }
 
   void _onChatClearError(ChatClearError event, Emitter<ChatState> emit) {

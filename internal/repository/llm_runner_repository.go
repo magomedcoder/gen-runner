@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	llmrunner "github.com/magomedcoder/gen/api/pb/llmrunner"
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/service"
 )
@@ -33,4 +34,12 @@ func (r *LLMRunnerRepository) SendMessage(ctx context.Context, sessionID string,
 
 func (r *LLMRunnerRepository) Close() error {
 	return r.client.Close()
+}
+
+func (r *LLMRunnerRepository) GetGpuInfo(ctx context.Context) (*llmrunner.GetGpuInfoResponse, error) {
+	return r.client.GetGpuInfo(ctx)
+}
+
+func (r *LLMRunnerRepository) GetServerInfo(ctx context.Context) (*llmrunner.ServerInfo, error) {
+	return r.client.GetServerInfo(ctx)
 }

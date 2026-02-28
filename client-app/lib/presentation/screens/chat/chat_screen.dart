@@ -204,8 +204,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
                 color: isEnabled
-                    ? theme.colorScheme.onSurface
-                    : theme.colorScheme.onSurfaceVariant,
+                  ? theme.colorScheme.onSurface
+                  : theme.colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(width: 2),
@@ -430,8 +430,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildMessageList(ChatState state) {
-    final horizontalPadding =
-        Breakpoints.isMobile(context) ? 12.0 : 16.0;
+    final horizontalPadding = Breakpoints.isMobile(context) ? 12.0 : 16.0;
     return ListView.builder(
       controller: _scrollController,
       padding: EdgeInsets.symmetric(vertical: 16, horizontal: horizontalPadding),
@@ -499,24 +498,24 @@ class _ChatScreenState extends State<ChatScreen> {
           return Scaffold(
             key: _scaffoldKey,
             drawer: useDrawer
-                ? Drawer(
-                    child: SafeArea(
-                      child: SessionsSidebar(
-                        isInDrawer: true,
-                        onCreateNewSession: _createNewSession,
-                        onSelectSession: _selectSessionAndCloseDrawer,
-                        onDeleteSession: _deleteSession,
-                      ),
-                    ),
-                  )
-                : null,
+              ? Drawer(
+                child: SafeArea(
+                  child: SessionsSidebar(
+                    isInDrawer: true,
+                    onCreateNewSession: _createNewSession,
+                    onSelectSession: _selectSessionAndCloseDrawer,
+                    onDeleteSession: _deleteSession,
+                  ),
+                ),
+              )
+              : null,
             appBar: AppBar(
               leading: useDrawer
                 ? IconButton(
-                    icon: const Icon(Icons.menu),
-                    onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-                    tooltip: 'Меню сессий',
-                  )
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                  tooltip: 'Меню сессий',
+                )
                 : null,
               title: BlocBuilder<ChatBloc, ChatState>(
                 builder: (context, state) => _buildAppBarTitle(state),
@@ -542,7 +541,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     final user = authState.user;
                     final isAdmin = user?.isAdmin ?? false;
 
-                    if (!isAdmin) return const SizedBox.shrink();
+                    if (!isAdmin) {
+                      return const SizedBox.shrink();
+                    }
 
                     return IconButton(
                       icon: const Icon(Icons.supervisor_account_outlined),
@@ -606,19 +607,19 @@ class _ChatScreenState extends State<ChatScreen> {
                       border: Border(
                         right: BorderSide(
                           color: Theme.of(context)
-                              .dividerColor
-                              .withValues(alpha: 0.1),
+                            .dividerColor
+                            .withValues(alpha: 0.1),
                           width: 1,
                         ),
                       ),
                     ),
                     child: _isSidebarExpanded
-                        ? SessionsSidebar(
-                            onCreateNewSession: _createNewSession,
-                            onSelectSession: _selectSession,
-                            onDeleteSession: _deleteSession,
-                          )
-                        : const SizedBox.shrink(),
+                      ? SessionsSidebar(
+                        onCreateNewSession: _createNewSession,
+                        onSelectSession: _selectSession,
+                        onDeleteSession: _deleteSession,
+                      )
+                      : const SizedBox.shrink(),
                   ),
                 Expanded(
                   child: BlocBuilder<ChatBloc, ChatState>(
@@ -637,8 +638,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                 vertical: 10,
                               ),
                               color: Theme.of(context)
-                                  .colorScheme.errorContainer
-                                  .withValues(alpha: 0.5),
+                                .colorScheme.errorContainer
+                                .withValues(alpha: 0.5),
                               child: Text(
                                 'Нет активных раннеров. Чат недоступен.',
                                 style: TextStyle(
@@ -669,14 +670,14 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                           Expanded(
                             child: state.messages.isEmpty
-                                ? _buildEmptyChatState()
-                                : _buildMessageList(state),
+                              ? _buildEmptyChatState()
+                              : _buildMessageList(state),
                           ),
                           const Divider(height: 1),
                           ChatInputBar(
                             isEnabled: state.isConnected &&
-                                !state.isLoading &&
-                                (state.hasActiveRunners ?? true),
+                              !state.isLoading &&
+                              (state.hasActiveRunners ?? true),
                           ),
                         ],
                       );

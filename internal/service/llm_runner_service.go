@@ -63,6 +63,24 @@ func (s *LLMRunnerService) GetModels(ctx context.Context) ([]string, error) {
 	return resp.Models, nil
 }
 
+func (s *LLMRunnerService) GetGpuInfo(ctx context.Context) (*llmrunner.GetGpuInfoResponse, error) {
+	resp, err := s.client.GetGpuInfo(ctx, &llmrunner.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner GetGpuInfo: %w", err)
+	}
+
+	return resp, nil
+}
+
+func (s *LLMRunnerService) GetServerInfo(ctx context.Context) (*llmrunner.ServerInfo, error) {
+	resp, err := s.client.GetServerInfo(ctx, &llmrunner.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner GetServerInfo: %w", err)
+	}
+
+	return resp, nil
+}
+
 func (s *LLMRunnerService) SendMessage(ctx context.Context, sessionID string, model string, messages []*domain.Message) (chan string, error) {
 	modelName := model
 	if modelName == "" {

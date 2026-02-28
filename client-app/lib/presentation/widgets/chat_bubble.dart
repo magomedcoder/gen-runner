@@ -51,8 +51,8 @@ class _ChatBubbleState extends State<ChatBubble> {
             ),
             decoration: BoxDecoration(
               color: isUser
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.surfaceContainerHighest,
+                ? theme.colorScheme.primary
+                : theme.colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(18),
             ),
             child: Column(
@@ -69,8 +69,8 @@ class _ChatBubbleState extends State<ChatBubble> {
                           Icons.insert_drive_file_rounded,
                           size: 18,
                           color: isUser
-                              ? theme.colorScheme.onPrimary.withValues(alpha: 0.9)
-                              : theme.colorScheme.onSurfaceVariant,
+                            ? theme.colorScheme.onPrimary.withValues(alpha: 0.9)
+                            : theme.colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(width: 6),
                         Flexible(
@@ -79,8 +79,8 @@ class _ChatBubbleState extends State<ChatBubble> {
                             style: TextStyle(
                               fontSize: 13,
                               color: isUser
-                                  ? theme.colorScheme.onPrimary.withValues(alpha: 0.9)
-                                  : theme.colorScheme.onSurfaceVariant,
+                                ? theme.colorScheme.onPrimary.withValues(alpha: 0.9)
+                                : theme.colorScheme.onSurfaceVariant,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -93,8 +93,8 @@ class _ChatBubbleState extends State<ChatBubble> {
                     message.content,
                     style: TextStyle(
                       color: isUser
-                          ? theme.colorScheme.onPrimary
-                          : theme.colorScheme.onSurfaceVariant,
+                        ? theme.colorScheme.onPrimary
+                        : theme.colorScheme.onSurfaceVariant,
                     ),
                     enableInteractiveSelection: true,
                     selectionControls: materialTextSelectionControls,
@@ -131,16 +131,27 @@ class _ChatBubbleState extends State<ChatBubble> {
             ),
           ),
           Padding(
-            padding: EdgeInsets.only(left: horizontalMargin, right: horizontalMargin, bottom: 4),
+            padding: EdgeInsets.only(
+              left: horizontalMargin,
+              right: horizontalMargin,
+              bottom: 4
+            ),
             child: TextButton.icon(
               onPressed: () async {
                 await Clipboard.setData(
                   ClipboardData(text: message.content),
                 );
-                if (!mounted) return;
+
+                if (!mounted) {
+                  return;
+                }
+
                 setState(() => _justCopied = true);
+
                 Future.delayed(const Duration(seconds: 2), () {
-                  if (mounted) setState(() => _justCopied = false);
+                  if (mounted) {
+                    setState(() => _justCopied = false);
+                  }
                 });
               },
               icon: Icon(

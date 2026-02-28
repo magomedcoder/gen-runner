@@ -1,7 +1,9 @@
 import 'package:gen/core/auth_guard.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/log/logs.dart';
+import 'package:gen/domain/entities/gpu_info.dart' as gpu_ent;
 import 'package:gen/domain/entities/runner_info.dart' as domain;
+import 'package:gen/domain/entities/server_info.dart' as srv_ent;
 import 'package:gen/generated/grpc_pb/runner.pb.dart' as pb;
 
 abstract class IRunnersRemoteDataSource {
@@ -26,13 +28,38 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
         () => _channelManager.runnerAdminClient.getRunners(pb.Empty()),
       );
       Logs().i('RunnersRemote: getRunners получено ${resp.runners.length}');
-      return resp.runners
-          .map((r) => domain.RunnerInfo(
-                address: r.address,
-                enabled: r.enabled,
-                connected: r.connected,
-              ))
-          .toList();
+      return resp.runners.map((r) {
+        final gpus = r.gpus
+            .map(
+              (g) => gpu_ent.GpuInfo(
+                name: g.name,
+                temperatureC: g.temperatureC,
+                memoryTotalMb: g.memoryTotalMb.toInt(),
+                memoryUsedMb: g.memoryUsedMb.toInt(),
+                utilizationPercent: g.utilizationPercent,
+              ),
+            )
+            .toList();
+        srv_ent.ServerInfo? server;
+        if (r.hasServerInfo()) {
+          final s = r.serverInfo;
+          server = srv_ent.ServerInfo(
+            hostname: s.hostname,
+            os: s.os,
+            arch: s.arch,
+            cpuCores: s.cpuCores,
+            memoryTotalMb: s.memoryTotalMb.toInt(),
+            models: List<String>.from(s.models),
+          );
+        }
+        return domain.RunnerInfo(
+          address: r.address,
+          enabled: r.enabled,
+          connected: r.connected,
+          gpus: gpus,
+          serverInfo: server,
+        );
+      }).toList();
     } catch (e) {
       Logs().e('RunnersRemote: getRunners', exception: e);
       rethrow;

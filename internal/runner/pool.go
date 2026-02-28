@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/magomedcoder/gen/api/pb/runnerpb"
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/repository"
 	"github.com/magomedcoder/gen/pkg/logger"
@@ -114,4 +115,46 @@ func (p *Pool) Close() error {
 	p.repos = make(map[string]*repository.LLMRunnerRepository)
 
 	return nil
+}
+
+func (p *Pool) ProbeLLMRunner(ctx context.Context, address string) (connected bool, gpus []*runnerpb.GpuInfo, server *runnerpb.ServerInfo) {
+	repo, err := p.getRepo(ctx, address)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	lr, ok := repo.(*repository.LLMRunnerRepository)
+	if !ok {
+		return true, nil, nil
+	}
+
+	if gpuResp, err := lr.GetGpuInfo(ctx); err == nil && gpuResp != nil && len(gpuResp.Gpus) > 0 {
+		gpus = make([]*runnerpb.GpuInfo, 0, len(gpuResp.Gpus))
+		for _, g := range gpuResp.Gpus {
+			if g == nil {
+				continue
+			}
+
+			gpus = append(gpus, &runnerpb.GpuInfo{
+				Name:               g.Name,
+				TemperatureC:       g.TemperatureC,
+				MemoryTotalMb:      g.MemoryTotalMb,
+				MemoryUsedMb:       g.MemoryUsedMb,
+				UtilizationPercent: g.UtilizationPercent,
+			})
+		}
+	}
+
+	if si, err := lr.GetServerInfo(ctx); err == nil && si != nil {
+		server = &runnerpb.ServerInfo{
+			Hostname:      si.Hostname,
+			Os:            si.Os,
+			Arch:          si.Arch,
+			CpuCores:      si.CpuCores,
+			MemoryTotalMb: si.MemoryTotalMb,
+			Models:        si.Models,
+		}
+	}
+
+	return true, gpus, server
 }

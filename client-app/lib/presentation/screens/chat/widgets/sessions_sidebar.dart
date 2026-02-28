@@ -53,23 +53,22 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: isSelected
-            ? Theme.of(context).colorScheme.primaryContainer
-            : Colors.transparent,
+          ? Theme.of(context).colorScheme.primaryContainer
+          : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         border: isSelected
-            ? Border.all(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
-                width: 1,
-              )
-            : null,
+          ? Border.all(
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+            width: 1,
+          )
+          : null,
       ),
       child: Material(
         color: Colors.transparent,
         child: GestureDetector(
           onSecondaryTapDown: isDesktop
-              ? (TapDownDetails details) =>
-                  _showSessionContextMenuDesktop(session, details)
-              : null,
+            ? (TapDownDetails details) => _showSessionContextMenuDesktop(session, details)
+            : null,
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: () => widget.onSelectSession(session),
@@ -90,11 +89,11 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: isSelected
-                                ? FontWeight.w600
-                                : FontWeight.normal,
+                              ? FontWeight.w600
+                              : FontWeight.normal,
                             color: isSelected
-                                ? Theme.of(context).colorScheme.onPrimaryContainer
-                                : Theme.of(context).colorScheme.onSurface,
+                              ? Theme.of(context).colorScheme.onPrimaryContainer
+                              : Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                       ],
@@ -157,8 +156,13 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
         ),
       ],
     ).then((value) {
-      if (value == 'edit') _showEditDialog(session);
-      if (value == 'delete') widget.onDeleteSession(session.id, session.title);
+      if (value == 'edit') {
+        _showEditDialog(session);
+      }
+
+      if (value == 'delete') {
+        widget.onDeleteSession(session.id, session.title);
+      }
     });
   }
 
@@ -321,7 +325,10 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
   }
 
   Widget _buildDrawerHeader() {
-    if (!widget.isInDrawer) return const SizedBox.shrink();
+    if (!widget.isInDrawer) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -357,8 +364,8 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
 
   Widget _buildFooter() {
     final padding = widget.isInDrawer && Breakpoints.isMobile(context)
-        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
-        : const EdgeInsets.all(16);
+      ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+      : const EdgeInsets.all(16);
     return Container(
       padding: padding,
       decoration: BoxDecoration(

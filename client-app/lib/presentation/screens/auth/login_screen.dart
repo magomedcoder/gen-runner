@@ -42,14 +42,12 @@ class _LoginScreenState extends State<LoginScreen> {
   void _handleLogin() {
     if (_formKey.currentState!.validate()) {
       final port = int.tryParse(_portController.text.trim());
-      context.read<AuthBloc>().add(
-            AuthLoginRequested(
-              username: _usernameController.text.trim(),
-              password: _passwordController.text,
-              host: _hostController.text.trim(),
-              port: port ?? ServerConfig.defaultPort,
-            ),
-          );
+      context.read<AuthBloc>().add(AuthLoginRequested(
+        username: _usernameController.text.trim(),
+        password: _passwordController.text,
+        host: _hostController.text.trim(),
+        port: port ?? ServerConfig.defaultPort,
+      ));
     }
   }
 
@@ -90,9 +88,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       Text(
                         'Gen',
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                        style: Theme.of(context).textTheme.headlineMedium?
+                            .copyWith(fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
@@ -132,10 +129,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.trim().isEmpty) {
                             return 'Введите порт';
                           }
+
                           final port = int.tryParse(value.trim());
                           if (port == null || port < 1 || port > 65535) {
                             return 'Введите порт от 1 до 65535';
                           }
+
                           return null;
                         },
                       ),
@@ -156,9 +155,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.isEmpty) {
                             return 'Введите имя пользователя';
                           }
+
                           if (value.length < 3) {
                             return 'Имя пользователя должно содержать минимум 3 символа';
                           }
+
                           return null;
                         },
                       ),
@@ -175,8 +176,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           suffixIcon: IconButton(
                             icon: Icon(
                               _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
                             ),
                             onPressed: () {
                               setState(() {
@@ -192,9 +193,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.isEmpty) {
                             return 'Введите пароль';
                           }
+
                           if (value.length < 8) {
                             return 'Пароль должен содержать минимум 8 символов';
                           }
+
                           return null;
                         },
                       ),
@@ -210,23 +213,23 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             child: state.isLoading
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  )
-                                : const Text(
-                                    'Войти',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                              ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
                                   ),
+                                ),
+                              )
+                              : const Text(
+                                'Войти',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                           );
                         },
                       ),

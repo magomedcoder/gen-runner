@@ -33,7 +33,20 @@ func (h *RunnerHandler) GetRunners(ctx context.Context, _ *runnerpb.Empty) (*run
 
 	runners := h.registry.GetRunners()
 	for _, r := range runners {
-		r.Connected = r.Enabled && h.pool.HasConnection(r.Address)
+		if !r.Enabled {
+			r.Connected = false
+			continue
+		}
+
+		conn, gpuList, si := h.pool.ProbeLLMRunner(ctx, r.Address)
+		r.Connected = conn
+		if len(gpuList) > 0 {
+			r.Gpus = gpuList
+		}
+
+		if si != nil {
+			r.ServerInfo = si
+		}
 	}
 	logger.V("GetRunners: возвращено раннеров: %d", len(runners))
 	return &runnerpb.GetRunnersResponse{
