@@ -7,11 +7,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type Llama struct {
-	ModelPath        string `yaml:"model_path"`
-	MaxContextTokens int    `yaml:"max_context_tokens"`
-}
-
 type LogConfig struct {
 	Level string `yaml:"level"`
 }
@@ -21,7 +16,9 @@ type Config struct {
 	ListenAddr               string    `yaml:"listen_addr"`
 	RegistrationToken        string    `yaml:"registration_token"`
 	Log                      LogConfig `yaml:"log"`
-	Llama                    Llama     `yaml:"llama"`
+	ModelPath                string    `yaml:"model_path"`
+	DefaultModel             string    `yaml:"default_model"`
+	MaxContextTokens         int       `yaml:"max_context_tokens"`
 	MaxConcurrentGenerations int       `yaml:"max_concurrent_generations"`
 }
 

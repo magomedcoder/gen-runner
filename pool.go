@@ -3,22 +3,23 @@ package runner
 import (
 	"context"
 	"fmt"
-	"github.com/magomedcoder/llm-runner/pb"
-
-	"github.com/magomedcoder/llm-runner/domain"
-	"github.com/magomedcoder/llm-runner/logger"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"maps"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/magomedcoder/llm-runner/domain"
+	"github.com/magomedcoder/llm-runner/logger"
+	"github.com/magomedcoder/llm-runner/pb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
-	maxRetriesPerRunner = 2
-	retryBackoff        = 100 * time.Millisecond
+	maxRetriesPerRunner   = 2
+	retryBackoff          = 100 * time.Millisecond
+	getRunnersParallelism = 8
 )
 
 type Pool struct {
@@ -87,11 +88,11 @@ func (p *Pool) closeConn(address string) {
 
 func (p *Pool) getConn(ctx context.Context, address string) (pb.LLMRunnerServiceClient, error) {
 	p.connMu.Lock()
-	defer p.connMu.Unlock()
-
 	if conn, ok := p.conns[address]; ok {
+		p.connMu.Unlock()
 		return pb.NewLLMRunnerServiceClient(conn), nil
 	}
+	p.connMu.Unlock()
 
 	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -99,9 +100,14 @@ func (p *Pool) getConn(ctx context.Context, address string) (pb.LLMRunnerService
 		return nil, fmt.Errorf("подключение к раннеру %s: %w", address, err)
 	}
 
+	p.connMu.Lock()
+	defer p.connMu.Unlock()
+	if existing, ok := p.conns[address]; ok {
+		_ = conn.Close()
+		return pb.NewLLMRunnerServiceClient(existing), nil
+	}
 	logger.D("Pool: подключение к раннеру %s установлено", address)
 	p.conns[address] = conn
-
 	return pb.NewLLMRunnerServiceClient(conn), nil
 }
 
@@ -138,27 +144,34 @@ func (p *Pool) GetRunners(ctx context.Context) []RunnerInfo {
 	p.mu.RUnlock()
 
 	probeTimeout := 3 * time.Second
-	for _, a := range addrs {
-		if disabledCopy[a] {
+	sem := make(chan struct{}, getRunnersParallelism)
+	var wg sync.WaitGroup
+	for _, addr := range addrs {
+		if disabledCopy[addr] {
 			continue
 		}
+		wg.Add(1)
+		go func(a string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
-		client, err := p.getConn(probeCtx, a)
-		cancel()
-		if err != nil {
-			continue
-		}
+			probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+			client, err := p.getConn(probeCtx, a)
+			cancel()
+			if err != nil {
+				return
+			}
 
-		pingCtx, cancelPing := context.WithTimeout(ctx, probeTimeout)
-		_, err = client.Ping(pingCtx, &pb.Empty{})
-		cancelPing()
-		if err != nil {
-			p.closeConn(a)
-			continue
-		}
-		_ = client
+			pingCtx, cancelPing := context.WithTimeout(ctx, probeTimeout)
+			resp, err := client.CheckConnection(pingCtx, &pb.Empty{})
+			cancelPing()
+			if err != nil || resp == nil || !resp.IsConnected {
+				p.closeConn(a)
+			}
+		}(addr)
 	}
+	wg.Wait()
 
 	p.connMu.Lock()
 	connStatus := make(map[string]bool)
@@ -217,8 +230,8 @@ func (p *Pool) CheckConnection(ctx context.Context) (bool, error) {
 			continue
 		}
 
-		resp, err := client.Ping(ctx, &pb.Empty{})
-		if err == nil && resp != nil && resp.Ok {
+		resp, err := client.CheckConnection(ctx, &pb.Empty{})
+		if err == nil && resp != nil && resp.IsConnected {
 			return true, nil
 		}
 	}
@@ -285,7 +298,7 @@ func (p *Pool) trySendMessage(ctx context.Context, addr string, sessionID int64,
 	for i, m := range messages {
 		protoMessages[i] = domain.AIMessageToProto(m)
 	}
-	req := &pb.GenerateRequest{
+	req := &pb.SendMessageRequest{
 		SessionId:     sessionID,
 		Messages:      protoMessages,
 		Model:         model,
@@ -294,31 +307,9 @@ func (p *Pool) trySendMessage(ctx context.Context, addr string, sessionID int64,
 	if timeoutSeconds > 0 {
 		req.TimeoutSeconds = &timeoutSeconds
 	}
-	if genParams != nil {
-		req.Temperature = genParams.Temperature
-		req.MaxTokens = genParams.MaxTokens
-		req.TopK = genParams.TopK
-		req.TopP = genParams.TopP
-		if genParams.ResponseFormat != nil {
-			req.ResponseFormat = &pb.ResponseFormat{
-				Type:   genParams.ResponseFormat.Type,
-				Schema: genParams.ResponseFormat.Schema,
-			}
-		}
+	_ = genParams
 
-		if len(genParams.Tools) > 0 {
-			req.Tools = make([]*pb.Tool, len(genParams.Tools))
-			for i, t := range genParams.Tools {
-				req.Tools[i] = &pb.Tool{
-					Name:           t.Name,
-					Description:    t.Description,
-					ParametersJson: t.ParametersJSON,
-				}
-			}
-		}
-	}
-
-	stream, err := client.Generate(ctx, req)
+	stream, err := client.SendMessage(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("llm-runner %s: %w", addr, err)
 	}
@@ -327,19 +318,19 @@ func (p *Pool) trySendMessage(ctx context.Context, addr string, sessionID int64,
 	go func() {
 		defer close(out)
 		for {
-			resp, err := stream.Recv()
+			msg, err := stream.Recv()
 			if err != nil {
 				return
 			}
 
-			if resp.Content != "" {
+			if msg.Content != "" {
 				select {
 				case <-ctx.Done():
 					return
-				case out <- resp.Content:
+				case out <- msg.Content:
 				}
 			}
-			if resp.Done {
+			if msg.Done {
 				return
 			}
 		}

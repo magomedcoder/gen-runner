@@ -5,7 +5,6 @@ package service
 import (
 	"context"
 	"fmt"
-	llama "github.com/magomedcoder/llm-runner/llama"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/magomedcoder/llm-runner/domain"
+	llama "github.com/magomedcoder/llm-runner/llama"
 )
 
 const defaultChunkSize = 128
@@ -22,7 +22,7 @@ type LlamaService struct {
 	currentModelName string
 	chunkSize        int
 	predictOpts      []llama.PredictOption
-	mu               sync.Mutex
+	mu               sync.RWMutex
 	model            *llama.LLama
 	maxContextTokens int
 	enableEmbeddings bool
@@ -147,21 +147,18 @@ func (s *LlamaService) modelNamesLocked() []string {
 }
 
 func (s *LlamaService) CheckConnection(ctx context.Context) (bool, error) {
-	models, err := s.GetModels(ctx)
-	if err != nil || len(models) == 0 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := s.modelNamesLocked()
+	if len(names) == 0 {
 		return false, fmt.Errorf("llama: нет моделей в папке %q", s.modelsDir)
 	}
-
-	if err := s.ensureModel(models[0]); err != nil {
-		return false, err
-	}
-
 	return true, nil
 }
 
 func (s *LlamaService) GetModels(ctx context.Context) ([]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.modelNamesLocked(), nil
 }
 
@@ -256,7 +253,20 @@ func (s *LlamaService) Embed(ctx context.Context, model string, text string) ([]
 }
 
 func buildPrompt(messages []*domain.AIChatMessage, genParams *domain.GenerationParams) string {
+	n := len("Assistant: ")
+	for _, m := range messages {
+		if m != nil {
+			n += len(m.Content) + 24
+		}
+	}
+	if genParams != nil && len(genParams.Tools) > 0 {
+		for _, t := range genParams.Tools {
+			n += len(t.Name) + len(t.Description) + len(t.ParametersJSON) + 48
+		}
+		n += 96
+	}
 	var b strings.Builder
+	b.Grow(n)
 	for _, m := range messages {
 		var role string
 		switch m.Role {

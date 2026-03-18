@@ -319,7 +319,7 @@ int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug) {
             --n_remain;
 
             std::string token_str = token_to_piece(vocab, id);
-            if (!tokenCallback(state_pr, (char*)token_str.c_str())) {
+            if (!tokenCallback(state_pr, const_cast<char *>(token_str.c_str()))) {
                 break;
             }
 
@@ -367,6 +367,7 @@ int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug) {
 void llama_binding_free_model(void *state_ptr) {
     llama_binding_state *state = (llama_binding_state *) state_ptr;
     if (state->ctx != nullptr) {
+        llama_set_adapters_lora(state->ctx, nullptr, 0, nullptr);
         llama_free(state->ctx);
     }
     if (state->model != nullptr) {
@@ -659,7 +660,8 @@ void *load_model(
     if (lora != nullptr && lora[0] != '\0') {
         llama_adapter_lora *adapter = llama_adapter_lora_init(model, lora);
         if (adapter != nullptr) {
-            llama_set_adapter_lora(ctx, adapter, 1.0f);
+            float lora_scale = 1.0f;
+            llama_set_adapters_lora(ctx, &adapter, 1, &lora_scale);
         } else {
             fprintf(stderr, "%s: предупреждение: не удалось загрузить LoRA-адаптер '%s'\n", __func__, lora);
         }

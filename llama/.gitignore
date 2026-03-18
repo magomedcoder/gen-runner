@@ -1,4 +1,4 @@
-llama_lib
+llama.cpp_lib
 /build
 /llama.o
 /libllama.a

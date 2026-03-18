@@ -1,7 +1,9 @@
-.idea
-/pb/
-/build
-.DS_Store
-/models
-/vendor
-/runtime
+/llama/llama.cpp/
+/llama/llama_lib
+/llama/build/
+/llama/llama.o
+/llama/libllama.a
+build/
+pb/
+/config.yaml
+models

@@ -5,8 +5,8 @@ registration_token: ""
 log:
   level: "debug"
 
-llama:
-  model_path: "./models"
-  max_context_tokens: 4096
+model_path: "./models"
+default_model: ""
+max_context_tokens: 4096
 
 max_concurrent_generations: 0

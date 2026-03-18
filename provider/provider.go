@@ -30,17 +30,17 @@ type TextProvider interface {
 }
 
 func NewTextProvider(cfg *config.Config) (TextProvider, error) {
-	if cfg.Llama.ModelPath == "" {
-		return nil, fmt.Errorf("задайте llama.model_path")
+	if cfg.ModelPath == "" {
+		return nil, fmt.Errorf("задайте model_path")
 	}
 
 	var opts []service.LlamaOption
-	if cfg.Llama.MaxContextTokens > 0 {
-		opts = append(opts, service.WithMaxContextTokens(cfg.Llama.MaxContextTokens))
+	if cfg.MaxContextTokens > 0 {
+		opts = append(opts, service.WithMaxContextTokens(cfg.MaxContextTokens))
 	}
 
 	opts = append(opts, service.WithEmbeddings(true))
-	svc := service.NewLlamaService(cfg.Llama.ModelPath, opts...)
+	svc := service.NewLlamaService(cfg.ModelPath, opts...)
 
 	return NewText(svc), nil
 }

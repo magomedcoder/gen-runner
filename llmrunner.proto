@@ -5,23 +5,11 @@ package llmrunner;
 option go_package = "github.com/magomedcoder/llm-runner/pb;pb";
 
 service LLMRunnerService {
-  rpc Ping(Empty) returns (PingResponse);
-
   rpc GetModels(Empty) returns (GetModelsResponse);
-
-  rpc Generate(GenerateRequest) returns (stream GenerateResponse);
-
-  rpc Register(RegisterRunnerRequest) returns (Empty);
-
-  rpc Unregister(UnregisterRunnerRequest) returns (Empty);
 
   rpc GetGpuInfo(Empty) returns (GetGpuInfoResponse);
 
   rpc GetServerInfo(Empty) returns (ServerInfo);
-
-  rpc GetInferenceMetrics(Empty) returns (InferenceMetricsResponse);
-
-  rpc Embed(EmbedRequest) returns (EmbedResponse);
 
   rpc CheckConnection(Empty) returns (ConnectionResponse);
 
@@ -30,57 +18,8 @@ service LLMRunnerService {
 
 message Empty {}
 
-message PingResponse {
-  bool ok = 1;
-}
-
 message GetModelsResponse {
   repeated string models = 1;
-}
-
-message GenerateRequest {
-  int64 session_id = 1;
-  repeated ChatMessage messages = 2;
-  string model = 3;
-  repeated string stop_sequences = 4;
-  optional int32 timeout_seconds = 5;
-  optional float temperature = 6;
-  optional int32 max_tokens = 7;
-  optional int32 top_k = 8;
-  optional float top_p = 9;
-  optional ResponseFormat response_format = 10;
-  repeated Tool tools = 11;
-}
-
-message ResponseFormat {
-  string type = 1;
-  optional string schema = 2;
-}
-
-message Tool {
-  string name = 1;
-  string description = 2;
-  string parameters_json = 3;
-}
-
-message GenerateResponse {
-  string content = 1;
-  bool done = 2;
-  repeated ToolCall tool_calls = 3;
-}
-
-message ToolCall {
-  string id = 1;
-  string name = 2;
-  string arguments = 3;
-}
-
-message RegisterRunnerRequest {
-  string address = 1;
-}
-
-message UnregisterRunnerRequest {
-  string address = 1;
 }
 
 message GpuInfo {
@@ -102,21 +41,6 @@ message ServerInfo {
   int32 cpu_cores = 4;
   uint64 memory_total_mb = 5;
   repeated string models = 6;
-}
-
-message InferenceMetricsResponse {
-  int64 tokens = 1;
-  double latency_ms = 2;
-  double tokens_per_sec = 3;
-}
-
-message EmbedRequest {
-  string model = 1;
-  string text = 2;
-}
-
-message EmbedResponse {
-  repeated float embedding = 1;
 }
 
 message ConnectionResponse {

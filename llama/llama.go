@@ -3,7 +3,7 @@
 
 package llama
 
-// #cgo CXXFLAGS: -I${SRCDIR}/llama_lib/common -I${SRCDIR}/llama_lib/include -I${SRCDIR}/llama_lib/ggml/include -I${SRCDIR}/llama_lib -std=c++17
+// #cgo CXXFLAGS: -I${SRCDIR}/llama.cpp_lib/common -I${SRCDIR}/llama.cpp_lib/include -I${SRCDIR}/llama.cpp_lib/ggml/include -I${SRCDIR}/llama.cpp_lib -std=c++17
 // #cgo LDFLAGS: -L${SRCDIR}/ -lllama -lm -lstdc++
 // #cgo linux LDFLAGS: -fopenmp
 // #include "llama.h"
@@ -473,15 +473,18 @@ var (
 )
 
 //export tokenCallback
-func tokenCallback(statePtr unsafe.Pointer, token *C.char) bool {
+func tokenCallback(statePtr unsafe.Pointer, token *C.char) C.uchar {
 	m.RLock()
 	defer m.RUnlock()
 
 	if callback, ok := callbacks[uintptr(statePtr)]; ok {
-		return callback(C.GoString(token))
+		if callback(C.GoString(token)) {
+			return 1
+		}
+		return 0
 	}
 
-	return true
+	return 1
 }
 
 func setCallback(statePtr unsafe.Pointer, callback func(string) bool) {

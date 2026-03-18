@@ -3,21 +3,21 @@ package main
 import (
 	"context"
 	"fmt"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/magomedcoder/llm-runner"
+	"github.com/magomedcoder/gen/api/pb/runnerpb"
+	runner "github.com/magomedcoder/llm-runner"
 	"github.com/magomedcoder/llm-runner/config"
 	"github.com/magomedcoder/llm-runner/gpu"
 	"github.com/magomedcoder/llm-runner/logger"
 	"github.com/magomedcoder/llm-runner/pb"
 	"github.com/magomedcoder/llm-runner/provider"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -39,7 +39,7 @@ func main() {
 	}
 
 	gpuCollector := gpu.NewCollector()
-	runnerServer := runner.NewServer(textProvider, gpuCollector, cfg.MaxConcurrentGenerations)
+	runnerServer := runner.NewServer(textProvider, gpuCollector, cfg.MaxConcurrentGenerations, cfg.DefaultModel)
 
 	lis, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
@@ -48,7 +48,9 @@ func main() {
 	}
 	defer lis.Close()
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.MaxConcurrentStreams(1024),
+	)
 	pb.RegisterLLMRunnerServiceServer(grpcServer, runnerServer)
 
 	go func() {
@@ -86,11 +88,10 @@ func registerWithCore(coreAddr, registerAddress, registrationToken string) error
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	ctx = outgoingContextWithRunnerToken(ctx, registrationToken)
-
-	client := pb.NewLLMRunnerServiceClient(conn)
-	_, err = client.Register(ctx, &pb.RegisterRunnerRequest{
-		Address: registerAddress,
+	client := runnerpb.NewRunnerServiceClient(conn)
+	_, err = client.RegisterRunnerWithToken(ctx, &runnerpb.RunnerRegisterRequest{
+		ListenAddress:     registerAddress,
+		RegistrationToken: registrationToken,
 	})
 
 	return err
@@ -107,18 +108,9 @@ func unregisterFromCore(coreAddr, registerAddress, registrationToken string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	ctx = outgoingContextWithRunnerToken(ctx, registrationToken)
-
-	client := pb.NewLLMRunnerServiceClient(conn)
-	_, _ = client.Unregister(ctx, &pb.UnregisterRunnerRequest{
-		Address: registerAddress,
+	client := runnerpb.NewRunnerServiceClient(conn)
+	_, _ = client.UnregisterRunnerWithToken(ctx, &runnerpb.RunnerUnregisterRequest{
+		ListenAddress:     registerAddress,
+		RegistrationToken: registrationToken,
 	})
-}
-
-func outgoingContextWithRunnerToken(ctx context.Context, token string) context.Context {
-	if token == "" {
-		return ctx
-	}
-
-	return metadata.AppendToOutgoingContext(ctx, runner.MetadataRunnerToken, token)
 }

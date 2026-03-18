@@ -1,4 +1,21 @@
-.PHONY: test clean
+.PHONY: deps deps-llama.cpp llama.cpp-update
+
+LLAMA_CPP_TAG ?= b8373
+
+deps: deps-llama.cpp
+deps-llama.cpp:
+	@if [ ! -d "llama.cpp_lib/.git" ]; then \
+		echo "Клонируем llama.cpp $(LLAMA_CPP_TAG) в llama.cpp_lib..."; \
+		git clone --depth 1 --branch $(LLAMA_CPP_TAG) https://github.com/ggml-org/llama.cpp.git llama.cpp_lib; \
+	else \
+		echo "llama.cpp_lib уже существует"; \
+	fi
+
+llama.cpp-update:
+	@if [ ! -d "llama.cpp_lib/.git" ]; then $(MAKE) deps-llama.cpp; exit 0; fi
+	cd llama.cpp_lib \
+		&& git fetch --depth 1 origin tag $(LLAMA_CPP_TAG) \
+		&& git checkout $(LLAMA_CPP_TAG)
 
 INCLUDE_PATH := $(abspath ./)
 LIBRARY_PATH := $(abspath ./)
@@ -20,7 +37,8 @@ CXXV := $(shell $(CXX) --version | head -n 1)
 
 BUILD_TYPE?=
 
-LLAMA_LIB = llama_lib
+# Должно совпадать с каталогом из deps-llama.cpp (git clone … llama.cpp_lib)
+LLAMA_LIB = llama.cpp_lib
 CFLAGS   = -I./$(LLAMA_LIB) -I./$(LLAMA_LIB)/include -I./$(LLAMA_LIB)/ggml/include -I. -O3 -DNDEBUG -std=c11 -fPIC
 CXXFLAGS = -I./$(LLAMA_LIB) -I./$(LLAMA_LIB)/include -I./$(LLAMA_LIB)/ggml/include -I. -I./$(LLAMA_LIB)/common -I./common -O3 -DNDEBUG -std=c++17 -fPIC
 LDFLAGS  =
