@@ -199,10 +199,12 @@ class _SelectableCodeBlockState extends State<_SelectableCodeBlock> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final iconColor = isDark ? const Color(0xffabb2bf) : const Color(0xff333333);
     final copiedColor = Theme.of(context).colorScheme.primary;
+    final codeBg = widget.theme[_rootKey]?.backgroundColor ?? (isDark ? const Color(0xff282c34) : const Color(0xfff8f8f8));
+    final headerBg = widget.theme[_rootKey]?.backgroundColor?.withValues(alpha: 0.6) ?? (isDark ? const Color(0xff21252b) : const Color(0xfff0f0f0));
 
     return Container(
       decoration: BoxDecoration(
-        color: widget.theme[_rootKey]?.backgroundColor ?? const Color(0xfff8f8f8),
+        color: codeBg,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
@@ -215,7 +217,7 @@ class _SelectableCodeBlockState extends State<_SelectableCodeBlock> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Material(
-            color: widget.theme[_rootKey]?.backgroundColor?.withValues(alpha: 0.6) ?? const Color(0xfff0f0f0),
+            color: headerBg,
             child: InkWell(
               onTap: _copyCode,
               child: Padding(

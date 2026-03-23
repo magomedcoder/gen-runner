@@ -2,6 +2,8 @@ import 'package:equatable/equatable.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
 
+const _kKeepCurrentSessionId = Symbol('_kKeepCurrentSessionId');
+
 class ChatState extends Equatable {
   final bool isConnected;
   final bool isLoading;
@@ -33,7 +35,7 @@ class ChatState extends Equatable {
     bool? isConnected,
     bool? isLoading,
     bool? isStreaming,
-    int? currentSessionId,
+    Object? currentSessionId = _kKeepCurrentSessionId,
     List<ChatSession>? sessions,
     List<Message>? messages,
     String? currentStreamingText,
@@ -46,7 +48,9 @@ class ChatState extends Equatable {
       isConnected: isConnected ?? this.isConnected,
       isLoading: isLoading ?? this.isLoading,
       isStreaming: isStreaming ?? this.isStreaming,
-      currentSessionId: currentSessionId ?? this.currentSessionId,
+      currentSessionId: identical(currentSessionId, _kKeepCurrentSessionId)
+          ? this.currentSessionId
+          : currentSessionId as int?,
       sessions: sessions ?? this.sessions,
       messages: messages ?? this.messages,
       currentStreamingText: currentStreamingText,

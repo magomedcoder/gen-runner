@@ -26,14 +26,26 @@ class SessionsNewChatFooter extends StatelessWidget {
           ),
         ),
       ),
-      child: ElevatedButton.icon(
-        icon: const Icon(Icons.add, size: 18),
-        label: const Text('Новый чат'),
+      child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           minimumSize: const Size(double.infinity, 48),
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Theme.of(context).colorScheme.onPrimary,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.add, size: 18),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'Новый чат',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
         ),
       ),
     );

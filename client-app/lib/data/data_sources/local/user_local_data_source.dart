@@ -37,8 +37,8 @@ class UserLocalDataSourceImpl implements UserLocalDataSource {
 
   @override
   ThemeMode get themeMode {
-    final name = _prefs?.getString(_keyThemeMode) ?? 'light';
-    return name == 'dark' ? ThemeMode.dark : ThemeMode.light;
+    final name = _prefs?.getString(_keyThemeMode) ?? 'dark';
+    return name == 'light' ? ThemeMode.light : ThemeMode.dark;
   }
 
   Future<void> init() async {

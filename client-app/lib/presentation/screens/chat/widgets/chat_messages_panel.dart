@@ -60,8 +60,7 @@ class ChatMessagesPanel extends StatelessWidget {
               ChatInputBar(key: inputBarKey, isEnabled: canDropFile),
             ],
           ),
-          if (isDraggingFile)
-            const ChatDropOverlay(),
+          if (isDraggingFile) const ChatDropOverlay(),
         ],
       ),
     );

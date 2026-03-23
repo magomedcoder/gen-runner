@@ -4,41 +4,6 @@ import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 
-Future<String?> showNewSessionDialog(
-  BuildContext context,
-  TextEditingController titleController,
-) {
-  return showDialog<String>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Новая сессия'),
-      content: TextField(
-        controller: titleController,
-        decoration: const InputDecoration(
-          hintText: 'Введите название сессии',
-          border: OutlineInputBorder(),
-        ),
-        autofocus: true,
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Отмена'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            final title = titleController.text.trim();
-            if (title.isNotEmpty) {
-              Navigator.of(dialogContext).pop(title);
-            }
-          },
-          child: const Text('Создать'),
-        ),
-      ],
-    ),
-  );
-}
-
 Future<void> showDeleteSessionDialog(
   BuildContext context, {
   required int sessionId,

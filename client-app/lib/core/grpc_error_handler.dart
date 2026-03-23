@@ -10,7 +10,7 @@ Never throwGrpcError(
   String? unauthenticatedMessage,
 }) {
   if (e.code == StatusCode.unauthenticated) {
-    Logs().w('gRPC: не авторизован — ${unauthenticatedMessage ?? kSessionExpiredMessage}');
+    Logs().w('gRPC: не авторизован - ${unauthenticatedMessage ?? kSessionExpiredMessage}');
     throw UnauthorizedFailure(unauthenticatedMessage ?? kSessionExpiredMessage);
   }
 

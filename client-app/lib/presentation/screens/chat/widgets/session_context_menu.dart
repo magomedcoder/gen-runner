@@ -18,7 +18,11 @@ class SessionContextMenu {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.edit, size: 20, color: Theme.of(context).colorScheme.primary),
+              Icon(
+                Icons.edit,
+                size: 20,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(width: 12),
               const Text('Редактировать название'),
             ],
@@ -29,7 +33,11 @@ class SessionContextMenu {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.delete_outline, size: 20, color: Theme.of(context).colorScheme.error),
+              Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: Theme.of(context).colorScheme.error,
+              ),
               const SizedBox(width: 12),
               Text(
                 'Удалить',
@@ -65,7 +73,7 @@ class SessionContextMenu {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
+              color: Theme.of(sheetContext).colorScheme.shadow.withValues(alpha: 0.35),
               blurRadius: 20,
               spreadRadius: 2,
             ),
@@ -93,7 +101,9 @@ class SessionContextMenu {
               ),
               title: Text(
                 'Удалить',
-                style: TextStyle(color: Theme.of(sheetContext).colorScheme.error),
+                style: TextStyle(
+                  color: Theme.of(sheetContext).colorScheme.error,
+                ),
               ),
               onTap: () {
                 Navigator.pop(sheetContext);

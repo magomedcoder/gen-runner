@@ -189,36 +189,29 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatCreateSession event,
     Emitter<ChatState> emit,
   ) async {
-    emit(state.copyWith(isLoading: true, error: null));
+    if (!state.isStreaming &&
+        state.currentSessionId == null &&
+        state.messages.isEmpty) {
+      return;
+    }
 
-    try {
-      final session = await createSessionUseCase(
-        title: event.title,
-        model: state.selectedModel ?? (state.models.isNotEmpty ? state.models.first : null),
-      );
+    await _streamSubscription?.cancel();
+    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
+      _streamCompleter!.complete(true);
+    }
+    _streamSubscription = null;
+    _streamCompleter = null;
 
-      final modelToSave = state.selectedModel ?? (state.models.isNotEmpty ? state.models.first : null);
-      if (modelToSave != null) {
-        try {
-          await setSessionModelUseCase(session.id, modelToSave);
-        } catch (_) {}
-      }
-
-      final updatedSessions = [session, ...state.sessions];
-
-      Logs().i('ChatBloc: сессия создана id=${session.id}');
-      emit(state.copyWith(
-        sessions: updatedSessions,
-        currentSessionId: session.id,
-        isLoading: false,
+    emit(
+      state.copyWith(
+        currentSessionId: null,
         messages: const [],
         error: null,
-      ));
-    } catch (e) {
-      Logs().e('ChatBloc: ошибка создания сессии', exception: e);
-      requestLogoutIfUnauthorized(e, authBloc);
-      emit(state.copyWith(isLoading: false, error: 'Ошибка создания сессии'));
-    }
+        currentStreamingText: null,
+        isLoading: false,
+        isStreaming: false,
+      ),
+    );
   }
 
   Future<void> _onLoadSessions(
@@ -283,7 +276,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             final savedModel = await getSessionModelUseCase(event.sessionId);
             if (savedModel != null && state.models.contains(savedModel)) {
               modelForSession = savedModel;
-            } else if (modelForSession == null || !state.models.contains(modelForSession)) {
+            } else if (modelForSession == null ||
+                !state.models.contains(modelForSession)) {
               modelForSession = state.models.first;
             }
           } catch (_) {
@@ -322,17 +316,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       final allMessages = [...state.messages, ...messages];
 
-      emit(state.copyWith(
-          messages: allMessages,
-          isLoading: false,
-          error: null,
-      ));
+      emit(
+        state.copyWith(messages: allMessages, isLoading: false, error: null),
+      );
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
-      emit(state.copyWith(
-          isLoading: false,
-          error: 'Ошибка загрузки сообщений'
-      ));
+      emit(
+        state.copyWith(isLoading: false, error: 'Ошибка загрузки сообщений'),
+      );
     }
   }
 
@@ -341,7 +332,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     Emitter<ChatState> emit,
   ) async {
     final text = event.text.trim();
-    final hasAttachment = event.attachmentFileName != null && event.attachmentContent != null && event.attachmentContent!.isNotEmpty;
+    final hasAttachment =
+        event.attachmentFileName != null &&
+        event.attachmentContent != null &&
+        event.attachmentContent!.isNotEmpty;
     if (text.isEmpty && !hasAttachment) {
       return;
     }
@@ -357,11 +351,15 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (sessionId == null) {
       try {
         final session = await createSessionUseCase(
-          model: state.selectedModel ?? (state.models.isNotEmpty ? state.models.first : null),
+          model:
+              state.selectedModel ??
+              (state.models.isNotEmpty ? state.models.first : null),
         );
         sessionId = session.id;
 
-        final modelToSave = state.selectedModel ?? (state.models.isNotEmpty ? state.models.first : null);
+        final modelToSave =
+            state.selectedModel ??
+            (state.models.isNotEmpty ? state.models.first : null);
         if (modelToSave != null) {
           try {
             await setSessionModelUseCase(sessionId, modelToSave);
@@ -391,20 +389,22 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       createdAt: DateTime.now(),
       attachmentFileName: event.attachmentFileName,
       attachmentContent: event.attachmentContent != null
-        ? Uint8List.fromList(event.attachmentContent!)
-        : null,
+          ? Uint8List.fromList(event.attachmentContent!)
+          : null,
     );
 
     final updatedMessages = [...state.messages, userMessage];
     String streamingText = '';
 
-    emit(state.copyWith(
-      messages: updatedMessages,
-      isLoading: true,
-      isStreaming: true,
-      currentStreamingText: '',
-      error: null,
-    ));
+    emit(
+      state.copyWith(
+        messages: updatedMessages,
+        isLoading: true,
+        isStreaming: true,
+        currentStreamingText: '',
+        error: null,
+      ),
+    );
 
     _streamCompleter = Completer<bool>();
 
@@ -493,8 +493,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       await deleteSessionUseCase(event.sessionId);
 
       final updatedSessions = state.sessions
-        .where((session) => session.id != event.sessionId)
-        .toList();
+          .where((session) => session.id != event.sessionId)
+          .toList();
 
       final shouldClearCurrent = state.currentSessionId == event.sessionId;
 
@@ -558,14 +558,18 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         selectedModel = models.first;
       }
 
-      if (models.isNotEmpty && selectedModel != null && !models.contains(selectedModel)) {
+      if (models.isNotEmpty &&
+          selectedModel != null &&
+          !models.contains(selectedModel)) {
         selectedModel = models.first;
       }
 
-      emit(state.copyWith(
-        models: models,
-        selectedModel: selectedModel ?? state.selectedModel,
-      ));
+      emit(
+        state.copyWith(
+          models: models,
+          selectedModel: selectedModel ?? state.selectedModel,
+        ),
+      );
     } catch (_) {}
   }
 

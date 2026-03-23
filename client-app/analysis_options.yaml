@@ -21,6 +21,13 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
+    unused_import: true
+    unnecessary_import: true
+    dead_code: true
+    unused_element: true
+    unused_field: true
+    unused_local_variable: true
+    unused_shown_name: true
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
 

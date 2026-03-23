@@ -89,7 +89,7 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Theme.of(context).colorScheme.surface,
+      color: Colors.transparent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -127,7 +127,8 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
                         isSelected: isSelected,
                         isDesktop: isDesktop,
                         onTap: () => widget.onSelectSession(session),
-                        onLongPress: () => _showSessionContextMenuMobile(session),
+                        onLongPress: () =>
+                            _showSessionContextMenuMobile(session),
                         onSecondaryTapDown: isDesktop
                             ? (d) => _showSessionContextMenuDesktop(session, d)
                             : null,

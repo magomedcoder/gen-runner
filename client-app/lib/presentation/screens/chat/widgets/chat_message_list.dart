@@ -19,7 +19,10 @@ class ChatMessageList extends StatelessWidget {
     final horizontalPadding = Breakpoints.isMobile(context) ? 12.0 : 16.0;
     return ListView.builder(
       controller: scrollController,
-      padding: EdgeInsets.symmetric(vertical: 16, horizontal: horizontalPadding),
+      padding: EdgeInsets.symmetric(
+        vertical: 16,
+        horizontal: horizontalPadding,
+      ),
       itemCount: state.messages.length + (state.isStreaming ? 1 : 0),
       itemBuilder: (context, index) {
         if (index < state.messages.length) {

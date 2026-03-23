@@ -38,8 +38,7 @@ class ChatModelSelector extends StatelessWidget {
                 'Модель',
                 style: TextStyle(
                   fontSize: 11,
-                  color:
-                      theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                 ),
               ),
             ],
@@ -100,10 +99,7 @@ class ChatModelSelector extends StatelessWidget {
       },
       itemBuilder: (context) => [
         for (final model in models)
-          PopupMenuItem<String>(
-            value: model,
-            child: Text(model),
-          ),
+          PopupMenuItem<String>(value: model, child: Text(model)),
       ],
       onSelected: (value) {
         context.read<ChatBloc>().add(ChatSelectModel(value));

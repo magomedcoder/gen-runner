@@ -9,8 +9,12 @@ import 'package:gen/generated/grpc_pb/editor.pbgrpc.dart' as grpc;
 abstract class IEditorRemoteDataSource {
   Future<String> transform({
     required String text,
+    required grpc.TransformType type,
     String? model,
+    bool preserveMarkdown,
   });
+
+  Future<void> cancelTransform();
 }
 
 class EditorRemoteDataSource implements IEditorRemoteDataSource {
@@ -21,22 +25,60 @@ class EditorRemoteDataSource implements IEditorRemoteDataSource {
 
   grpc.EditorServiceClient get _client => _channelManager.editorClient;
 
+  ResponseFuture<grpc.TransformResponse>? _activeTransform;
+
   @override
-  Future<String> transform({required String text, String? model}) async {
-    Logs().d('EditorRemoteDataSource: transform model=$model');
-    try {
-      final request = grpc.TransformRequest()..text = text;
+  Future<void> cancelTransform() async {
+    final t = _activeTransform;
+    if (t != null) {
+      _activeTransform = null;
+      await t.cancel();
+    }
+  }
 
-      if (model != null && model.isNotEmpty) {
-        request.model = model;
+  @override
+  Future<String> transform({
+    required String text,
+    required grpc.TransformType type,
+    String? model,
+    bool preserveMarkdown = false,
+  }) async {
+    Logs().d('EditorRemoteDataSource: transform type=$type model=$model');
+    await cancelTransform();
+
+    final request = grpc.TransformRequest(
+      text: text,
+      type: type,
+      preserveMarkdown: preserveMarkdown,
+    );
+
+    if (model != null && model.isNotEmpty) {
+      request.model = model;
+    }
+
+    Future<grpc.TransformResponse> invokeOnce() async {
+      final rf = _client.transform(request);
+      _activeTransform = rf;
+      try {
+        return await rf;
+      } finally {
+        if (_activeTransform == rf) {
+          _activeTransform = null;
+        }
       }
+    }
 
-      final resp = await _authGuard.execute(() => _client.transform(request));
+    try {
+      final resp = await _authGuard.execute(invokeOnce);
       return resp.text;
     } on GrpcError catch (e) {
+      if (e.code == StatusCode.cancelled) {
+        throw ApiFailure('Обработка остановлена');
+      }
       Logs().e('EditorRemoteDataSource: ошибка transform', exception: e);
       throwGrpcError(e, 'Ошибка обработки текста');
     } catch (e) {
+      if (e is Failure) rethrow;
       Logs().e('EditorRemoteDataSource: ошибка transform', exception: e);
       throw ApiFailure('Ошибка обработки текста');
     }

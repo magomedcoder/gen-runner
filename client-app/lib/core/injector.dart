@@ -41,7 +41,6 @@ import 'package:gen/domain/usecases/runners/set_runner_enabled_usecase.dart';
 import 'package:gen/domain/usecases/users/create_user_usecase.dart';
 import 'package:gen/domain/usecases/users/edit_user_usecase.dart';
 import 'package:gen/domain/usecases/users/get_users_usecase.dart';
-import 'package:gen/presentation/cubit/theme_cubit.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_bloc.dart';
 import 'package:gen/presentation/screens/admin/bloc/users_admin_bloc.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
@@ -177,6 +176,7 @@ Future<void> init() async {
       authBloc: sl<AuthBloc>(),
       getModelsUseCase: sl(),
       transformTextUseCase: sl(),
+      editorRepository: sl<EditorRepository>(),
     ),
   );
 
@@ -195,6 +195,4 @@ Future<void> init() async {
       setRunnerEnabledUseCase: sl(),
     ),
   );
-
-  sl.registerFactory(() => ThemeCubit(sl<UserLocalDataSourceImpl>()));
 }

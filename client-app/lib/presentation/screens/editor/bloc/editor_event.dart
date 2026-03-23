@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:gen/generated/grpc_pb/editor.pb.dart' as grpc;
 
 sealed class EditorEvent extends Equatable {
   const EditorEvent();
@@ -11,13 +12,37 @@ final class EditorStarted extends EditorEvent {
   const EditorStarted();
 }
 
-final class EditorInputChanged extends EditorEvent {
+final class EditorDocumentChanged extends EditorEvent {
   final String text;
 
-  const EditorInputChanged(this.text);
+  const EditorDocumentChanged(this.text);
 
   @override
   List<Object?> get props => [text];
+}
+
+final class EditorTransformPressed extends EditorEvent {
+  const EditorTransformPressed();
+}
+
+final class EditorCancelTransform extends EditorEvent {
+  const EditorCancelTransform();
+}
+
+final class EditorUndo extends EditorEvent {
+  const EditorUndo();
+}
+
+final class EditorRedo extends EditorEvent {
+  const EditorRedo();
+}
+
+final class EditorTypeChanged extends EditorEvent {
+  final grpc.TransformType type;
+  const EditorTypeChanged(this.type);
+
+  @override
+  List<Object?> get props => [type];
 }
 
 final class EditorModelChanged extends EditorEvent {
@@ -29,8 +54,13 @@ final class EditorModelChanged extends EditorEvent {
   List<Object?> get props => [model];
 }
 
-final class EditorTransformPressed extends EditorEvent {
-  const EditorTransformPressed();
+final class EditorPreserveMarkdownChanged extends EditorEvent {
+  final bool preserve;
+
+  const EditorPreserveMarkdownChanged(this.preserve);
+
+  @override
+  List<Object?> get props => [preserve];
 }
 
 final class EditorClearError extends EditorEvent {

@@ -17,7 +17,7 @@ class SessionsDrawerHeader extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            'Сессии',
+            'Чаты',
             style: Theme.of(
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
