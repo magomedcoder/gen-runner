@@ -350,3 +350,29 @@ func (p *Pool) SendMessage(
 
 	return forwardStream(ch, ai), nil
 }
+
+func (p *Pool) Embed(ctx context.Context, model string, text string) ([]float32, error) {
+	client, addr, err := p.pickRunner(ctx, model)
+	if err != nil {
+		return nil, err
+	}
+
+	ai := p.getOrCreateInflight(addr)
+	ai.Add(1)
+	defer ai.Add(-1)
+
+	return client.Embed(ctx, model, text)
+}
+
+func (p *Pool) EmbedBatch(ctx context.Context, model string, texts []string) ([][]float32, error) {
+	client, addr, err := p.pickRunner(ctx, model)
+	if err != nil {
+		return nil, err
+	}
+
+	ai := p.getOrCreateInflight(addr)
+	ai.Add(1)
+	defer ai.Add(-1)
+
+	return client.EmbedBatch(ctx, model, texts)
+}

@@ -119,6 +119,61 @@ func (s *LLMRunnerService) GetServerInfo(ctx context.Context) (*llmrunnerpb.Serv
 	return resp, nil
 }
 
+func (s *LLMRunnerService) resolveRunnerModel(model string) string {
+	modelName := strings.TrimSpace(model)
+	if modelName == "" || modelName == "default" {
+		modelName = strings.TrimSpace(s.model)
+	}
+
+	if modelName == "default" {
+		modelName = ""
+	}
+
+	return modelName
+}
+
+func (s *LLMRunnerService) Embed(ctx context.Context, model, text string) ([]float32, error) {
+	resp, err := s.client.Embed(ctx, &llmrunnerpb.EmbedRequest{
+		Model: s.resolveRunnerModel(model),
+		Text:  text,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner Embed: %w", err)
+	}
+
+	if resp == nil {
+		return nil, nil
+	}
+
+	return resp.Values, nil
+}
+
+func (s *LLMRunnerService) EmbedBatch(ctx context.Context, model string, texts []string) ([][]float32, error) {
+	resp, err := s.client.EmbedBatch(ctx, &llmrunnerpb.EmbedBatchRequest{
+		Model: s.resolveRunnerModel(model),
+		Texts: texts,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner EmbedBatch: %w", err)
+	}
+
+	if resp == nil {
+		return nil, nil
+	}
+
+	out := make([][]float32, 0, len(resp.Embeddings))
+	for _, e := range resp.Embeddings {
+		if e == nil {
+			out = append(out, nil)
+			continue
+		}
+
+		out = append(out, e.Values)
+	}
+
+	return out, nil
+}
+
 func (s *LLMRunnerService) SendMessage(
 	ctx context.Context,
 	sessionID int64,
@@ -128,13 +183,7 @@ func (s *LLMRunnerService) SendMessage(
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
 ) (chan string, error) {
-	modelName := strings.TrimSpace(model)
-	if modelName == "" || modelName == "default" {
-		modelName = strings.TrimSpace(s.model)
-	}
-	if modelName == "default" {
-		modelName = ""
-	}
+	modelName := s.resolveRunnerModel(model)
 	req := &llmrunnerpb.SendMessageRequest{
 		SessionId:        sessionID,
 		Messages:         domainMessagesToProto(messages),
@@ -185,14 +234,36 @@ func (s *LLMRunnerService) SendMessage(
 }
 
 func domainMessagesToProto(messages []*domain.Message) []*llmrunnerpb.ChatMessage {
-	out := make([]*llmrunnerpb.ChatMessage, len(messages))
-	for i, m := range messages {
-		out[i] = &llmrunnerpb.ChatMessage{
-			Id:        int64(i + 1),
+	out := make([]*llmrunnerpb.ChatMessage, 0, len(messages))
+	for _, m := range messages {
+		if m == nil {
+			continue
+		}
+
+		cm := &llmrunnerpb.ChatMessage{
+			Id:        int64(len(out) + 1),
 			Content:   m.Content,
 			Role:      string(m.Role),
 			CreatedAt: m.CreatedAt.Unix(),
 		}
+
+		if strings.TrimSpace(m.ToolCallID) != "" {
+			v := m.ToolCallID
+			cm.ToolCallId = &v
+		}
+
+		if strings.TrimSpace(m.ToolName) != "" {
+			v := m.ToolName
+			cm.ToolName = &v
+		}
+
+		if strings.TrimSpace(m.ToolCallsJSON) != "" {
+			v := m.ToolCallsJSON
+			cm.ToolCallsJson = &v
+		}
+
+		out = append(out, cm)
 	}
+
 	return out
 }

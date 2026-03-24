@@ -17,6 +17,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const maxChatEmbedBatchSize = 256
+
 type ChatHandler struct {
 	chatpb.UnimplementedChatServiceServer
 	chatUseCase *usecase.ChatUseCase
@@ -51,39 +53,63 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 		return status.Error(codes.InvalidArgument, "сообщения не предоставлены")
 	}
 
+	for _, m := range req.Messages {
+		if m == nil || strings.TrimSpace(m.GetRole()) == "" {
+			return status.Error(codes.InvalidArgument, "у каждого сообщения должна быть задана role")
+		}
+		if m.AttachmentContent != nil && len(m.AttachmentContent) > 0 && len(req.Messages) > 1 {
+			return status.Error(codes.InvalidArgument, "вложения поддерживаются только при одном сообщении в запросе")
+		}
+	}
+
 	lastMessage := req.Messages[len(req.Messages)-1]
 	lastRole := strings.ToLower(strings.TrimSpace(lastMessage.GetRole()))
 	if lastRole == "assistant" {
 		logger.W("SendMessage: последнее сообщение с role=assistant")
-		return status.Error(codes.InvalidArgument, "последнее сообщение в запросе должно быть от пользователя (role=user)")
+		return status.Error(codes.InvalidArgument, "последнее сообщение должно быть role=user или role=tool")
 	}
 
-	userMessage := lastMessage.Content
-	attachmentName := ""
-	if lastMessage.AttachmentName != nil {
-		attachmentName = *lastMessage.AttachmentName
-	}
-	var attachmentContent []byte
-	if lastMessage.AttachmentContent != nil {
-		attachmentContent = lastMessage.AttachmentContent
-	}
+	var responseChan chan string
+	var messageId int64
+	var sendErr error
 
-	responseChan, messageId, err := c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), userMessage, attachmentName, attachmentContent)
-	if err != nil {
-		logger.E("SendMessage: %v", err)
-		if mapped := statusForModelResolutionError(err); mapped != nil {
+	useLegacySingleUser := len(req.Messages) == 1 && lastRole == "user"
+
+	if useLegacySingleUser {
+		userMessage := lastMessage.Content
+		attachmentName := ""
+		if lastMessage.AttachmentName != nil {
+			attachmentName = *lastMessage.AttachmentName
+		}
+		var attachmentContent []byte
+		if lastMessage.AttachmentContent != nil {
+			attachmentContent = lastMessage.AttachmentContent
+		}
+		responseChan, messageId, sendErr = c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), userMessage, attachmentName, attachmentContent)
+	} else {
+		turns := mappers.MessagesFromProto(req.Messages, req.GetSessionId())
+		for _, t := range turns {
+			if t != nil {
+				t.Id = 0
+			}
+		}
+		responseChan, messageId, sendErr = c.chatUseCase.SendMessageMulti(ctx, userID, req.GetSessionId(), turns)
+	}
+	if sendErr != nil {
+		logger.E("SendMessage: %v", sendErr)
+		if mapped := statusForModelResolutionError(sendErr); mapped != nil {
 			return mapped
 		}
 
-		if errors.Is(err, document.ErrUnsupportedAttachmentType) || errors.Is(err, document.ErrInvalidTextEncoding) {
-			return status.Error(codes.InvalidArgument, err.Error())
+		if errors.Is(sendErr, document.ErrUnsupportedAttachmentType) || errors.Is(sendErr, document.ErrInvalidTextEncoding) {
+			return status.Error(codes.InvalidArgument, sendErr.Error())
 		}
 
-		if strings.Contains(err.Error(), "вложение") || strings.Contains(err.Error(), "размер вложения") {
-			return status.Error(codes.InvalidArgument, err.Error())
+		if strings.Contains(sendErr.Error(), "вложение") || strings.Contains(sendErr.Error(), "размер вложения") {
+			return status.Error(codes.InvalidArgument, sendErr.Error())
 		}
 
-		return ToStatusError(codes.Internal, err)
+		return ToStatusError(codes.Internal, sendErr)
 	}
 	logger.V("SendMessage: стрим ответа запущен messageId=%d", messageId)
 
@@ -345,4 +371,66 @@ func (c *ChatHandler) SetDefaultRunnerModel(ctx context.Context, req *chatpb.Set
 	}
 
 	return &commonpb.Empty{}, nil
+}
+
+func (c *ChatHandler) Embed(ctx context.Context, req *chatpb.EmbedRequest) (*chatpb.EmbedResponse, error) {
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+	}
+	text := strings.TrimSpace(req.GetText())
+	if text == "" {
+		return nil, status.Error(codes.InvalidArgument, "text не может быть пустым")
+	}
+
+	vec, err := c.chatUseCase.Embed(ctx, userID, req.GetModel(), text)
+	if err != nil {
+		if mapped := statusForModelResolutionError(err); mapped != nil {
+			return nil, mapped
+		}
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	return &chatpb.EmbedResponse{Values: vec}, nil
+}
+
+func (c *ChatHandler) EmbedBatch(ctx context.Context, req *chatpb.EmbedBatchRequest) (*chatpb.EmbedBatchResponse, error) {
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+	}
+	texts := req.GetTexts()
+	if len(texts) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "texts не может быть пустым")
+	}
+	if len(texts) > maxChatEmbedBatchSize {
+		return nil, status.Errorf(codes.InvalidArgument, "не более %d текстов за один запрос", maxChatEmbedBatchSize)
+	}
+	for i, t := range texts {
+		if strings.TrimSpace(t) == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "texts[%d]: пустая строка", i)
+		}
+	}
+
+	rows, err := c.chatUseCase.EmbedBatch(ctx, userID, req.GetModel(), texts)
+	if err != nil {
+		if mapped := statusForModelResolutionError(err); mapped != nil {
+			return nil, mapped
+		}
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	out := &chatpb.EmbedBatchResponse{
+		Embeddings: make([]*chatpb.Embedding, 0, len(rows)),
+	}
+	for _, row := range rows {
+		out.Embeddings = append(out.Embeddings, &chatpb.Embedding{Values: row})
+	}
+	return out, nil
 }

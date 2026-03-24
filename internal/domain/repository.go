@@ -110,4 +110,8 @@ type LLMRepository interface {
 		timeoutSeconds int32,
 		genParams *GenerationParams,
 	) (chan string, error)
+
+	Embed(ctx context.Context, model string, text string) ([]float32, error)
+
+	EmbedBatch(ctx context.Context, model string, texts []string) ([][]float32, error)
 }

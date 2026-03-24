@@ -8,6 +8,7 @@ const (
 	MessageRoleSystem    MessageRole = "system"
 	MessageRoleUser      MessageRole = "user"
 	MessageRoleAssistant MessageRole = "assistant"
+	MessageRoleTool      MessageRole = "tool"
 )
 
 func (m *Message) ToMap() map[string]interface{} {
@@ -25,6 +26,8 @@ func FromProtoRole(role string) MessageRole {
 		return MessageRoleUser
 	case "assistant":
 		return MessageRoleAssistant
+	case "tool":
+		return MessageRoleTool
 	default:
 		return MessageRoleUser
 	}

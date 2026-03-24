@@ -34,6 +34,10 @@ service ChatService {
   rpc GetSessionSettings(GetSessionSettingsRequest) returns (SessionSettings);
 
   rpc UpdateSessionSettings(UpdateSessionSettingsRequest) returns (SessionSettings);
+
+  rpc Embed(EmbedRequest) returns (EmbedResponse);
+
+  rpc EmbedBatch(EmbedBatchRequest) returns (EmbedBatchResponse);
 }
 
 
@@ -49,6 +53,9 @@ message ChatMessage {
   int64 created_at = 4;
   optional string attachment_name = 5;
   optional bytes attachment_content = 6;
+  optional string tool_call_id = 7;
+  optional string tool_name = 8;
+  optional string tool_calls_json = 9;
 }
 
 message ChatResponse {
@@ -166,4 +173,26 @@ message DefaultRunnerModelResponse {
 message SetDefaultRunnerModelRequest {
   string runner = 1;
   string model = 2;
+}
+
+message EmbedRequest {
+  string model = 1;
+  string text = 2;
+}
+
+message EmbedResponse {
+  repeated float values = 1;
+}
+
+message EmbedBatchRequest {
+  string model = 1;
+  repeated string texts = 2;
+}
+
+message Embedding {
+  repeated float values = 1;
+}
+
+message EmbedBatchResponse {
+  repeated Embedding embeddings = 1;
 }

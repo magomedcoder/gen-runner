@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magomedcoder/gen/internal/domain"
@@ -23,16 +24,28 @@ func nullInt64Ptr(v *int64) interface{} {
 	return *v
 }
 
+func nullTrimmedString(s string) interface{} {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+
+	return s
+}
+
 func (r *messageRepository) Create(ctx context.Context, message *domain.Message) error {
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO messages (session_id, content, role, attachment_file_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO messages (session_id, content, role, attachment_file_id, tool_call_id, tool_name, tool_calls_json, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`,
 		message.SessionId,
 		message.Content,
 		message.Role,
 		nullInt64Ptr(message.AttachmentFileID),
+		nullTrimmedString(message.ToolCallID),
+		nullTrimmedString(message.ToolName),
+		nullTrimmedString(message.ToolCallsJSON),
 		message.CreatedAt,
 		message.UpdatedAt,
 	).Scan(&message.Id)
@@ -63,7 +76,9 @@ func (r *messageRepository) GetBySessionId(ctx context.Context, sessionID int64,
 	}
 
 	rows, err := r.db.Query(ctx, `
-		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id, f.filename, m.created_at, m.updated_at, m.deleted_at
+		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
+		       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
+		       f.filename, m.created_at, m.updated_at, m.deleted_at
 		FROM messages m
 		LEFT JOIN files f ON m.attachment_file_id = f.id
 		WHERE m.session_id = $1 AND m.deleted_at IS NULL
@@ -86,6 +101,9 @@ func (r *messageRepository) GetBySessionId(ctx context.Context, sessionID int64,
 			&message.Content,
 			&message.Role,
 			&attachmentFileID,
+			&message.ToolCallID,
+			&message.ToolName,
+			&message.ToolCallsJSON,
 			&fname,
 			&message.CreatedAt,
 			&message.UpdatedAt,

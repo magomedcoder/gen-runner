@@ -1,6 +1,7 @@
 package mappers
 
 import (
+	"strings"
 	"time"
 
 	"github.com/magomedcoder/gen/api/pb/chatpb"
@@ -20,6 +21,18 @@ func MessageToProto(msg *domain.Message) *chatpb.ChatMessage {
 	}
 	if msg.AttachmentName != "" {
 		p.AttachmentName = &msg.AttachmentName
+	}
+	if msg.ToolCallID != "" {
+		v := msg.ToolCallID
+		p.ToolCallId = &v
+	}
+	if msg.ToolName != "" {
+		v := msg.ToolName
+		p.ToolName = &v
+	}
+	if msg.ToolCallsJSON != "" {
+		v := msg.ToolCallsJSON
+		p.ToolCallsJson = &v
 	}
 	return p
 }
@@ -46,6 +59,15 @@ func MessagesFromProto(pbMsgs []*chatpb.ChatMessage, sessionID int64) []*domain.
 		}
 		if m.AttachmentName != nil {
 			msg.AttachmentName = *m.AttachmentName
+		}
+		if m.ToolCallId != nil {
+			msg.ToolCallID = strings.TrimSpace(*m.ToolCallId)
+		}
+		if m.ToolName != nil {
+			msg.ToolName = strings.TrimSpace(*m.ToolName)
+		}
+		if m.ToolCallsJson != nil {
+			msg.ToolCallsJSON = strings.TrimSpace(*m.ToolCallsJson)
 		}
 		out = append(out, msg)
 	}
