@@ -38,7 +38,7 @@ func NewEditorHandler(editorUseCase *usecase.EditorUseCase, authUseCase *usecase
 }
 
 func (e *EditorHandler) Transform(ctx context.Context, req *editorpb.TransformRequest) (*editorpb.TransformResponse, error) {
-	_, err := GetUserFromContext(ctx, e.authUseCase)
+	user, err := GetUserFromContext(ctx, e.authUseCase)
 	if err != nil {
 		return nil, err
 	}
@@ -51,16 +51,20 @@ func (e *EditorHandler) Transform(ctx context.Context, req *editorpb.TransformRe
 		return nil, status.Error(codes.InvalidArgument, "текст не предоставлен")
 	}
 
-	logger.D("EditorHandler: transform type=%v model=%q", req.GetType(), req.GetModel())
+	logger.D("EditorHandler: transform type=%v", req.GetType())
 
 	out, err := e.editorUseCase.Transform(
 		ctx,
-		req.GetModel(),
+		user.Id,
 		req.GetText(),
 		req.GetType(),
 		req.GetPreserveMarkdown(),
 	)
 	if err != nil {
+		if mapped := statusForModelResolutionError(err); mapped != nil {
+			return nil, mapped
+		}
+
 		return nil, ToStatusError(codes.Internal, err)
 	}
 

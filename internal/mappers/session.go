@@ -13,7 +13,6 @@ func SessionToProto(session *domain.ChatSession) *chatpb.ChatSession {
 	return &chatpb.ChatSession{
 		Id:        session.Id,
 		Title:     session.Title,
-		Model:     session.Model,
 		CreatedAt: session.CreatedAt.Unix(),
 		UpdatedAt: session.UpdatedAt.Unix(),
 	}

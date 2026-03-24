@@ -46,7 +46,7 @@ class ChatSessionSettingsButton extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.inversePrimary.withOpacity(0.16),
+        color: theme.colorScheme.inversePrimary.withValues(alpha: 0.16),
         border: Border.all(color: theme.colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),

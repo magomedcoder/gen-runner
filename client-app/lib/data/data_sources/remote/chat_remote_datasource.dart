@@ -29,11 +29,10 @@ abstract class IChatRemoteDataSource {
 
   Stream<String> sendChatMessage(
     int sessionId,
-    List<Message> messages, {
-    String? model,
-  });
+    List<Message> messages,
+  );
 
-  Future<ChatSession> createSession(String title, {String? model});
+  Future<ChatSession> createSession(String title);
 
   Future<ChatSession> getSession(int sessionId);
 
@@ -49,7 +48,6 @@ abstract class IChatRemoteDataSource {
 
   Future<ChatSession> updateSessionTitle(int sessionId, String title);
 
-  Future<ChatSession> updateSessionModel(int sessionId, String model);
   Future<ChatSessionSettings> getSessionSettings(int sessionId);
   Future<ChatSessionSettings> updateSessionSettings({
     required int sessionId,
@@ -103,60 +101,105 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   @override
   Stream<String> sendChatMessage(
     int sessionId,
-    List<Message> messages, {
-    String? model,
-  }) async* {
+    List<Message> messages,
+  ) {
     Logs().d('ChatRemote: sendMessage sessionId=$sessionId');
-    try {
-      final lastUser = _lastUserMessage(messages);
-      if (lastUser == null) {
-        Logs().w('ChatRemote: sendMessage нет сообщения с role=user');
-        throw ApiFailure('Нет пользовательского сообщения для отправки');
+    final controller = StreamController<String>();
+    StreamSubscription<grpc.ChatResponse>? streamSubscription;
+
+    Future<void> closeWithError(Object error, [StackTrace? st]) async {
+      if (!controller.isClosed) {
+        controller.addError(error, st);
       }
-
-      final chatMessages = MessageMapper.listToProto([lastUser]);
-
-      final request = grpc.SendMessageRequest()
-        ..sessionId = Int64(sessionId)
-        ..messages.addAll(chatMessages);
-      if (model != null && model.isNotEmpty) {
-        request.model = model;
+      if (!controller.isClosed) {
+        await controller.close();
       }
-
-      final responseStream = _client.sendMessage(request);
-
-      await for (final response in responseStream) {
-        if (response.content.isNotEmpty) {
-          yield response.content;
-        }
-
-        if (response.done) {
-          break;
-        }
-      }
-      Logs().i('ChatRemote: sendMessage завершён');
-    } on GrpcError catch (e) {
-      if (e.code == StatusCode.deadlineExceeded) {
-        throw NetworkFailure('Таймаут запроса gRPC');
-      }
-      Logs().e('ChatRemote: sendMessage', exception: e);
-      throwGrpcError(e, 'Ошибка gRPC');
-    } on Failure {
-      rethrow;
-    } catch (e) {
-      Logs().e('ChatRemote: sendMessage', exception: e);
-      throw ApiFailure('Ошибка отправки сообщения');
     }
+
+    () async {
+      try {
+        final lastUser = _lastUserMessage(messages);
+        if (lastUser == null) {
+          Logs().w('ChatRemote: sendMessage нет сообщения с role=user');
+          throw ApiFailure('Нет пользовательского сообщения для отправки');
+        }
+
+        final chatMessages = MessageMapper.listToProto([lastUser]);
+
+        final request = grpc.SendMessageRequest()
+          ..sessionId = Int64(sessionId)
+          ..messages.addAll(chatMessages);
+        final responseStream = _client.sendMessage(request);
+        streamSubscription = responseStream.listen(
+          (response) {
+            if (controller.isClosed) {
+              return;
+            }
+            if (response.content.isNotEmpty) {
+              controller.add(response.content);
+            }
+            if (response.done) {
+              Logs().i('ChatRemote: sendMessage завершён');
+              controller.close();
+            }
+          },
+          onError: (Object e, StackTrace st) async {
+            if (e is GrpcError && e.code == StatusCode.deadlineExceeded) {
+              await closeWithError(NetworkFailure('Таймаут запроса gRPC'), st);
+              return;
+            }
+            if (e is GrpcError) {
+              Logs().e('ChatRemote: sendMessage', exception: e);
+              if (e.code == StatusCode.unauthenticated) {
+                await closeWithError(UnauthorizedFailure(kSessionExpiredMessage), st);
+              } else {
+                await closeWithError(NetworkFailure('Ошибка gRPC'), st);
+              }
+              return;
+            }
+            await closeWithError(ApiFailure('Ошибка отправки сообщения'), st);
+          },
+          onDone: () async {
+            if (!controller.isClosed) {
+              Logs().i('ChatRemote: sendMessage завершён');
+              await controller.close();
+            }
+          },
+          cancelOnError: true,
+        );
+      } on GrpcError catch (e) {
+        if (e.code == StatusCode.deadlineExceeded) {
+          await closeWithError(NetworkFailure('Таймаут запроса gRPC'));
+          return;
+        }
+        Logs().e('ChatRemote: sendMessage', exception: e);
+        if (e.code == StatusCode.unauthenticated) {
+          await closeWithError(UnauthorizedFailure(kSessionExpiredMessage));
+        } else {
+          await closeWithError(NetworkFailure('Ошибка gRPC'));
+        }
+      } on Failure catch (e, st) {
+        await closeWithError(e, st);
+      } catch (e, st) {
+        Logs().e('ChatRemote: sendMessage', exception: e);
+        await closeWithError(ApiFailure('Ошибка отправки сообщения'), st);
+      }
+    }();
+
+    controller.onCancel = () async {
+      Logs().d('ChatRemote: sendMessage отменён клиентом');
+      await streamSubscription?.cancel();
+      streamSubscription = null;
+    };
+
+    return controller.stream;
   }
 
   @override
-  Future<ChatSession> createSession(String title, {String? model}) async {
+  Future<ChatSession> createSession(String title) async {
     Logs().d('ChatRemote: createSession title=$title');
     try {
       final request = grpc.CreateSessionRequest(title: title);
-      if (model != null && model.isNotEmpty) {
-        request.model = model;
-      }
 
       final response = await _authGuard.execute(
         () => _client.createSession(request),
@@ -264,29 +307,6 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       throwGrpcError(e, 'Ошибка gRPC при обновлении заголовка: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка обновления заголовка: $e');
-    }
-  }
-
-  @override
-  Future<ChatSession> updateSessionModel(int sessionId, String model) async {
-    try {
-      final request = grpc.UpdateSessionModelRequest(
-        sessionId: Int64(sessionId),
-        model: model,
-      );
-
-      final response = await _authGuard.execute(
-        () => _client.updateSessionModel(request),
-      );
-
-      return SessionMapper.fromProto(response);
-    } on GrpcError catch (e) {
-      throwGrpcError(
-        e,
-        'Ошибка gRPC при обновлении модели сессии: ${e.message}',
-      );
-    } catch (e) {
-      throw ApiFailure('Ошибка обновления модели сессии: $e');
     }
   }
 

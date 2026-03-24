@@ -9,13 +9,11 @@ class TransformTextUseCase {
   Future<String> call({
     required String text,
     required grpc.TransformType type,
-    String? model,
     bool preserveMarkdown = false,
   }) {
     return repository.transform(
       text: text,
       type: type,
-      model: model,
       preserveMarkdown: preserveMarkdown,
     );
   }

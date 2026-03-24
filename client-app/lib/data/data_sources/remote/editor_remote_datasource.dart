@@ -10,7 +10,6 @@ abstract class IEditorRemoteDataSource {
   Future<String> transform({
     required String text,
     required grpc.TransformType type,
-    String? model,
     bool preserveMarkdown,
   });
 
@@ -44,10 +43,9 @@ class EditorRemoteDataSource implements IEditorRemoteDataSource {
   Future<String> transform({
     required String text,
     required grpc.TransformType type,
-    String? model,
     bool preserveMarkdown = false,
   }) async {
-    Logs().d('EditorRemoteDataSource: transform type=$type model=$model');
+    Logs().d('EditorRemoteDataSource: transform type=$type');
     await cancelTransform();
 
     final request = grpc.TransformRequest(
@@ -55,10 +53,6 @@ class EditorRemoteDataSource implements IEditorRemoteDataSource {
       type: type,
       preserveMarkdown: preserveMarkdown,
     );
-
-    if (model != null && model.isNotEmpty) {
-      request.model = model;
-    }
 
     Future<grpc.TransformResponse> invokeOnce() async {
       final rf = _client.transform(request);

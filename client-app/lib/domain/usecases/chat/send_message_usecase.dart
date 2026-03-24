@@ -8,9 +8,8 @@ class SendMessageUseCase {
 
   Stream<String> call(
     int sessionId,
-    List<Message> messages, {
-    String? model,
-  }) {
-    return repository.sendMessage(sessionId, messages, model: model);
+    List<Message> messages,
+  ) {
+    return repository.sendMessage(sessionId, messages);
   }
 }

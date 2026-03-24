@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/injector.dart' as di;
 import 'package:gen/core/layout/responsive.dart';
-import 'package:gen/presentation/screens/admin/runners_admin_screen.dart';
-import 'package:gen/presentation/screens/admin/users_admin_screen.dart';
+import 'package:gen/presentation/screens/admin/admin_screen.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_state.dart';
 import 'package:gen/presentation/screens/chat/chat_screen.dart';
@@ -50,14 +49,9 @@ class _HomeShellState extends State<HomeShell> {
 
   static const _adminNavExtra = <AppSideNavDestination>[
     AppSideNavDestination(
-      icon: Icons.supervisor_account_outlined,
-      selectedIcon: Icons.supervisor_account,
-      label: 'Пользователи',
-    ),
-    AppSideNavDestination(
-      icon: Icons.dns_outlined,
-      selectedIcon: Icons.dns_rounded,
-      label: 'Раннеры',
+      icon: Icons.admin_panel_settings_outlined,
+      selectedIcon: Icons.admin_panel_settings,
+      label: 'Админ',
     ),
   ];
 
@@ -92,8 +86,7 @@ class _HomeShellState extends State<HomeShell> {
           const ChatScreen(),
           _editorPage,
           const ProfileScreen(),
-          if (isAdmin) const UsersAdminScreen() else const SizedBox.shrink(),
-          if (isAdmin) const RunnersAdminScreen() else const SizedBox.shrink(),
+          if (isAdmin) const AdminScreen() else const SizedBox.shrink(),
         ];
 
         void select(int i) => setState(() => _index = i);

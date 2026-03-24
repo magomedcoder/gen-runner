@@ -11,26 +11,36 @@ import (
 )
 
 type EditorUseCase struct {
-	llmRepo     domain.LLMRepository
-	historyRepo domain.EditorHistoryRepository
+	llmRepo        domain.LLMRepository
+	preferenceRepo domain.ChatPreferenceRepository
+	historyRepo    domain.EditorHistoryRepository
 }
 
-func NewEditorUseCase(llmRepo domain.LLMRepository, historyRepo domain.EditorHistoryRepository) *EditorUseCase {
+func NewEditorUseCase(
+	llmRepo domain.LLMRepository,
+	preferenceRepo domain.ChatPreferenceRepository,
+	historyRepo domain.EditorHistoryRepository,
+) *EditorUseCase {
 	return &EditorUseCase{
-		llmRepo:     llmRepo,
-		historyRepo: historyRepo,
+		llmRepo:        llmRepo,
+		preferenceRepo: preferenceRepo,
+		historyRepo:    historyRepo,
 	}
 }
 
 func (e *EditorUseCase) Transform(
 	ctx context.Context,
-	model string,
+	userID int,
 	text string,
 	t editorpb.TransformType,
 	preserveMarkdown bool,
 ) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", fmt.Errorf("пустой текст")
+	}
+	resolvedModel, err := resolveModelForUser(ctx, e.llmRepo, e.preferenceRepo, userID, "", "")
+	if err != nil {
+		return "", err
 	}
 
 	sessionID := time.Now().UnixNano()
@@ -41,7 +51,7 @@ func (e *EditorUseCase) Transform(
 		domain.NewMessage(sessionID, wrapUserText(text), domain.MessageRoleUser),
 	}
 
-	ch, err := e.llmRepo.SendMessage(ctx, sessionID, model, messages, nil, 0, nil)
+	ch, err := e.llmRepo.SendMessage(ctx, sessionID, resolvedModel, messages, nil, 0, nil)
 	if err != nil {
 		return "", err
 	}

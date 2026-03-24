@@ -105,7 +105,7 @@ func main() {
 	llmRepo := runnerPool
 
 	chatUseCase := usecase.NewChatUseCase(sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, fileRepo, llmRepo, cfg.Attachments.SaveDir)
-	editorUseCase := usecase.NewEditorUseCase(llmRepo, editorHistoryRepo)
+	editorUseCase := usecase.NewEditorUseCase(llmRepo, chatPreferenceRepo, editorHistoryRepo)
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 
 	authHandler := handler.NewAuthHandler(cfg, authUseCase)

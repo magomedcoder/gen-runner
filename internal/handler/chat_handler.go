@@ -68,15 +68,21 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 		attachmentContent = lastMessage.AttachmentContent
 	}
 
-	responseChan, messageId, err := c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), req.GetModel(), userMessage, attachmentName, attachmentContent)
+	responseChan, messageId, err := c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), userMessage, attachmentName, attachmentContent)
 	if err != nil {
 		logger.E("SendMessage: %v", err)
+		if mapped := statusForModelResolutionError(err); mapped != nil {
+			return mapped
+		}
+
 		if errors.Is(err, document.ErrUnsupportedAttachmentType) || errors.Is(err, document.ErrInvalidTextEncoding) {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
+
 		if strings.Contains(err.Error(), "вложение") || strings.Contains(err.Error(), "размер вложения") {
 			return status.Error(codes.InvalidArgument, err.Error())
 		}
+
 		return ToStatusError(codes.Internal, err)
 	}
 	logger.V("SendMessage: стрим ответа запущен messageId=%d", messageId)
@@ -112,7 +118,7 @@ func (c *ChatHandler) CreateSession(ctx context.Context, req *chatpb.CreateSessi
 		return nil, err
 	}
 
-	session, err := c.chatUseCase.CreateSession(ctx, userID, req.GetTitle(), req.GetModel())
+	session, err := c.chatUseCase.CreateSession(ctx, userID, req.GetTitle())
 	if err != nil {
 		logger.E("CreateSession: %v", err)
 		return nil, ToStatusError(codes.Internal, err)
@@ -201,6 +207,7 @@ func (c *ChatHandler) DeleteSession(ctx context.Context, req *chatpb.DeleteSessi
 		return nil, ToStatusError(codes.Internal, err)
 	}
 	logger.I("DeleteSession: сессия удалена session=%d", req.SessionId)
+
 	return &commonpb.Empty{}, nil
 }
 
@@ -219,25 +226,11 @@ func (c *ChatHandler) UpdateSessionTitle(ctx context.Context, req *chatpb.Update
 	return mappers.SessionToProto(session), nil
 }
 
-func (c *ChatHandler) UpdateSessionModel(ctx context.Context, req *chatpb.UpdateSessionModelRequest) (*chatpb.ChatSession, error) {
-	userID, err := c.getUserID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	session, err := c.chatUseCase.UpdateSessionModel(ctx, userID, req.SessionId, req.GetModel())
-	if err != nil {
-		logger.E("UpdateSessionModel: %v", err)
-		return nil, ToStatusError(codes.Internal, err)
-	}
-
-	return mappers.SessionToProto(session), nil
-}
-
 func mapSessionSettings(s *domain.ChatSessionSettings) *chatpb.SessionSettings {
 	if s == nil {
 		return &chatpb.SessionSettings{}
 	}
+
 	return &chatpb.SessionSettings{
 		SessionId:      s.SessionID,
 		SystemPrompt:   s.SystemPrompt,
@@ -259,10 +252,12 @@ func (c *ChatHandler) GetSessionSettings(ctx context.Context, req *chatpb.GetSes
 	if err != nil {
 		return nil, err
 	}
+
 	s, err := c.chatUseCase.GetSessionSettings(ctx, userID, req.GetSessionId())
 	if err != nil {
 		return nil, ToStatusError(codes.Internal, err)
 	}
+
 	return mapSessionSettings(s), nil
 }
 
@@ -290,6 +285,7 @@ func (c *ChatHandler) UpdateSessionSettings(ctx context.Context, req *chatpb.Upd
 	if err != nil {
 		return nil, ToStatusError(codes.Internal, err)
 	}
+
 	return mapSessionSettings(s), nil
 }
 
@@ -302,10 +298,12 @@ func (c *ChatHandler) GetSelectedRunner(ctx context.Context, req *commonpb.Empty
 	if err != nil {
 		return nil, err
 	}
+
 	runner, err := c.chatUseCase.GetSelectedRunner(ctx, userID)
 	if err != nil {
 		return nil, ToStatusError(codes.Internal, err)
 	}
+
 	return &chatpb.SelectedRunnerResponse{Runner: runner}, nil
 }
 
@@ -314,9 +312,11 @@ func (c *ChatHandler) SetSelectedRunner(ctx context.Context, req *chatpb.SetSele
 	if err != nil {
 		return nil, err
 	}
+
 	if err := c.chatUseCase.SetSelectedRunner(ctx, userID, req.GetRunner()); err != nil {
 		return nil, ToStatusError(codes.Internal, err)
 	}
+
 	return &commonpb.Empty{}, nil
 }
 
@@ -325,10 +325,12 @@ func (c *ChatHandler) GetDefaultRunnerModel(ctx context.Context, req *chatpb.Get
 	if err != nil {
 		return nil, err
 	}
+
 	model, err := c.chatUseCase.GetDefaultRunnerModel(ctx, userID, req.GetRunner())
 	if err != nil {
 		return nil, ToStatusError(codes.Internal, err)
 	}
+
 	return &chatpb.DefaultRunnerModelResponse{Model: model}, nil
 }
 
@@ -337,8 +339,10 @@ func (c *ChatHandler) SetDefaultRunnerModel(ctx context.Context, req *chatpb.Set
 	if err != nil {
 		return nil, err
 	}
+
 	if err := c.chatUseCase.SetDefaultRunnerModel(ctx, userID, req.GetRunner(), req.GetModel()); err != nil {
 		return nil, ToStatusError(codes.Internal, err)
 	}
+
 	return &commonpb.Empty{}, nil
 }

@@ -51,7 +51,12 @@ class ChatRunnerSelector extends StatelessWidget {
             value: runner,
             child: Row(
               children: [
-                Expanded(child: Text(runner)),
+                Expanded(
+                  child: Text(
+                    state.runnerNames[runner] ?? runner,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
                 if (runner == (selected ?? runners.first))
                   Icon(
                     Icons.check_rounded,

@@ -93,7 +93,6 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
       final out = await transformTextUseCase(
         text: input,
         type: state.type,
-        model: state.selectedRunner,
         preserveMarkdown: state.preserveMarkdown,
       );
 

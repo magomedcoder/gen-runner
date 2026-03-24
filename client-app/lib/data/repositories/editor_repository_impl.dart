@@ -13,14 +13,12 @@ class EditorRepositoryImpl implements EditorRepository {
   Future<String> transform({
     required String text,
     required grpc.TransformType type,
-    String? model,
     bool preserveMarkdown = false,
   }) async {
     try {
       return await dataSource.transform(
         text: text,
         type: type,
-        model: model,
         preserveMarkdown: preserveMarkdown,
       );
     } catch (e) {

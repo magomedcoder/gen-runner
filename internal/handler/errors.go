@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strings"
+
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -25,6 +27,8 @@ func safeMessage(code codes.Code) string {
 		return "не найдено"
 	case codes.InvalidArgument:
 		return "неверный запрос"
+	case codes.FailedPrecondition:
+		return "сервис не готов к выполнению запроса"
 	case codes.PermissionDenied:
 		return "доступ запрещён"
 	case codes.Unavailable:
@@ -32,4 +36,21 @@ func safeMessage(code codes.Code) string {
 	default:
 		return "произошла ошибка"
 	}
+}
+
+func statusForModelResolutionError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	msg := err.Error()
+	if strings.Contains(msg, "модель") && strings.Contains(msg, "недоступна") {
+		return status.Error(codes.InvalidArgument, msg)
+	}
+
+	if strings.Contains(msg, "нет доступных моделей") {
+		return status.Error(codes.FailedPrecondition, msg)
+	}
+
+	return nil
 }

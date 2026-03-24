@@ -7,7 +7,6 @@ import 'package:gen/core/log/logs.dart';
 import 'package:gen/core/request_logout_on_unauthorized.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/runner_info.dart';
-import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/usecases/chat/connect_usecase.dart';
 import 'package:gen/domain/usecases/chat/create_session_usecase.dart';
 import 'package:gen/domain/usecases/chat/delete_session_usecase.dart';
@@ -17,7 +16,6 @@ import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_session_settings_usecase.dart';
 import 'package:gen/domain/usecases/chat/send_message_usecase.dart';
 import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
-import 'package:gen/domain/usecases/chat/update_session_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_settings_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_title_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_runners_usecase.dart';
@@ -32,7 +30,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final AuthBloc authBloc;
   final ConnectUseCase connectUseCase;
   final GetRunnersUseCase getRunnersUseCase;
-  final UpdateSessionModelUseCase updateSessionModelUseCase;
   final GetSessionSettingsUseCase getSessionSettingsUseCase;
   final UpdateSessionSettingsUseCase updateSessionSettingsUseCase;
   final SendMessageUseCase sendMessageUseCase;
@@ -52,7 +49,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     required this.authBloc,
     required this.connectUseCase,
     required this.getRunnersUseCase,
-    required this.updateSessionModelUseCase,
     required this.getSessionSettingsUseCase,
     required this.updateSessionSettingsUseCase,
     required this.sendMessageUseCase,
@@ -93,6 +89,20 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     return sorted;
   }
 
+  Map<String, String> _extractRunnerNames(List<RunnerInfo> runners) {
+    final names = <String, String>{};
+    for (final runner in runners) {
+      if (!runner.enabled || runner.address.isEmpty) {
+        continue;
+      }
+
+      final name = runner.name.trim();
+      names[runner.address] = name.isNotEmpty ? name : runner.address;
+    }
+
+    return names;
+  }
+
   Future<void> _onChatStarted(
     ChatStarted event,
     Emitter<ChatState> emit,
@@ -117,15 +127,21 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
           final sessions = await sessionsFuture;
           List<String> runners = const [];
+          Map<String, String> runnerNames = const {};
           String? selectedRunner;
           try {
-            runners = _extractAvailableRunners(await runnersFuture);
+            final runnerInfos = await runnersFuture;
+            runners = _extractAvailableRunners(runnerInfos);
+            runnerNames = _extractRunnerNames(runnerInfos);
             if (runners.isNotEmpty && state.selectedRunner == null) {
               final defaultRunner = await getSelectedRunnerUseCase();
               if (defaultRunner != null && runners.contains(defaultRunner)) {
                 selectedRunner = defaultRunner;
               } else {
                 selectedRunner = runners.first;
+                try {
+                  await setSelectedRunnerUseCase(selectedRunner);
+                } catch (_) {}
               }
             }
           } catch (_) {}
@@ -147,13 +163,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               emit(state.copyWith(sessionSettings: s));
             } catch (_) {}
 
-            if (selectedRunner == null && runners.isNotEmpty && sessions.isNotEmpty) {
-              final firstSession = sessions.first;
-              if (firstSession.model != null && firstSession.model!.isNotEmpty && runners.contains(firstSession.model)) {
-                selectedRunner = firstSession.model;
-              } else {
-                selectedRunner = runners.first;
-              }
+            if (selectedRunner == null && runners.isNotEmpty) {
+              selectedRunner = runners.first;
             }
           }
 
@@ -165,6 +176,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               currentSessionId: currentSessionId,
               messages: messages,
               runners: runners,
+              runnerNames: runnerNames,
               selectedRunner: selectedRunner ?? state.selectedRunner,
               hasActiveRunners: hasActiveRunners,
               error: null,
@@ -270,23 +282,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       String? runnerForSession = state.selectedRunner;
       if (state.runners.isNotEmpty) {
-        ChatSession? serverSession;
-        for (final s in state.sessions) {
-          if (s.id == event.sessionId) {
-            serverSession = s;
-            break;
-          }
-        }
-
-        if (serverSession?.model != null &&
-            serverSession!.model!.isNotEmpty &&
-            state.runners.contains(serverSession.model)) {
-          runnerForSession = serverSession.model;
-        } else {
-          if (runnerForSession == null ||
-              !state.runners.contains(runnerForSession)) {
-            runnerForSession ??= state.runners.first;
-          }
+        if (runnerForSession == null ||
+            !state.runners.contains(runnerForSession)) {
+          runnerForSession = state.runners.first;
         }
       }
 
@@ -374,17 +372,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     var sessionId = state.currentSessionId;
     if (sessionId == null) {
       try {
-        final session = await createSessionUseCase(
-          model: state.selectedRunner ?? (state.runners.isNotEmpty ? state.runners.first : null),
-        );
+        final session = await createSessionUseCase();
         sessionId = session.id;
-
-        final modelToSave = state.selectedRunner ?? (state.runners.isNotEmpty ? state.runners.first : null);
-        if (modelToSave != null) {
-          try {
-            await updateSessionModelUseCase(sessionId, modelToSave);
-          } catch (_) {}
-        }
 
         final updatedSessions = [session, ...state.sessions];
 
@@ -441,7 +430,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final stream = sendMessageUseCase(
         sessionId,
         updatedMessages,
-        model: state.selectedRunner,
       );
 
       _streamSubscription = stream.listen(
@@ -486,11 +474,15 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           clearRetryPayload: true,
         ));
       } else {
+        Logs().w('ChatBloc: пустой ответ от сервера при отправке сообщения');
         emit(state.copyWith(
           isLoading: false,
           isStreaming: false,
           currentStreamingText: null,
-          clearRetryPayload: true,
+          error: 'Сервер не вернул ответ. Проверьте доступность раннера и попробуйте снова.',
+          retryText: event.text,
+          retryAttachmentFileName: event.attachmentFileName,
+          retryAttachmentContent: event.attachmentContent,
         ));
       }
     } on Object catch (e) {
@@ -632,7 +624,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     Emitter<ChatState> emit,
   ) async {
     try {
-      final runners = _extractAvailableRunners(await getRunnersUseCase());
+      final runnerInfos = await getRunnersUseCase();
+      final runners = _extractAvailableRunners(runnerInfos);
+      final runnerNames = _extractRunnerNames(runnerInfos);
       String? selectedRunner = state.selectedRunner;
       if (runners.isNotEmpty && selectedRunner == null) {
         final defaultRunner = await getSelectedRunnerUseCase();
@@ -640,15 +634,22 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           selectedRunner = defaultRunner;
         } else {
           selectedRunner = runners.first;
+          try {
+            await setSelectedRunnerUseCase(selectedRunner);
+          } catch (_) {}
         }
       }
 
       if (runners.isNotEmpty && selectedRunner != null && !runners.contains(selectedRunner)) {
         selectedRunner = runners.first;
+        try {
+          await setSelectedRunnerUseCase(selectedRunner);
+        } catch (_) {}
       }
 
       emit(state.copyWith(
         runners: runners,
+        runnerNames: runnerNames,
         selectedRunner: selectedRunner ?? state.selectedRunner,
       ));
     } catch (_) {}
@@ -658,29 +659,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatSelectRunner event,
     Emitter<ChatState> emit,
   ) async {
-    final sessionId = state.currentSessionId;
     try {
       await setSelectedRunnerUseCase(event.runner);
     } catch (_) {}
-    if (sessionId != null) {
-      try {
-        await updateSessionModelUseCase(sessionId, event.runner);
-      } catch (_) {}
-    }
-    final updatedSessions = state.sessions.map((s) {
-      if (s.id == sessionId) {
-        return ChatSession(
-          id: s.id,
-          title: s.title,
-          createdAt: s.createdAt,
-          updatedAt: s.updatedAt,
-          model: event.runner,
-        );
-      }
-      return s;
-    }).toList();
     emit(
-      state.copyWith(selectedRunner: event.runner, sessions: updatedSessions),
+      state.copyWith(selectedRunner: event.runner),
     );
   }
 

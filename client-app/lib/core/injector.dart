@@ -33,7 +33,6 @@ import 'package:gen/domain/usecases/chat/get_sessions_usecase.dart';
 import 'package:gen/domain/usecases/chat/send_message_usecase.dart';
 import 'package:gen/domain/usecases/chat/set_default_runner_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
-import 'package:gen/domain/usecases/chat/update_session_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_settings_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_title_usecase.dart';
 import 'package:gen/domain/usecases/editor/transform_text_usecase.dart';
@@ -122,7 +121,6 @@ Future<void> init() async {
   sl.registerFactory(() => GetSessionsUseCase(sl()));
   sl.registerFactory(() => GetSessionMessagesUseCase(sl()));
   sl.registerFactory(() => GetSessionSettingsUseCase(sl()));
-  sl.registerFactory(() => UpdateSessionModelUseCase(sl()));
   sl.registerFactory(() => UpdateSessionSettingsUseCase(sl()));
   sl.registerFactory(() => GetSelectedRunnerUseCase(sl()));
   sl.registerFactory(() => SetSelectedRunnerUseCase(sl()));
@@ -160,7 +158,6 @@ Future<void> init() async {
       authBloc: sl<AuthBloc>(),
       connectUseCase: sl(),
       getRunnersUseCase: sl(),
-      updateSessionModelUseCase: sl(),
       getSessionSettingsUseCase: sl(),
       updateSessionSettingsUseCase: sl(),
       sendMessageUseCase: sl(),

@@ -33,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loadingRunnerPrefs = true;
   bool _savingRunnerPref = false;
   List<String> _availableRunners = const [];
+  Map<String, String> _runnerNames = const {};
   String? _selectedRunner;
 
   List<String> _extractAvailableRunners(List<RunnerInfo> runners) {
@@ -44,16 +45,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return sorted;
   }
 
+  Map<String, String> _extractRunnerNames(List<RunnerInfo> runners) {
+    final names = <String, String>{};
+    for (final runner in runners) {
+      if (!runner.enabled || runner.address.isEmpty) {
+        continue;
+      }
+
+      final name = runner.name.trim();
+      names[runner.address] = name.isNotEmpty ? name : runner.address;
+    }
+
+    return names;
+  }
+
   Future<void> _loadRunnerPreferences() async {
     setState(() => _loadingRunnerPrefs = true);
     try {
       final runners = await sl<GetRunnersUseCase>()();
       final selected = await sl<GetSelectedRunnerUseCase>()();
       final available = _extractAvailableRunners(runners);
+      final runnerNames = _extractRunnerNames(runners);
+      String? effectiveSelected = selected != null && available.contains(selected) ? selected : null;
+      if (effectiveSelected == null && available.isNotEmpty) {
+        effectiveSelected = available.first;
+        await sl<SetSelectedRunnerUseCase>()(effectiveSelected);
+      }
+
       setState(() {
         _availableRunners = available;
-        _selectedRunner =
-            selected != null && available.contains(selected) ? selected : null;
+        _runnerNames = runnerNames;
+        _selectedRunner = effectiveSelected;
       });
     } catch (_) {
       if (!mounted) {
@@ -295,7 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     for (final address in _availableRunners)
                       DropdownMenuItem<String?>(
                         value: address,
-                        child: Text(address),
+                        child: Text(_runnerNames[address] ?? address),
                       ),
                   ],
                   onChanged: _loadingRunnerPrefs || _savingRunnerPref

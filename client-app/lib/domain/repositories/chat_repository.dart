@@ -9,11 +9,10 @@ abstract interface class ChatRepository {
 
   Stream<String> sendMessage(
     int sessionId,
-    List<Message> messages, {
-    String? model,
-  });
+    List<Message> messages,
+  );
 
-  Future<ChatSession> createSession(String title, {String? model});
+  Future<ChatSession> createSession(String title);
 
   Future<ChatSession> getSession(int sessionId);
 
@@ -29,7 +28,6 @@ abstract interface class ChatRepository {
 
   Future<ChatSession> updateSessionTitle(int sessionId, String title);
 
-  Future<ChatSession> updateSessionModel(int sessionId, String model);
   Future<ChatSessionSettings> getSessionSettings(int sessionId);
   Future<ChatSessionSettings> updateSessionSettings({
     required int sessionId,

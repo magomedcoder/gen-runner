@@ -15,6 +15,7 @@ class ChatState extends Equatable {
   final String? currentStreamingText;
   final String? error;
   final List<String> runners;
+  final Map<String, String> runnerNames;
   final String? selectedRunner;
   final bool? hasActiveRunners;
   final ChatSessionSettings? sessionSettings;
@@ -32,6 +33,7 @@ class ChatState extends Equatable {
     this.currentStreamingText,
     this.error,
     this.runners = const [],
+    this.runnerNames = const {},
     this.selectedRunner,
     this.hasActiveRunners,
     this.sessionSettings,
@@ -50,6 +52,7 @@ class ChatState extends Equatable {
     String? currentStreamingText,
     String? error,
     List<String>? runners,
+    Map<String, String>? runnerNames,
     String? selectedRunner,
     bool? hasActiveRunners,
     ChatSessionSettings? sessionSettings,
@@ -70,6 +73,7 @@ class ChatState extends Equatable {
       currentStreamingText: currentStreamingText,
       error: error,
       runners: runners ?? this.runners,
+      runnerNames: runnerNames ?? this.runnerNames,
       selectedRunner: selectedRunner ?? this.selectedRunner,
       hasActiveRunners: hasActiveRunners ?? this.hasActiveRunners,
       sessionSettings: sessionSettings ?? this.sessionSettings,
@@ -94,6 +98,7 @@ class ChatState extends Equatable {
     currentStreamingText,
     error,
     runners,
+    runnerNames,
     selectedRunner,
     hasActiveRunners,
     sessionSettings,

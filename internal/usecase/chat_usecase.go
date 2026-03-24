@@ -78,11 +78,17 @@ func (c *ChatUseCase) GetModels(ctx context.Context) ([]string, error) {
 	return c.llmRepo.GetModels(ctx)
 }
 
-func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int64, model string, userMessage string, attachmentName string, attachmentContent []byte) (chan string, int64, error) {
-	logger.D("SendMessage: session=%d user=%d model=%s", sessionId, userId, model)
-	_, err := c.verifySessionOwnership(ctx, userId, sessionId)
+func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int64, userMessage string, attachmentName string, attachmentContent []byte) (chan string, int64, error) {
+	logger.D("SendMessage: session=%d user=%d", sessionId, userId)
+	session, err := c.verifySessionOwnership(ctx, userId, sessionId)
 	if err != nil {
 		logger.W("SendMessage: сессия не принадлежит пользователю: %v", err)
+		return nil, 0, err
+	}
+
+	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", session.Model)
+	if err != nil {
+		logger.W("SendMessage: выбор модели: %v", err)
 		return nil, 0, err
 	}
 
@@ -173,7 +179,8 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 			genParams.Tools = parsedTools
 		}
 	}
-	responseChan, err := c.llmRepo.SendMessage(ctx, sessionId, model, messagesForLLM, stopSequences, timeoutSeconds, genParams)
+
+	responseChan, err := c.llmRepo.SendMessage(ctx, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
 	if err != nil {
 		logger.E("SendMessage: вызов LLM: %v", err)
 		return nil, 0, err
@@ -261,12 +268,16 @@ func parseToolsJSON(raw string) []domain.Tool {
 	return tools
 }
 
-func (c *ChatUseCase) CreateSession(ctx context.Context, userId int, title string, model string) (*domain.ChatSession, error) {
+func (c *ChatUseCase) CreateSession(ctx context.Context, userId int, title string) (*domain.ChatSession, error) {
 	if strings.TrimSpace(title) == "" {
 		title = "Чат от " + time.Now().Format("15:04:05 02.01.2006")
 	}
 
-	session := domain.NewChatSession(userId, title, model)
+	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", "")
+	if err != nil {
+		return nil, err
+	}
+	session := domain.NewChatSession(userId, title, resolvedModel)
 	if err := c.sessionRepo.Create(ctx, session); err != nil {
 		return nil, err
 	}
@@ -307,20 +318,6 @@ func (c *ChatUseCase) UpdateSessionTitle(ctx context.Context, userId int, sessio
 	}
 
 	session.Title = title
-	if err := c.sessionRepo.Update(ctx, session); err != nil {
-		return nil, err
-	}
-
-	return session, nil
-}
-
-func (c *ChatUseCase) UpdateSessionModel(ctx context.Context, userId int, sessionId int64, model string) (*domain.ChatSession, error) {
-	session, err := c.verifySessionOwnership(ctx, userId, sessionId)
-	if err != nil {
-		return nil, err
-	}
-
-	session.Model = model
 	if err := c.sessionRepo.Update(ctx, session); err != nil {
 		return nil, err
 	}

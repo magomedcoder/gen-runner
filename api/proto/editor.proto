@@ -28,8 +28,7 @@ enum TransformType {
 message TransformRequest {
   string text = 1;
   TransformType type = 2;
-  string model = 3;
-  bool preserve_markdown = 4;
+  bool preserve_markdown = 3;
 }
 
 message TransformResponse {

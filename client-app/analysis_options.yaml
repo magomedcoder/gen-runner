@@ -9,6 +9,16 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  errors:
+    unused_import: warning
+    unnecessary_import: warning
+    dead_code: warning
+    unused_element: warning
+    unused_field: warning
+    unused_local_variable: warning
+    unused_shown_name: warning
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
@@ -21,13 +31,6 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
-    unused_import: true
-    unnecessary_import: true
-    dead_code: true
-    unused_element: true
-    unused_field: true
-    unused_local_variable: true
-    unused_shown_name: true
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
 

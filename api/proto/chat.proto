@@ -31,8 +31,6 @@ service ChatService {
 
   rpc UpdateSessionTitle(UpdateSessionTitleRequest) returns (ChatSession);
 
-  rpc UpdateSessionModel(UpdateSessionModelRequest) returns (ChatSession);
-
   rpc GetSessionSettings(GetSessionSettingsRequest) returns (SessionSettings);
 
   rpc UpdateSessionSettings(UpdateSessionSettingsRequest) returns (SessionSettings);
@@ -64,7 +62,6 @@ message ChatResponse {
 message SendMessageRequest {
   int64 session_id = 1;
   repeated ChatMessage messages = 2;
-  string model = 3;
 }
 
 message ChatSession {
@@ -72,7 +69,6 @@ message ChatSession {
   string title = 2;
   int64 created_at = 3;
   int64 updated_at = 4;
-  string model = 5;
 }
 
 message GetSessionsRequest {
@@ -89,7 +85,6 @@ message GetSessionsResponse {
 
 message CreateSessionRequest {
   string title = 1;
-  string model = 2;
 }
 
 message GetSessionRequest {
@@ -116,11 +111,6 @@ message DeleteSessionRequest {
 message UpdateSessionTitleRequest {
   int64 session_id = 1;
   string title = 2;
-}
-
-message UpdateSessionModelRequest {
-  int64 session_id = 1;
-  string model = 2;
 }
 
 message GetSessionSettingsRequest {

@@ -24,20 +24,19 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Stream<String> sendMessage(
     int sessionId,
-    List<Message> messages, {
-    String? model,
-  }) {
+    List<Message> messages,
+  ) {
     try {
-      return dataSource.sendChatMessage(sessionId, messages, model: model);
+      return dataSource.sendChatMessage(sessionId, messages);
     } catch (e) {
       throw ApiFailure('Ошибка создания потока сообщений: $e');
     }
   }
 
   @override
-  Future<ChatSession> createSession(String title, {String? model}) async {
+  Future<ChatSession> createSession(String title) async {
     try {
-      return await dataSource.createSession(title, model: model);
+      return await dataSource.createSession(title);
     } catch (e) {
       throw ApiFailure('Ошибка создания сессии: $e');
     }
@@ -89,15 +88,6 @@ class ChatRepositoryImpl implements ChatRepository {
       return await dataSource.updateSessionTitle(sessionId, title);
     } catch (e) {
       throw ApiFailure('Ошибка обновления заголовка сессии: $e');
-    }
-  }
-
-  @override
-  Future<ChatSession> updateSessionModel(int sessionId, String model) async {
-    try {
-      return await dataSource.updateSessionModel(sessionId, model);
-    } catch (e) {
-      throw ApiFailure('Ошибка обновления модели сессии: $e');
     }
   }
 

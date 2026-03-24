@@ -12,8 +12,8 @@ class CreateSessionUseCase {
     return 'Чат от ${z2(now.hour)}:${z2(now.minute)}:${z2(now.second)} ${z2(now.day)}.${z2(now.month)}.${now.year}';
   }
 
-  Future<ChatSession> call({String? title, String? model}) async {
+  Future<ChatSession> call({String? title}) async {
     final sessionTitle = title ?? defaultTitle();
-    return repository.createSession(sessionTitle, model: model);
+    return repository.createSession(sessionTitle);
   }
 }

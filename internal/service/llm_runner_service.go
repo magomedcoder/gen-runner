@@ -151,25 +151,33 @@ func (s *LLMRunnerService) SendMessage(
 		return nil, fmt.Errorf("llm-runner SendMessage: %w", err)
 	}
 
+	firstMsg, err := stream.Recv()
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner stream recv: %w", err)
+	}
+
 	output := make(chan string, 100)
 
 	go func() {
 		defer close(output)
+		current := firstMsg
 		for {
+			if current.Content != "" {
+				select {
+				case <-ctx.Done():
+					return
+				case output <- current.Content:
+				}
+			}
+			if current.Done {
+				return
+			}
+
 			msg, err := stream.Recv()
 			if err != nil {
 				return
 			}
-			if msg.Content != "" {
-				select {
-				case <-ctx.Done():
-					return
-				case output <- msg.Content:
-				}
-			}
-			if msg.Done {
-				return
-			}
+			current = msg
 		}
 	}()
 
