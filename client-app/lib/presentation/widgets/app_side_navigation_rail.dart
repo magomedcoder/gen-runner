@@ -137,7 +137,9 @@ class _SideNavItemState extends State<_SideNavItem> {
     if (widget.selected) {
       if (_hover) {
         return Color.alphaBlend(
-          Colors.white.withValues(alpha: _hoverSelectedWhiteBlend),
+          Theme.of(context).colorScheme.onSurface.withValues(
+            alpha: _hoverSelectedWhiteBlend,
+          ),
           c,
         );
       }

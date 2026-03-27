@@ -235,11 +235,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return null;
   }
 
+  Widget _settingsSection(
+    BuildContext context, {
+    required String title,
+    required Widget child,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final config = sl<ServerConfig>();
     final horizontal = Breakpoints.isMobile(context) ? 16.0 : 24.0;
     final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
     return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, auth) {
@@ -252,221 +280,206 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ].where((s) => s.isNotEmpty).join(' ');
 
         return Scaffold(
-          appBar: AppBar(title: const Text('Профиль')),
+          appBar: AppBar(
+            title: const Text('Профиль'),
+            actions: [
+              IconButton(
+                onPressed: auth.isLoading ? null : _confirmLogout,
+                tooltip: 'Выйти из аккаунта',
+                icon: const Icon(Icons.logout),
+              ),
+            ],
+          ),
           body: SafeArea(
             child: ListView(
               padding: EdgeInsets.fromLTRB(horizontal, 16, horizontal, 24),
               children: [
-                Text(
-                  'Аккаунт',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  user == null
-                    ? 'Пользователь'
-                    : (displayName.isEmpty ? user.username : displayName),
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  user?.username ?? '-',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 20),
-                Divider(color: scheme.outlineVariant),
-                const SizedBox(height: 20),
-                Text(
-                  'Сервер',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 8),
-                SelectableText(
-                  _serverLabel(config),
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-                const SizedBox(height: 20),
-                Divider(color: scheme.outlineVariant),
-                const SizedBox(height: 20),
-                Text(
-                  'Раннер по умолчанию',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 8),
-                if (_loadingRunnerPrefs)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                _settingsSection(
+                  context,
+                  title: 'Аккаунт',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user == null
+                          ? 'Пользователь'
+                          : (displayName.isEmpty ? user.username : displayName),
+                        style: textTheme.titleLarge,
                       ),
-                    ),
-                  )
-                else if (_availableRunners.isEmpty)
-                  Text(
-                    'Нет доступных раннеров',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  )
-                else
-                  DropdownButtonFormField<String>(
-                    value: _selectedRunner ?? _availableRunners.first,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                      labelText: 'Раннер',
-                    ),
-                    items: [
-                      for (final address in _availableRunners)
-                        DropdownMenuItem<String>(
-                          value: address,
-                          child: Text(_runnerNames[address] ?? address),
+                      const SizedBox(height: 4),
+                      Text(
+                        '@${user?.username ?? '-'}',
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
                         ),
+                      ),
                     ],
-                    onChanged: _savingRunnerPref
-                        ? null
-                        : (value) {
-                          if (value != null) {
-                            _setSelectedRunner(value);
-                          }
-                        },
                   ),
-                const SizedBox(height: 20),
-                Divider(color: scheme.outlineVariant),
-                const SizedBox(height: 20),
-                Text(
-                  'Смена пароля',
-                  style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 12),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      TextFormField(
-                        controller: _oldPasswordController,
-                        obscureText: _obscureOld,
-                        textInputAction: TextInputAction.next,
-                        decoration: LoginFormDecoration.field(
-                          labelText: 'Текущий пароль',
-                          hintText: 'Введите текущий пароль',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscureOld
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            ),
-                            onPressed: () =>
-                                setState(() => _obscureOld = !_obscureOld),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Введите текущий пароль';
-                          }
-
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _newPasswordController,
-                        obscureText: _obscureNew,
-                        textInputAction: TextInputAction.next,
-                        decoration: LoginFormDecoration.field(
-                          labelText: 'Новый пароль',
-                          hintText: 'Не менее 8 символов',
-                          prefixIcon: const Icon(Icons.lock_outlined),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscureNew
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            ),
-                            onPressed: () => setState(() => _obscureNew = !_obscureNew),
-                          ),
-                        ),
-                        validator: _validateNewPassword,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _confirmPasswordController,
-                        obscureText: _obscureConfirm,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _submitChangePassword(),
-                        decoration: LoginFormDecoration.field(
-                          labelText: 'Повторите новый пароль',
-                          hintText: 'Тот же пароль ещё раз',
-                          prefixIcon: const Icon(Icons.lock_outlined),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscureConfirm
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            ),
-                            onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Повторите новый пароль';
-                          }
-
-                          if (value != _newPasswordController.text) {
-                            return 'Пароли не совпадают';
-                          }
-
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      FilledButton(
-                        onPressed: _savingPassword  ? null : _submitChangePassword,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: _savingPassword
-                          ? SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.onPrimary),
-                            ),
-                          )
-                          : const Text('Сохранить новый пароль'),
-                      ),
-                    ],
+                _settingsSection(
+                  context,
+                  title: 'Сервер',
+                  child: SelectableText(
+                    _serverLabel(config),
+                    style: textTheme.bodyLarge,
                   ),
                 ),
-                const SizedBox(height: 20),
-                Divider(color: scheme.outlineVariant),
-                const SizedBox(height: 20),
-                OutlinedButton.icon(
-                  onPressed: auth.isLoading ? null : _confirmLogout,
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Выйти из аккаунта'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    foregroundColor: scheme.onSurface,
-                    side: BorderSide(color: scheme.outlineVariant),
+                const SizedBox(height: 12),
+                _settingsSection(
+                  context,
+                  title: 'Раннер по умолчанию',
+                  child: _loadingRunnerPrefs
+                    ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                    : _availableRunners.isEmpty
+                      ? Text(
+                        'Нет доступных раннеров',
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      )
+                      : DropdownButtonFormField<String>(
+                        initialValue: _selectedRunner ?? _availableRunners.first,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          labelText: 'Раннер',
+                        ),
+                        items: [
+                          for (final address in _availableRunners)
+                            DropdownMenuItem<String>(
+                              value: address,
+                              child: Text(_runnerNames[address] ?? address),
+                            ),
+                        ],
+                        onChanged: _savingRunnerPref
+                          ? null
+                          : (value) {
+                            if (value != null) {
+                              _setSelectedRunner(value);
+                            }
+                          },
+                      ),
+                ),
+                const SizedBox(height: 12),
+                _settingsSection(
+                  context,
+                  title: 'Смена пароля',
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextFormField(
+                          controller: _oldPasswordController,
+                          obscureText: _obscureOld,
+                          textInputAction: TextInputAction.next,
+                          decoration: LoginFormDecoration.field(
+                            labelText: 'Текущий пароль',
+                            hintText: 'Введите текущий пароль',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureOld
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              ),
+                              onPressed: () => setState(() => _obscureOld = !_obscureOld),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Введите текущий пароль';
+                            }
+
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _newPasswordController,
+                          obscureText: _obscureNew,
+                          textInputAction: TextInputAction.next,
+                          decoration: LoginFormDecoration.field(
+                            labelText: 'Новый пароль',
+                            hintText: 'Не менее 8 символов',
+                            prefixIcon: const Icon(Icons.lock_outlined),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureNew
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              ),
+                              onPressed: () => setState(() => _obscureNew = !_obscureNew),
+                            ),
+                          ),
+                          validator: _validateNewPassword,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _confirmPasswordController,
+                          obscureText: _obscureConfirm,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _submitChangePassword(),
+                          decoration: LoginFormDecoration.field(
+                            labelText: 'Повторите новый пароль',
+                            hintText: 'Тот же пароль ещё раз',
+                            prefixIcon: const Icon(Icons.lock_outlined),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureConfirm
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              ),
+                              onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Повторите новый пароль';
+                            }
+
+                            if (value != _newPasswordController.text) {
+                              return 'Пароли не совпадают';
+                            }
+
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 20),
+                        FilledButton(
+                          onPressed: _savingPassword ? null : _submitChangePassword,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: _savingPassword
+                            ? SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).colorScheme.onPrimary,
+                                ),
+                              ),
+                            )
+                            : const Text('Сохранить'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],

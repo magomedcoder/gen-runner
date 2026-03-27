@@ -217,7 +217,6 @@ class _EditorScreenState extends State<EditorScreen> {
               child: Icon(
                 Icons.auto_awesome_rounded,
                 size: 22,
-                color: colorScheme.primary,
               ),
             ),
           ),
@@ -268,7 +267,8 @@ class _EditorScreenState extends State<EditorScreen> {
           color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+            color: theme.colorScheme.primary.withValues(alpha: 0.5),
+            width: 2
           ),
         ),
         child: Padding(
@@ -296,7 +296,7 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
+              color: colorScheme.shadow.withValues(alpha: 0.24),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -463,7 +463,6 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: Icon(
                   Icons.subject_rounded,
                   size: 20,
-                  color: colorScheme.primary,
                 ),
               ),
               const SizedBox(width: 12),
@@ -488,12 +487,12 @@ class _EditorScreenState extends State<EditorScreen> {
                     Clipboard.setData(ClipboardData(text: text));
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: const Row(
+                        content: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.check, color: Colors.white, size: 18),
-                            SizedBox(width: 8),
-                            Text('Скопировано'),
+                            Icon(Icons.check, size: 18),
+                            const SizedBox(width: 8),
+                            const Text('Скопировано'),
                           ],
                         ),
                         backgroundColor: colorScheme.primary,

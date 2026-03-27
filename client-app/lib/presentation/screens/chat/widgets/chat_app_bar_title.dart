@@ -45,7 +45,6 @@ class ChatAppBarTitle extends StatelessWidget {
                   Icon(
                     Icons.wifi_off,
                     size: 12,
-                    color: theme.colorScheme.error,
                   ),
                   const SizedBox(width: 4),
                   Text(

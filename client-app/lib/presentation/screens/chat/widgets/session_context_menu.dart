@@ -21,7 +21,6 @@ class SessionContextMenu {
               Icon(
                 Icons.edit,
                 size: 20,
-                color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 12),
               const Text('Редактировать название'),
@@ -36,7 +35,6 @@ class SessionContextMenu {
               Icon(
                 Icons.delete_outline,
                 size: 20,
-                color: Theme.of(context).colorScheme.error,
               ),
               const SizedBox(width: 12),
               Text(
@@ -83,10 +81,7 @@ class SessionContextMenu {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(
-                Icons.edit,
-                color: Theme.of(sheetContext).colorScheme.primary,
-              ),
+              leading: Icon(Icons.edit),
               title: const Text('Редактировать название'),
               onTap: () {
                 Navigator.pop(sheetContext);
@@ -95,10 +90,7 @@ class SessionContextMenu {
             ),
             const Divider(height: 1),
             ListTile(
-              leading: Icon(
-                Icons.delete_outline,
-                color: Theme.of(sheetContext).colorScheme.error,
-              ),
+              leading: Icon(Icons.delete_outline),
               title: Text(
                 'Удалить',
                 style: TextStyle(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:gen/core/attachment_settings.dart';
 import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
@@ -36,7 +37,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.inversePrimary.withValues(alpha: 0.16),
         border: Border.all(color: theme.colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -45,7 +45,9 @@ class ChatSessionSettingsButton extends StatelessWidget {
         children: [
           Text(
             title,
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 10),
           child,
@@ -77,7 +79,12 @@ class ChatSessionSettingsButton extends StatelessWidget {
     var jsonMode = current.jsonMode;
     var expertMode = false;
     var selectedProfile = current.profile;
+    var selectedRunner = state.selectedRunner;
     var creativity = _creativityFromTemperature(current.temperature);
+
+    if (state.runners.isEmpty) {
+      context.read<ChatBloc>().add(const ChatLoadRunners());
+    }
 
     void applyProfile(String profileKey) {
       selectedProfile = profileKey;
@@ -127,6 +134,91 @@ class ChatSessionSettingsButton extends StatelessWidget {
                 builder: (ctx, setStateDialog) => Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    _settingsSection(
+                      ctx,
+                      title: 'Раннер',
+                      child: Builder(
+                        builder: (ctx) {
+                          final runners = state.runners;
+                          if (runners.isEmpty) {
+                            return Row(
+                              children: [
+                                const Expanded(
+                                  child: Text('Список раннеров пока не загружен'),
+                                ),
+                                const SizedBox(width: 8),
+                                OutlinedButton(
+                                  onPressed: () {
+                                    context.read<ChatBloc>().add(const ChatLoadRunners());
+                                  },
+                                  child: const Text('Обновить'),
+                                ),
+                              ],
+                            );
+                          }
+
+                          final effectiveSelected = selectedRunner ?? runners.first;
+                          return DropdownButtonFormField<String>(
+                            initialValue: effectiveSelected,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Текущий раннер',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: runners.map((runner) {
+                              return DropdownMenuItem<String>(
+                                value: runner,
+                                child: Text(
+                                  state.runnerNames[runner] ?? runner,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: state.isConnected && !state.isLoading
+                                ? (value) {
+                                    if (value == null) {
+                                      return;
+                                    }
+                                    setStateDialog(() => selectedRunner = value);
+                                    context.read<ChatBloc>().add(ChatSelectRunner(value));
+                                  }
+                                : null,
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _settingsSection(
+                      ctx,
+                      title: 'Вложения',
+                      child: Builder(
+                        builder: (ctx) {
+                          final theme = Theme.of(ctx);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Текст: ${AttachmentSettings.textFormatLabels.join(', ')}',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Документы: ${AttachmentSettings.documentFormatLabels.join(', ')}',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Рекомендуемый максимум: ${AttachmentSettings.maxFileSizeLabel}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     _settingsSection(
                       ctx,
                       title: 'Режим настроек',
@@ -187,22 +279,24 @@ class ChatSessionSettingsButton extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _settingsSection(
-                      ctx,
-                      title: 'Таймаут',
-                      child: TextField(
-                        controller: timeoutController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Таймаут (секунды)',
-                          helperText: 'Максимальное время ожидания ответа. 0 - без дополнительного ограничения',
-                          helperMaxLines: 3,
-                          border: OutlineInputBorder(),
+                    if (!expertMode) ...[
+                      const SizedBox.shrink(),
+                    ] else ...[
+                      _settingsSection(
+                        ctx,
+                        title: 'Таймаут',
+                        child: TextField(
+                          controller: timeoutController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Таймаут (секунды)',
+                            helperText: 'Максимальное время ожидания ответа. 0 - без дополнительного ограничения',
+                            helperMaxLines: 3,
+                            border: OutlineInputBorder(),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (!expertMode) ...[
+                      const SizedBox(height: 12),
                       _settingsSection(
                         ctx,
                         title: 'Быстрая настройка ответа',
@@ -215,14 +309,10 @@ class ChatSessionSettingsButton extends StatelessWidget {
                               onChanged: (v) => setStateDialog(() => creativity = v),
                             ),
                             const Text('Ниже - более предсказуемо, выше - более разнообразно',),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Длина ответа задаётся на стороне llm-runner (в Gen не настраивается).',
-                            ),
                           ],
                         ),
                       ),
-                    ] else ...[
+                      const SizedBox(height: 12),
                       _settingsSection(
                         ctx,
                         title: 'Экспертные параметры',
@@ -337,10 +427,12 @@ class ChatSessionSettingsButton extends StatelessWidget {
             ),
             FilledButton(
               onPressed: () {
-                final timeout = int.tryParse(timeoutController.text.trim()) ?? 0;
+                final timeout = expertMode
+                  ? int.tryParse(timeoutController.text.trim()) ?? 0
+                  : current.timeoutSeconds;
                 final temperature = expertMode
                   ? double.tryParse(temperatureController.text.trim())
-                  : _temperatureFromCreativity(creativity);
+                  : current.temperature;
                 final topK = expertMode
                   ? int.tryParse(topKController.text.trim())
                   : current.topK;

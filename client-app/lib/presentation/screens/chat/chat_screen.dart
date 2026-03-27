@@ -10,10 +10,8 @@ import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_app_bar_title.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_dialogs.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_input_bar.dart';
-import 'package:gen/presentation/screens/chat/widgets/chat_model_selector.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_messages_panel.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_session_settings_button.dart';
-import 'package:gen/presentation/screens/chat/widgets/chat_supported_formats_button.dart';
 import 'package:gen/presentation/screens/chat/widgets/sessions_list_header.dart';
 import 'package:gen/presentation/screens/chat/widgets/sessions_sidebar.dart';
 
@@ -274,16 +272,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ),
                                   BlocBuilder<ChatBloc, ChatState>(
                                     builder: (context, state) {
-                                      return ChatRunnerSelector(state: state);
-                                    },
-                                  ),
-                                  BlocBuilder<ChatBloc, ChatState>(
-                                    builder: (context, state) {
                                       return ChatSessionSettingsButton(state: state);
                                     },
                                   ),
-                                  const SizedBox(width: 8),
-                                  const ChatSupportedFormatsButton(),
                                   const SizedBox(width: 8),
                                   BlocBuilder<ChatBloc, ChatState>(
                                     builder: (context, state) {

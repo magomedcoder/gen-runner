@@ -72,7 +72,7 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
             Text('Раннер по умолчанию', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: selectedDefault,
+              initialValue: selectedDefault,
               isExpanded: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),

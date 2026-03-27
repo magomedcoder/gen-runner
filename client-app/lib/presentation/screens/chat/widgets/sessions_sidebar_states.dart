@@ -14,9 +14,6 @@ class SessionsSidebarEmptyState extends StatelessWidget {
             Icon(
               Icons.history,
               size: 54,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 16),
             Text(
@@ -64,7 +61,6 @@ class SessionsSidebarErrorState extends StatelessWidget {
             Icon(
               Icons.error_outline,
               size: 48,
-              color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 16),
             Text(

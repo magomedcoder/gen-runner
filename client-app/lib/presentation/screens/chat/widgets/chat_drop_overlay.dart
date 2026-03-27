@@ -26,7 +26,6 @@ class ChatDropOverlay extends StatelessWidget {
                 Icon(
                   Icons.upload_file_rounded,
                   size: 48,
-                  color: theme.colorScheme.primary,
                 ),
                 const SizedBox(height: 8),
                 Text(

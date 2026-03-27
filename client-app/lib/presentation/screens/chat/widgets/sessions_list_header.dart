@@ -35,10 +35,7 @@ class SessionsListHeader extends StatelessWidget {
               ),
             ),
             IconButton(
-              icon: Icon(
-                Icons.menu_open_rounded,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              icon: Icon(Icons.menu_open_rounded),
               onPressed: onToggleCollapse,
               tooltip: 'Скрыть список чатов',
             ),

@@ -29,8 +29,6 @@ class App extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Gen',
       theme: AppTheme.dark,
-      darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.dark,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

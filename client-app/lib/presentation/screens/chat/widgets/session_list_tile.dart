@@ -77,7 +77,6 @@ class SessionListTile extends StatelessWidget {
                     Icon(
                       Icons.chevron_right,
                       size: 18,
-                      color: Theme.of(context).colorScheme.primary,
                     ),
                 ],
               ),

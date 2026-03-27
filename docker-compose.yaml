@@ -1,0 +1,30 @@
+services:
+  gen:
+    container_name: gen
+    build:
+      context: .
+    command: /usr/local/bin/gen
+    restart: always
+    ports:
+      - 50051:50051
+    networks:
+      - network-gen
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    container_name: postgres_repo
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=postgres_repo
+      - POSTGRES_PASSWORD=postgres_repo
+      - POSTGRES_DB=gen
+    volumes:
+      - .docker-volumes/postgres_repo/:/var/lib/postgresql/data
+    networks:
+      - network-gen
+
+networks:
+  network-gen:
+    driver: bridge

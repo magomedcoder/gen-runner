@@ -25,7 +25,10 @@ Future<void> showDeleteSessionDialog(
             chatBloc.add(ChatDeleteSession(sessionId));
             Navigator.of(dialogContext).pop();
           },
-          child: const Text('Удалить', style: TextStyle(color: Colors.red)),
+          child: Text(
+            'Удалить',
+            style: TextStyle(color: Theme.of(dialogContext).colorScheme.error),
+          ),
         ),
       ],
     ),
@@ -49,7 +52,6 @@ void showSupportedFormatsDialog(BuildContext context) {
         children: [
           Icon(
             Icons.insert_drive_file_outlined,
-            color: theme.colorScheme.primary,
             size: isMobile ? 22 : 24,
           ),
           SizedBox(width: isMobile ? 8 : 10),
@@ -75,27 +77,29 @@ void showSupportedFormatsDialog(BuildContext context) {
               Text(
                 'Текст',
                 style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.primary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 AttachmentSettings.textFormatLabels.join(', '),
-                style: theme.textTheme.bodyMedium,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 12),
               Text(
                 'Документы',
                 style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.primary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 AttachmentSettings.documentFormatLabels.join(', '),
-                style: theme.textTheme.bodyMedium,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 16),
               Text(

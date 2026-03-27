@@ -3,49 +3,48 @@ import 'package:flutter/material.dart';
 class AppTheme {
   AppTheme._();
 
-  static const Color _surface = Color(0xFF232831);
-  static const Color _surfaceLow = Color(0xFF282E36);
-  static const Color _surfaceMid = Color(0xFF2C333C);
-  static const Color _surfaceHigh = Color(0xFF363E48);
-  static const Color _surfaceHighest = Color(0xFF414953);
-
-  static const Color _primaryMuted = Color(0xFF8FA3B2);
-  static const Color _secondaryMuted = Color(0xFF7D8E9C);
-
-  static const Color _buttonGlass = Color(0x14FFFFFF);
-  static const Color _buttonGlassHover = Color(0x1EFFFFFF);
-  static const Color _buttonGlassPressed = Color(0x26FFFFFF);
-  static const Color _buttonGlassDisabled = Color(0x0CFFFFFF);
+  static const Color _accent = Color(0xFF30363D);
+  static const Color _background = Color(0xFF121212);
+  static const Color _surface = Color(0xFF1E1E1E);
+  static const Color _surfaceHigh = Color(0xFF2A2A2A);
+  static const Color _text = Color(0xFFE6EDF3);
+  static const Color _textMuted = Color(0xFF9FA6AD);
+  static const Color _error = Color(0xFFFFB4AB);
 
   static ThemeData get dark {
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF5F7382),
+      seedColor: _accent,
       brightness: Brightness.dark,
     ).copyWith(
-        primary: _primaryMuted,
-        onPrimary: const Color(0xFF0D0F12),
-        primaryContainer: const Color(0xFF2A3138),
-        onPrimaryContainer: const Color(0xFFD1DADF),
-        secondary: _secondaryMuted,
-        onSecondary: const Color(0xFF0D0F12),
-        secondaryContainer: const Color(0xFF262C33),
-        onSecondaryContainer: const Color(0xFFC8D0D8),
-        tertiary: const Color(0xFF6F808E),
-        surface: _surface,
-        onSurface: const Color(0xFFE0E4E9),
-        onSurfaceVariant: const Color(0xFFA8B0BA),
-        surfaceContainerLow: _surfaceLow,
-        surfaceContainer: _surfaceMid,
-        surfaceContainerHigh: _surfaceHigh,
-        surfaceContainerHighest: _surfaceHighest,
-        outline: const Color(0xFF4A5159),
-        outlineVariant: const Color(0xFF343A42),
-        error: const Color(0xFFD88A91),
-        onError: const Color(0xFF1A0F10),
-        errorContainer: const Color(0xFF3D2A2C),
-        onErrorContainer: const Color(0xFFFFD6D8),
-        surfaceTint: _primaryMuted,
-      );
+      primary: _accent,
+      onPrimary: _text,
+      primaryContainer: _surfaceHigh,
+      onPrimaryContainer: _text,
+      secondary: _accent,
+      onSecondary: _text,
+      secondaryContainer: _surfaceHigh,
+      onSecondaryContainer: _text,
+      tertiary: _accent,
+      surface: _surface,
+      onSurface: _text,
+      onSurfaceVariant: _textMuted,
+      surfaceContainerLow: _surface,
+      surfaceContainer: _surface,
+      surfaceContainerHigh: _surfaceHigh,
+      surfaceContainerHighest: _surfaceHigh,
+      outline: _textMuted.withValues(alpha: 0.34),
+      outlineVariant: _textMuted.withValues(alpha: 0.2),
+      error: _error,
+      onError: const Color(0xFF690005),
+      errorContainer: const Color(0xFF93000A),
+      onErrorContainer: const Color(0xFFFFDAD6),
+      surfaceTint: _accent,
+    );
+
+    final buttonGlass = Colors.white.withValues(alpha: 0.08);
+    final buttonGlassHover = Colors.white.withValues(alpha: 0.12);
+    final buttonGlassPressed = Colors.white.withValues(alpha: 0.16);
+    final buttonGlassDisabled = Colors.white.withValues(alpha: 0.05);
 
     final glassButtonStyle = ButtonStyle(
       elevation: const WidgetStatePropertyAll(0),
@@ -53,18 +52,18 @@ class AppTheme {
       surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
       backgroundColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
-            return _buttonGlassDisabled;
+            return buttonGlassDisabled;
         }
 
         if (states.contains(WidgetState.pressed)) {
-            return _buttonGlassPressed;
+            return buttonGlassPressed;
         }
 
         if (states.contains(WidgetState.hovered)) {
-            return _buttonGlassHover;
+            return buttonGlassHover;
         }
 
-        return _buttonGlass;
+        return buttonGlass;
       }),
       foregroundColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
@@ -75,7 +74,7 @@ class AppTheme {
       }),
       overlayColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.pressed)) {
-          return Colors.white.withValues(alpha: 0.06);
+          return scheme.onSurface.withValues(alpha: 0.06);
         }
 
         return Colors.transparent;
@@ -92,9 +91,9 @@ class AppTheme {
       colorScheme: scheme,
       useMaterial3: true,
       fontFamily: 'Inter',
-      scaffoldBackgroundColor: _surface,
+      scaffoldBackgroundColor: _background,
       dialogTheme: DialogThemeData(
-        backgroundColor: _surfaceHigh,
+        backgroundColor: scheme.surfaceContainer,
       ),
       filledButtonTheme: FilledButtonThemeData(style: glassButtonStyle),
       elevatedButtonTheme: ElevatedButtonThemeData(style: glassButtonStyle),
@@ -103,14 +102,23 @@ class AppTheme {
         style: IconButton.styleFrom(
           foregroundColor: scheme.onSurfaceVariant,
           disabledForegroundColor: scheme.onSurfaceVariant.withValues(alpha: 0.38),
-          hoverColor: _buttonGlass,
-          highlightColor: _buttonGlassPressed,
-          focusColor: _buttonGlassHover,
+          hoverColor: buttonGlass,
+          highlightColor: buttonGlassPressed,
+          focusColor: buttonGlassHover,
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: scheme.onSurfaceVariant,
+          disabledForegroundColor: scheme.onSurfaceVariant.withValues(alpha: 0.38),
+          hoverColor: buttonGlass,
+          highlightColor: buttonGlassPressed,
+          focusColor: buttonGlassHover,
         ),
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: scheme.surfaceContainerLow,
-        indicatorColor: _buttonGlass,
+        indicatorColor: buttonGlass,
         selectedIconTheme: IconThemeData(color: scheme.onSurface),
         selectedLabelTextStyle: TextStyle(
           color: scheme.onSurface,
@@ -127,7 +135,7 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: scheme.surfaceContainerLow,
-        indicatorColor: _buttonGlass,
+        indicatorColor: buttonGlass,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
@@ -145,6 +153,11 @@ class AppTheme {
             color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
           );
         }),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        floatingLabelStyle: TextStyle(
+          color: _textMuted,
+        ),
       ),
     );
   }

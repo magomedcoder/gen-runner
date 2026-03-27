@@ -17,7 +17,6 @@ class UpdateRequiredScreen extends StatelessWidget {
                 Icon(
                   Icons.system_update_alt,
                   size: 80,
-                  color: theme.colorScheme.primary,
                 ),
                 const SizedBox(height: 24),
                 Text(

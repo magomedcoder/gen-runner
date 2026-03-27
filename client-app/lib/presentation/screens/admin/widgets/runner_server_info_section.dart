@@ -79,7 +79,7 @@ class RunnerServerInfoSection extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            value: defaultModel != null && serverInfo.models.contains(defaultModel)
+            initialValue: defaultModel != null && serverInfo.models.contains(defaultModel)
                 ? defaultModel
                 : serverInfo.models.first,
             isExpanded: true,
@@ -127,7 +127,7 @@ class RunnerInfoChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: theme.colorScheme.primary),
+        Icon(icon, size: 16),
         const SizedBox(width: 4),
         Text(
           '$label: ',

@@ -61,7 +61,6 @@ class ChatRunnerSelector extends StatelessWidget {
                   Icon(
                     Icons.check_rounded,
                     size: 18,
-                    color: theme.colorScheme.primary,
                   ),
               ],
             ),

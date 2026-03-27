@@ -22,7 +22,6 @@ class ChatInputBar extends StatefulWidget {
 
 class ChatInputBarState extends State<ChatInputBar> {
   static const double _inputCardMinHeight = 92.0;
-  static const double _inputBarMinHeight = 70.0;
   static const double _inputCardGrowthStep = 50.0;
   static const double _inputCardMaxWindowFactor = 0.5;
 
@@ -312,7 +311,6 @@ class ChatInputBarState extends State<ChatInputBar> {
               Icon(
                 Icons.insert_drive_file_rounded,
                 size: 18,
-                color: theme.colorScheme.primary,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -334,7 +332,6 @@ class ChatInputBarState extends State<ChatInputBar> {
                 icon: Icon(
                   Icons.close_rounded,
                   size: 18,
-                  color: theme.colorScheme.onSurfaceVariant,
                 ),
                 onPressed: _clearFile,
                 tooltip: 'Убрать файл',
@@ -482,115 +479,101 @@ class ChatInputBarState extends State<ChatInputBar> {
           textStyle: inputTextStyle,
           horizontalPadding: horizontal,
         );
-        return Container(
-          constraints: const BoxConstraints(minHeight: _inputBarMinHeight),
-          padding: EdgeInsets.fromLTRB(horizontal, 6, horizontal, 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1)),
-            ),
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          height: cardHeight,
+          constraints: BoxConstraints(
+            maxHeight: _cardMaxHeight(context),
+            minHeight: _inputCardMinHeight,
           ),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            curve: Curves.easeOutCubic,
-            height: cardHeight,
-            constraints: BoxConstraints(
-              maxHeight: _cardMaxHeight(context),
-              minHeight: _inputCardMinHeight,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
             ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: theme.colorScheme.outline.withValues(alpha: 0.15),
-                ),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    _buildAttachmentChip(theme),
-                    Expanded(
-                      child: CallbackShortcuts(
-                        bindings: {
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  _buildAttachmentChip(theme),
+                  Expanded(
+                    child: CallbackShortcuts(
+                      bindings: {
+                        const SingleActivator(
+                          LogicalKeyboardKey.enter,
+                          shift: true,
+                        ): _insertNewlineAtCursor,
+                        const SingleActivator(
+                          LogicalKeyboardKey.numpadEnter,
+                          shift: true,
+                        ): _insertNewlineAtCursor,
+                        if (isDesktop) ...{
                           const SingleActivator(
                             LogicalKeyboardKey.enter,
-                            shift: true,
+                            control: true,
+                          ): _insertNewlineAtCursor,
+                          const SingleActivator(
+                            LogicalKeyboardKey.enter,
+                            meta: true,
                           ): _insertNewlineAtCursor,
                           const SingleActivator(
                             LogicalKeyboardKey.numpadEnter,
-                            shift: true,
+                            control: true,
                           ): _insertNewlineAtCursor,
-                          if (isDesktop) ...{
-                            const SingleActivator(
-                              LogicalKeyboardKey.enter,
-                              control: true,
-                            ): _insertNewlineAtCursor,
-                            const SingleActivator(
-                              LogicalKeyboardKey.enter,
-                              meta: true,
-                            ): _insertNewlineAtCursor,
-                            const SingleActivator(
-                              LogicalKeyboardKey.numpadEnter,
-                              control: true,
-                            ): _insertNewlineAtCursor,
-                            const SingleActivator(
-                              LogicalKeyboardKey.numpadEnter,
-                              meta: true,
-                            ): _insertNewlineAtCursor,
-                          },
-                          const SingleActivator(LogicalKeyboardKey.enter): () {
-                            if (widget.isEnabled) {
-                              _sendMessage();
-                            }
-                          },
                           const SingleActivator(
                             LogicalKeyboardKey.numpadEnter,
-                          ): () {
-                            if (widget.isEnabled) {
-                              _sendMessage();
-                            }
-                          },
+                            meta: true,
+                          ): _insertNewlineAtCursor,
                         },
-                        child: TextField(
-                          controller: _textController,
-                          focusNode: _focusNode,
-                          enabled: widget.isEnabled,
-                          expands: true,
-                          maxLines: null,
-                          minLines: null,
-                          textAlignVertical: TextAlignVertical.top,
-                          style: inputTextStyle,
-                          decoration: InputDecoration(
-                            hintText: widget.isEnabled
-                              ? (isDesktop ? 'Сообщение...  Ctrl+Enter - новая строка' : 'Сообщение…')
-                              : 'Обрабатываю...',
-                            hintStyle: TextStyle(
-                              fontSize: 14,
-                              height: 1.45,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
-                            ),
-                            border: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.fromLTRB(10, 12, 10, 4),
+                        const SingleActivator(LogicalKeyboardKey.enter): () {
+                          if (widget.isEnabled) {
+                            _sendMessage();
+                          }
+                        },
+                        const SingleActivator(
+                          LogicalKeyboardKey.numpadEnter,
+                        ): () {
+                          if (widget.isEnabled) {
+                            _sendMessage();
+                          }
+                        },
+                      },
+                      child: TextField(
+                        controller: _textController,
+                        focusNode: _focusNode,
+                        enabled: widget.isEnabled,
+                        expands: true,
+                        maxLines: null,
+                        minLines: null,
+                        textAlignVertical: TextAlignVertical.top,
+                        style: inputTextStyle,
+                        decoration: InputDecoration(
+                          hintText: widget.isEnabled
+                            ? (isDesktop ? 'Сообщение...  Ctrl+Enter - новая строка' : 'Сообщение…')
+                            : 'Обрабатываю...',
+                          hintStyle: TextStyle(
+                            fontSize: 14,
+                            height: 1.45,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
                           ),
-                          textInputAction: TextInputAction.newline,
-                          keyboardType: TextInputType.multiline,
-                          scrollPhysics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics(),
-                          ),
-                          onTapOutside: (_) => _focusNode.unfocus(),
+                          border: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.fromLTRB(10, 12, 10, 4),
                         ),
+                        textInputAction: TextInputAction.newline,
+                        keyboardType: TextInputType.multiline,
+                        scrollPhysics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+                        onTapOutside: (_) => _focusNode.unfocus(),
                       ),
                     ),
-                    _buildBottomActionsBar(state, theme),
-                  ],
-                ),
+                  ),
+                  _buildBottomActionsBar(state, theme),
+                ],
               ),
             ),
           ),
