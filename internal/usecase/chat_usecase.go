@@ -39,6 +39,7 @@ type ChatUseCase struct {
 	preferenceRepo      domain.ChatPreferenceRepository
 	sessionSettingsRepo domain.ChatSessionSettingsRepository
 	messageRepo         domain.MessageRepository
+	messageEditRepo     domain.MessageEditRepository
 	fileRepo            domain.FileRepository
 	llmRepo             domain.LLMRepository
 	runnerPool          *runner.Pool
@@ -51,6 +52,7 @@ func NewChatUseCase(
 	preferenceRepo domain.ChatPreferenceRepository,
 	sessionSettingsRepo domain.ChatSessionSettingsRepository,
 	messageRepo domain.MessageRepository,
+	messageEditRepo domain.MessageEditRepository,
 	fileRepo domain.FileRepository,
 	llmRepo domain.LLMRepository,
 	runnerPool *runner.Pool,
@@ -62,6 +64,7 @@ func NewChatUseCase(
 		preferenceRepo:      preferenceRepo,
 		sessionSettingsRepo: sessionSettingsRepo,
 		messageRepo:         messageRepo,
+		messageEditRepo:     messageEditRepo,
 		fileRepo:            fileRepo,
 		llmRepo:             llmRepo,
 		runnerPool:          runnerPool,
@@ -511,6 +514,239 @@ func (c *ChatUseCase) RegenerateAssistantResponse(ctx context.Context, userId in
 	}()
 
 	return clientChan, nil
+}
+
+func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int, sessionId int64, userMessageID int64, newContent string) (chan ChatStreamChunk, error) {
+	logger.D("EditUserMessageAndContinue: session=%d user=%d userMsg=%d", sessionId, userId, userMessageID)
+	if userMessageID <= 0 {
+		return nil, fmt.Errorf("некорректный user_message_id")
+	}
+	newContent = strings.TrimSpace(newContent)
+	if newContent == "" {
+		return nil, fmt.Errorf("new_content не может быть пустым")
+	}
+
+	session, err := c.verifySessionOwnership(ctx, userId, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	target, err := c.messageRepo.GetByID(ctx, userMessageID)
+	if err != nil {
+		return nil, err
+	}
+	if target == nil || target.SessionId != sessionId {
+		return nil, fmt.Errorf("сообщение не найдено")
+	}
+	if target.Role != domain.MessageRoleUser {
+		return nil, fmt.Errorf("редактировать можно только user-сообщение")
+	}
+
+	maxID, err := c.messageRepo.MaxMessageIDInSession(ctx, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	oldContent := target.Content
+	if err := c.messageRepo.UpdateContent(ctx, userMessageID, newContent); err != nil {
+		return nil, err
+	}
+
+	if c.messageEditRepo != nil {
+		_ = c.messageEditRepo.Create(ctx, &domain.MessageEdit{
+			SessionId:       sessionId,
+			MessageId:       userMessageID,
+			EditorUserId:    userId,
+			OldContent:      oldContent,
+			NewContent:      newContent,
+			SoftDeletedFrom: userMessageID,
+			SoftDeletedTo:   maxID,
+			CreatedAt:       time.Now(),
+		})
+	}
+
+	if err := c.messageRepo.SoftDeleteRangeAfterID(ctx, sessionId, userMessageID, maxID); err != nil {
+		return nil, err
+	}
+
+	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", session.Model, c.defaultRunnerAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	rawPrefix, err := c.messageRepo.ListMessagesUpToID(ctx, sessionId, userMessageID)
+	if err != nil {
+		return nil, err
+	}
+	messages := filterHistoryForLLM(rawPrefix)
+
+	settings, _ := c.sessionSettingsRepo.GetBySessionID(ctx, sessionId)
+	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
+
+	messagesForLLM := make([]*domain.Message, 0, len(messages)+1)
+	messagesForLLM = append(messagesForLLM, chatSessionSystemMessage(sessionId, settings))
+	messagesForLLM = append(messagesForLLM, messages...)
+
+	if err := c.hydrateAttachmentsForRunner(ctx, messagesForLLM); err != nil {
+		return nil, err
+	}
+
+	if genParams != nil && len(genParams.Tools) > 0 {
+		return c.sendMessageWithToolLoop(ctx, userId, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
+	}
+
+	assistantMsg := domain.NewMessage(sessionId, "", domain.MessageRoleAssistant)
+	if err := c.messageRepo.Create(ctx, assistantMsg); err != nil {
+		return nil, err
+	}
+	messageID := assistantMsg.Id
+
+	responseChan, err := c.llmRepo.SendMessage(ctx, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
+	if err != nil {
+		return nil, err
+	}
+
+	var fullResponse strings.Builder
+	clientChan := make(chan ChatStreamChunk, 100)
+	go func() {
+		defer func() {
+			_ = c.messageRepo.UpdateContent(context.Background(), messageID, fullResponse.String())
+		}()
+		defer close(clientChan)
+
+		for chunk := range responseChan {
+			fullResponse.WriteString(chunk)
+			select {
+			case <-ctx.Done():
+				return
+			case clientChan <- ChatStreamChunk{Kind: StreamChunkKindText, Text: chunk, MessageID: messageID}:
+			}
+		}
+	}()
+
+	return clientChan, nil
+}
+
+func (c *ChatUseCase) GetUserMessageEdits(ctx context.Context, userId int, sessionId int64, userMessageID int64) ([]*domain.MessageEdit, error) {
+	if userMessageID <= 0 {
+		return nil, fmt.Errorf("некорректный user_message_id")
+	}
+	if _, err := c.verifySessionOwnership(ctx, userId, sessionId); err != nil {
+		return nil, err
+	}
+	target, err := c.messageRepo.GetByID(ctx, userMessageID)
+	if err != nil {
+		return nil, err
+	}
+	if target == nil || target.SessionId != sessionId || target.Role != domain.MessageRoleUser {
+		return nil, fmt.Errorf("сообщение не найдено")
+	}
+	if c.messageEditRepo == nil {
+		return []*domain.MessageEdit{}, nil
+	}
+	return c.messageEditRepo.ListByMessageID(ctx, userMessageID, 50)
+}
+
+func (c *ChatUseCase) GetSessionMessagesForUserMessageVersion(ctx context.Context, userId int, sessionId int64, userMessageID int64, versionIndex int32) ([]*domain.Message, error) {
+	if userMessageID <= 0 {
+		return nil, fmt.Errorf("некорректный user_message_id")
+	}
+
+	if versionIndex < 0 {
+		return nil, fmt.Errorf("некорректный version_index")
+	}
+
+	if _, err := c.verifySessionOwnership(ctx, userId, sessionId); err != nil {
+		return nil, err
+	}
+
+	target, err := c.messageRepo.GetByID(ctx, userMessageID)
+	if err != nil {
+		return nil, err
+	}
+
+	if target == nil || target.SessionId != sessionId || target.Role != domain.MessageRoleUser {
+		return nil, fmt.Errorf("сообщение не найдено")
+	}
+
+	if c.messageEditRepo == nil {
+		raw, _, err := c.messageRepo.GetBySessionId(ctx, sessionId, 1, 200)
+		return raw, err
+	}
+
+	editsDesc, err := c.messageEditRepo.ListByMessageID(ctx, userMessageID, 200)
+	if err != nil {
+		return nil, err
+	}
+
+	edits := make([]*domain.MessageEdit, 0, len(editsDesc))
+	for i := len(editsDesc) - 1; i >= 0; i-- {
+		edits = append(edits, editsDesc[i])
+	}
+	n := int32(len(edits))
+	if versionIndex > n {
+		versionIndex = n
+	}
+
+	prefix, err := c.messageRepo.ListMessagesUpToID(ctx, sessionId, userMessageID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(prefix) > 0 {
+		for i := range prefix {
+			if prefix[i] != nil && prefix[i].Id == userMessageID {
+				if len(edits) > 0 {
+					if versionIndex == 0 {
+						prefix[i].Content = edits[0].OldContent
+					} else {
+						prefix[i].Content = edits[versionIndex-1].NewContent
+					}
+				}
+				break
+			}
+		}
+	}
+
+	var from time.Time
+	var to time.Time
+	if len(edits) == 0 {
+		return prefix, nil
+	}
+	if versionIndex == 0 {
+		from = target.CreatedAt
+		to = edits[0].CreatedAt
+	} else {
+		from = edits[versionIndex-1].CreatedAt
+		if versionIndex < int32(len(edits)) {
+			to = edits[versionIndex].CreatedAt
+		} else {
+			to = time.Now().Add(365 * 24 * time.Hour)
+		}
+	}
+
+	windowMsgs, err := c.messageRepo.ListBySessionCreatedAtWindowIncludingDeleted(ctx, sessionId, from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	tail := make([]*domain.Message, 0, len(windowMsgs))
+	for _, m := range windowMsgs {
+		if m == nil {
+			continue
+		}
+
+		if m.Id <= userMessageID {
+			continue
+		}
+
+		tail = append(tail, m)
+	}
+
+	out := append([]*domain.Message{}, prefix...)
+	out = append(out, tail...)
+
+	return out, nil
 }
 
 func (c *ChatUseCase) GetSessionSettings(ctx context.Context, userId int, sessionID int64) (*domain.ChatSessionSettings, error) {

@@ -5,6 +5,8 @@ import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/chat_stream_chunk.dart';
 import 'package:gen/domain/entities/spreadsheet_apply_result.dart';
 import 'package:gen/domain/entities/message.dart';
+import 'package:gen/domain/entities/assistant_message_regeneration.dart';
+import 'package:gen/domain/entities/user_message_edit.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/entities/session_file_download.dart';
 
@@ -20,6 +22,34 @@ abstract interface class ChatRepository {
     int sessionId,
     int assistantMessageId,
   );
+
+  Stream<ChatStreamChunk> editUserMessageAndContinue(
+    int sessionId,
+    int userMessageId,
+    String newContent,
+  );
+
+  Future<List<UserMessageEdit>> getUserMessageEdits({
+    required int sessionId,
+    required int userMessageId,
+  });
+
+  Future<List<Message>> getSessionMessagesForUserMessageVersion({
+    required int sessionId,
+    required int userMessageId,
+    required int versionIndex,
+  });
+
+  Future<List<AssistantMessageRegeneration>> getAssistantMessageRegenerations({
+    required int sessionId,
+    required int assistantMessageId,
+  });
+
+  Future<List<Message>> getSessionMessagesForAssistantMessageVersion({
+    required int sessionId,
+    required int assistantMessageId,
+    required int versionIndex,
+  });
 
   Future<ChatSession> createSession(String title);
 

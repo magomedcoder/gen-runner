@@ -530,7 +530,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                   decoration: InputDecoration(
                     hintText: state.isLoading
-                      ? 'Обработка…'
+                      ? 'Обработка...'
                       : 'Напишите текст или вставите из буфера',
                     hintStyle: TextStyle(
                       color: colorScheme.onSurface.withValues(alpha: 0.45),

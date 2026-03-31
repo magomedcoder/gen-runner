@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -127,6 +128,54 @@ func (r *messageRepository) GetBySessionId(ctx context.Context, sessionID int64,
 	return messages, total, nil
 }
 
+func (r *messageRepository) ListBySessionCreatedAtWindowIncludingDeleted(ctx context.Context, sessionID int64, fromInclusive, toExclusive time.Time) ([]*domain.Message, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
+		       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
+		       f.filename, m.created_at, m.updated_at, m.deleted_at
+		FROM messages m
+		LEFT JOIN files f ON m.attachment_file_id = f.id
+		WHERE m.session_id = $1 AND m.created_at >= $2 AND m.created_at < $3
+		ORDER BY m.created_at ASC, m.id ASC
+	`, sessionID, fromInclusive, toExclusive)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []*domain.Message
+	for rows.Next() {
+		var message domain.Message
+		var attachmentFileID *int64
+		var fname *string
+		if err := rows.Scan(
+			&message.Id,
+			&message.SessionId,
+			&message.Content,
+			&message.Role,
+			&attachmentFileID,
+			&message.ToolCallID,
+			&message.ToolName,
+			&message.ToolCallsJSON,
+			&fname,
+			&message.CreatedAt,
+			&message.UpdatedAt,
+			&message.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		message.AttachmentFileID = attachmentFileID
+		if fname != nil {
+			message.AttachmentName = *fname
+		}
+		messages = append(messages, &message)
+	}
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+	return messages, nil
+}
+
 func (r *messageRepository) GetByID(ctx context.Context, id int64) (*domain.Message, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
@@ -219,6 +268,81 @@ func (r *messageRepository) ListMessagesWithIDLessThan(ctx context.Context, sess
 	}
 
 	return messages, nil
+}
+
+func (r *messageRepository) ListMessagesUpToID(ctx context.Context, sessionID int64, upToMessageID int64) ([]*domain.Message, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
+		       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
+		       f.filename, m.created_at, m.updated_at, m.deleted_at
+		FROM messages m
+		LEFT JOIN files f ON m.attachment_file_id = f.id
+		WHERE m.session_id = $1 AND m.deleted_at IS NULL AND m.id <= $2
+		ORDER BY m.created_at ASC, m.id ASC
+	`, sessionID, upToMessageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []*domain.Message
+	for rows.Next() {
+		var message domain.Message
+		var attachmentFileID *int64
+		var fname *string
+		if err := rows.Scan(
+			&message.Id,
+			&message.SessionId,
+			&message.Content,
+			&message.Role,
+			&attachmentFileID,
+			&message.ToolCallID,
+			&message.ToolName,
+			&message.ToolCallsJSON,
+			&fname,
+			&message.CreatedAt,
+			&message.UpdatedAt,
+			&message.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		message.AttachmentFileID = attachmentFileID
+		if fname != nil {
+			message.AttachmentName = *fname
+		}
+
+		messages = append(messages, &message)
+	}
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
+	return messages, nil
+}
+
+func (r *messageRepository) SoftDeleteAfterID(ctx context.Context, sessionID int64, afterMessageID int64) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE messages
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE session_id = $1 AND deleted_at IS NULL AND id > $2
+	`, sessionID, afterMessageID)
+	return err
+}
+
+func (r *messageRepository) SoftDeleteRangeAfterID(ctx context.Context, sessionID int64, afterMessageID int64, upToMessageID int64) error {
+	if upToMessageID <= 0 {
+		return r.SoftDeleteAfterID(ctx, sessionID, afterMessageID)
+	}
+
+	_, err := r.db.Exec(ctx, `
+		UPDATE messages
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE session_id = $1 AND deleted_at IS NULL AND id > $2 AND id <= $3
+	`, sessionID, afterMessageID, upToMessageID)
+
+	return err
 }
 
 func (r *messageRepository) ResetAssistantForRegenerate(ctx context.Context, sessionID int64, messageID int64) error {

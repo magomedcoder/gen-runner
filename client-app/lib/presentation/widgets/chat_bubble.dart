@@ -11,6 +11,7 @@ import 'package:gen/core/spreadsheet_file_export.dart';
 import 'package:gen/core/user_file_save.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/usecases/chat/get_session_file_usecase.dart';
+import 'package:gen/presentation/screens/chat/widgets/chat_input_bar.dart';
 import 'package:gen/presentation/widgets/code_block_builder.dart';
 
 Color _messageBodyTextColor(ColorScheme cs) {
@@ -34,6 +35,12 @@ class ChatBubble extends StatefulWidget {
   final bool isStreaming;
   final String? streamingStatus;
   final VoidCallback? onRegenerate;
+  final Future<void> Function(String newContent)? onEditSubmit;
+  final bool showEditNav;
+  final int? editsIndex;
+  final int? editsTotal;
+  final VoidCallback? onPrevEdit;
+  final VoidCallback? onNextEdit;
 
   const ChatBubble({
     super.key,
@@ -42,6 +49,12 @@ class ChatBubble extends StatefulWidget {
     this.isStreaming = false,
     this.streamingStatus,
     this.onRegenerate,
+    this.onEditSubmit,
+    this.showEditNav = false,
+    this.editsIndex,
+    this.editsTotal,
+    this.onPrevEdit,
+    this.onNextEdit,
   });
 
   @override
@@ -51,6 +64,7 @@ class ChatBubble extends StatefulWidget {
 class _ChatBubbleState extends State<ChatBubble> {
   bool _justCopied = false;
   int? _downloadingFileId;
+  bool _isEditing = false;
 
   Future<void> _downloadSessionFile(int fileId) async {
     final sessionId = widget.sessionId;
@@ -93,7 +107,7 @@ class _ChatBubbleState extends State<ChatBubble> {
         return;
       }
       final msg = e.toString();
-      final short = msg.length > 160 ? '${msg.substring(0, 160)}…' : msg;
+      final short = msg.length > 160 ? '${msg.substring(0, 160)}...' : msg;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(content: Text('Не удалось скачать файл: $short')),
       );
@@ -169,13 +183,11 @@ class _ChatBubbleState extends State<ChatBubble> {
       : (Breakpoints.isTablet(context) ? 420.0 : 560.0);
     final semanticsRole = isUser ? 'Ваше сообщение' : 'Ответ ассистента';
     final hasCopyableText = message.content.trim().isNotEmpty;
-    final sessionFileIds = !isUser && !isStreaming && widget.sessionId != null
-        ? extractSessionFileIdsFromText(message.content)
-        : const <int>[];
-    final attachmentLabel = message.attachmentFileName ??
-        (message.attachmentFileId != null
-            ? 'Файл #${message.attachmentFileId}'
-            : null);
+    final editsTotal = widget.editsTotal;
+    final editsIndex = widget.editsIndex;
+    final showEditNav = widget.showEditNav;
+    final sessionFileIds = !isUser && !isStreaming && widget.sessionId != null ? extractSessionFileIdsFromText(message.content) : const <int>[];
+    final attachmentLabel = message.attachmentFileName ?? (message.attachmentFileId != null ? 'Файл #${message.attachmentFileId}' : null);
     final messageTextColor = _messageBodyTextColor(theme.colorScheme);
 
     return Semantics(
@@ -230,32 +242,70 @@ class _ChatBubbleState extends State<ChatBubble> {
                         ],
                       ),
                     ),
-                  if (message.content.isNotEmpty)
+                  if (_isEditing && isUser && !isStreaming)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: ChatInputBar(
+                        key: ValueKey('edit-${message.id}-${message.content}'),
+                        isEnabled: widget.onEditSubmit != null,
+                        initialText: message.content,
+                        allowAttachments: false,
+                        showRetry: false,
+                        showStop: false,
+                        clearOnSubmit: false,
+                        onCancel: () {
+                          setState(() => _isEditing = false);
+                        },
+                        onSubmitText: widget.onEditSubmit == null
+                          ? null
+                          : (text) async {
+                            final raw = text;
+                            final trimmed = raw.trim();
+
+                            if (trimmed.isEmpty) {
+                              if (!mounted) {
+                                return;
+                              }
+
+                              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                                const SnackBar(content: Text('Текст не может быть пустым')),
+                              );
+                              return;
+                            }
+
+                            await widget.onEditSubmit!(trimmed);
+                            if (!mounted) {
+                              return;
+                            }
+                            setState(() => _isEditing = false);
+                          },
+                      ),
+                    )
+                  else if (message.content.isNotEmpty)
                     isUser
                       ? SelectableText(
-                          message.content,
-                          style: TextStyle(
-                            color: messageTextColor,
-                            fontSize: 15,
-                            height: 1.5,
-                          ),
-                        )
-                      : MarkdownBody(
-                          data: message.content,
-                          selectable: true,
-                          styleSheet: _assistantMarkdownSheet(theme),
-                          builders: {
-                            'pre': CodeBlockBuilder(
-                              textStyle: TextStyle(
-                                fontSize: 13,
-                                fontFamily: 'monospace',
-                                color: messageTextColor,
-                              ),
-                            ),
-                          },
+                        message.content,
+                        style: TextStyle(
+                          color: messageTextColor,
+                          fontSize: 15,
+                          height: 1.5,
                         ),
-                  if (isStreaming && message.content.isEmpty &&
-                      (widget.streamingStatus?.trim().isNotEmpty ?? false))
+                      )
+                      : MarkdownBody(
+                        data: message.content,
+                        selectable: true,
+                        styleSheet: _assistantMarkdownSheet(theme),
+                        builders: {
+                          'pre': CodeBlockBuilder(
+                            textStyle: TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'monospace',
+                              color: messageTextColor,
+                            ),
+                          ),
+                        },
+                      ),
+                  if (isStreaming && message.content.isEmpty && (widget.streamingStatus?.trim().isNotEmpty ?? false))
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
@@ -315,28 +365,27 @@ class _ChatBubbleState extends State<ChatBubble> {
                             children: [
                               for (final fid in sessionFileIds)
                                 Tooltip(
-                                  message:
-                                      'Скачать артефакт с сервера (в приложении превью нет)',
+                                  message: 'Скачать артефакт с сервера (в приложении превью нет)',
                                   child: TextButton.icon(
                                     onPressed: _downloadingFileId != null
-                                        ? null
-                                        : () => _downloadSessionFile(fid),
+                                      ? null
+                                      : () => _downloadSessionFile(fid),
                                     icon: _downloadingFileId == fid
-                                        ? SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: messageTextColor.withValues(
-                                                alpha: 0.85,
-                                              ),
-                                            ),
-                                          )
-                                        : Icon(
-                                            Icons.download_rounded,
-                                            size: 18,
-                                            color: theme.colorScheme.primary,
+                                      ? SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: messageTextColor.withValues(
+                                            alpha: 0.85,
                                           ),
+                                        ),
+                                      )
+                                      : Icon(
+                                        Icons.download_rounded,
+                                        size: 18,
+                                        color: theme.colorScheme.primary,
+                                      ),
                                     label: Text(
                                       'Файл #$fid',
                                       style: TextStyle(
@@ -361,33 +410,63 @@ class _ChatBubbleState extends State<ChatBubble> {
                 ],
               ),
             ),
-            if (hasCopyableText || isStreaming || widget.onRegenerate != null)
+            if (hasCopyableText ||
+                isStreaming ||
+                widget.onRegenerate != null ||
+                widget.onEditSubmit != null ||
+                showEditNav)
               Padding(
                 padding: const EdgeInsets.only(left: 4, right: 4, top: 2, bottom: 4),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (showEditNav) ...[
+                      IconButton(
+                        onPressed: widget.onPrevEdit,
+                        icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                        tooltip: 'Предыдущая версия',
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                      Text(
+                        '${(editsIndex ?? 0) + 1}/${editsTotal ?? 1}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: widget.onNextEdit,
+                        icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                        tooltip: 'Следующая версия',
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     if (hasCopyableText || isStreaming)
                       IconButton(
                         onPressed: hasCopyableText
-                            ? () async {
-                                await Clipboard.setData(
-                                  ClipboardData(text: message.content),
-                                );
+                          ? () async {
+                            await Clipboard.setData(
+                              ClipboardData(text: message.content),
+                            );
 
-                                if (!mounted) {
-                                  return;
-                                }
+                            if (!mounted) {
+                              return;
+                            }
 
-                                setState(() => _justCopied = true);
+                            setState(() => _justCopied = true);
 
-                                Future.delayed(const Duration(seconds: 2), () {
-                                  if (mounted) {
-                                    setState(() => _justCopied = false);
-                                  }
-                                });
+                            Future.delayed(const Duration(seconds: 2), () {
+                              if (mounted) {
+                                setState(() => _justCopied = false);
                               }
-                            : null,
+                            });
+                          }
+                          : null,
                         icon: Icon(
                           _justCopied ? Icons.check_rounded : Icons.copy_rounded,
                           size: 18,
@@ -413,6 +492,20 @@ class _ChatBubbleState extends State<ChatBubble> {
                           size: 18,
                         ),
                         tooltip: 'Перегенерировать ответ',
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                    if (widget.onEditSubmit != null && isUser && !isStreaming)
+                      IconButton(
+                        onPressed: () {
+                          setState(() => _isEditing = !_isEditing);
+                        },
+                        icon: Icon(
+                          Icons.edit_rounded,
+                          size: 18,
+                        ),
+                        tooltip: 'Редактировать и продолжить',
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
                         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),

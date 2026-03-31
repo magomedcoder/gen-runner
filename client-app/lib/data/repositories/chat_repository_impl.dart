@@ -6,6 +6,8 @@ import 'package:gen/data/data_sources/remote/chat_remote_datasource.dart';
 import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/chat_stream_chunk.dart';
 import 'package:gen/domain/entities/message.dart';
+import 'package:gen/domain/entities/assistant_message_regeneration.dart';
+import 'package:gen/domain/entities/user_message_edit.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/entities/session_file_download.dart';
 import 'package:gen/domain/entities/spreadsheet_apply_result.dart';
@@ -49,6 +51,87 @@ class ChatRepositoryImpl implements ChatRepository {
       );
     } catch (e) {
       throw ApiFailure('Ошибка перегенерации: $e');
+    }
+  }
+
+  @override
+  Stream<ChatStreamChunk> editUserMessageAndContinue(
+    int sessionId,
+    int userMessageId,
+    String newContent,
+  ) {
+    try {
+      return dataSource.editUserMessageAndContinue(
+        sessionId,
+        userMessageId,
+        newContent,
+      );
+    } catch (e) {
+      throw ApiFailure('Ошибка редактирования сообщения: $e');
+    }
+  }
+
+  @override
+  Future<List<UserMessageEdit>> getUserMessageEdits({
+    required int sessionId,
+    required int userMessageId,
+  }) async {
+    try {
+      return await dataSource.getUserMessageEdits(
+        sessionId: sessionId,
+        userMessageId: userMessageId,
+      );
+    } catch (e) {
+      throw ApiFailure('Ошибка загрузки истории правок: $e');
+    }
+  }
+
+  @override
+  Future<List<Message>> getSessionMessagesForUserMessageVersion({
+    required int sessionId,
+    required int userMessageId,
+    required int versionIndex,
+  }) async {
+    try {
+      return await dataSource.getSessionMessagesForUserMessageVersion(
+        sessionId: sessionId,
+        userMessageId: userMessageId,
+        versionIndex: versionIndex,
+      );
+    } catch (e) {
+      throw ApiFailure('Ошибка загрузки ветки сообщений: $e');
+    }
+  }
+
+  @override
+  Future<List<AssistantMessageRegeneration>> getAssistantMessageRegenerations({
+    required int sessionId,
+    required int assistantMessageId,
+  }) async {
+    try {
+      return await dataSource.getAssistantMessageRegenerations(
+        sessionId: sessionId,
+        assistantMessageId: assistantMessageId,
+      );
+    } catch (e) {
+      throw ApiFailure('Ошибка загрузки истории перегенераций: $e');
+    }
+  }
+
+  @override
+  Future<List<Message>> getSessionMessagesForAssistantMessageVersion({
+    required int sessionId,
+    required int assistantMessageId,
+    required int versionIndex,
+  }) async {
+    try {
+      return await dataSource.getSessionMessagesForAssistantMessageVersion(
+        sessionId: sessionId,
+        assistantMessageId: assistantMessageId,
+        versionIndex: versionIndex,
+      );
+    } catch (e) {
+      throw ApiFailure('Ошибка загрузки версии ответа: $e');
     }
   }
 

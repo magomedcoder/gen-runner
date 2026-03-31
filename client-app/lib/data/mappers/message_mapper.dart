@@ -31,11 +31,13 @@ abstract class MessageMapper {
   }
 
   static Message fromProto(grpc.ChatMessage proto) {
+    final updatedSeconds = proto.updatedAt.toInt();
     return Message(
       id: proto.id.toInt(),
       content: proto.content,
       role: _roleFromProto(proto.role),
       createdAt: _dateTimeFromUnixSeconds(proto.createdAt.toInt()),
+      updatedAt: updatedSeconds > 0 ? _dateTimeFromUnixSeconds(updatedSeconds) : null,
       attachmentFileName: proto.hasAttachmentName() ? proto.attachmentName : null,
       attachmentContent: proto.attachmentContent.isNotEmpty ? Uint8List.fromList(proto.attachmentContent) : null,
       attachmentFileId: proto.hasAttachmentFileId() ? proto.attachmentFileId.toInt() : null,
@@ -48,6 +50,10 @@ abstract class MessageMapper {
     p.content = entity.content;
     p.role = _roleToProto(entity.role);
     p.createdAt = Int64(_dateTimeToUnixSeconds(entity.createdAt));
+    if (entity.updatedAt != null) {
+      p.updatedAt = Int64(_dateTimeToUnixSeconds(entity.updatedAt!));
+    }
+
     if (entity.attachmentFileName != null && entity.attachmentFileName!.isNotEmpty) {
       p.attachmentName = entity.attachmentFileName!;
     }

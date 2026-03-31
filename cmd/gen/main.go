@@ -75,6 +75,7 @@ func main() {
 	chatSessionSettingsRepo := postgres.NewChatSessionSettingsRepository(db)
 	editorHistoryRepo := postgres.NewEditorHistoryRepository(db)
 	messageRepo := postgres.NewMessageRepository(db)
+	messageEditRepo := postgres.NewMessageEditRepository(db)
 	fileRepo := postgres.NewFileRepository(db)
 
 	jwtService := service.NewJWTService(cfg)
@@ -106,7 +107,7 @@ func main() {
 	defer runnerPool.Close()
 	llmRepo := runnerPool
 
-	chatUseCase := usecase.NewChatUseCase(sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, fileRepo, llmRepo, runnerPool, cfg.UploadDir, cfg.DefaultRunnerAddress())
+	chatUseCase := usecase.NewChatUseCase(sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, fileRepo, llmRepo, runnerPool, cfg.UploadDir, cfg.DefaultRunnerAddress())
 	editorUseCase := usecase.NewEditorUseCase(llmRepo, chatPreferenceRepo, editorHistoryRepo, cfg.DefaultRunnerAddress())
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 

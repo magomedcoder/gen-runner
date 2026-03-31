@@ -254,6 +254,171 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 	})
 }
 
+func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndContinueRequest, stream chatpb.ChatService_EditUserMessageAndContinueServer) error {
+	ctx := stream.Context()
+	logger.D("EditUserMessageAndContinue: session=%d userMsg=%d", req.GetSessionId(), req.GetUserMessageId())
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return err
+	}
+
+	responseChan, editErr := c.chatUseCase.EditUserMessageAndContinue(
+		ctx,
+		userID,
+		req.GetSessionId(),
+		req.GetUserMessageId(),
+		req.GetNewContent(),
+	)
+	if editErr != nil {
+		logger.E("EditUserMessageAndContinue: %v", editErr)
+		if mapped := statusForModelResolutionError(editErr); mapped != nil {
+			return mapped
+		}
+		msg := editErr.Error()
+		switch {
+		case strings.Contains(msg, "некорректный"),
+			strings.Contains(msg, "не может быть пустым"),
+			strings.Contains(msg, "не найдено"),
+			strings.Contains(msg, "редактировать можно только"):
+			return status.Error(codes.InvalidArgument, msg)
+		case errors.Is(editErr, domain.ErrUnauthorized):
+			return status.Error(codes.PermissionDenied, editErr.Error())
+		default:
+			return ToStatusError(codes.Internal, editErr)
+		}
+	}
+
+	createdAt := time.Now().Unix()
+	var lastMsgID int64
+
+	for chunk := range responseChan {
+		if chunk.Kind == usecase.StreamChunkKindText && chunk.MessageID != 0 {
+			lastMsgID = chunk.MessageID
+		}
+
+		respID := chunk.MessageID
+		if respID == 0 {
+			respID = lastMsgID
+		}
+
+		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
+		if chunk.Kind == usecase.StreamChunkKindToolStatus {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
+		}
+
+		resp := &chatpb.ChatResponse{
+			Id:        respID,
+			Content:   chunk.Text,
+			Role:      "assistant",
+			CreatedAt: createdAt,
+			Done:      false,
+			ChunkKind: pbKind,
+		}
+
+		if chunk.ToolName != "" {
+			tn := chunk.ToolName
+			resp.ToolName = &tn
+		}
+
+		if err := stream.Send(resp); err != nil {
+			return err
+		}
+	}
+
+	return stream.Send(&chatpb.ChatResponse{
+		Id:        lastMsgID,
+		Content:   "",
+		Role:      "assistant",
+		CreatedAt: createdAt,
+		Done:      true,
+		ChunkKind: chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT,
+	})
+}
+
+func (c *ChatHandler) GetUserMessageEdits(ctx context.Context, req *chatpb.GetUserMessageEditsRequest) (*chatpb.GetUserMessageEditsResponse, error) {
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil || req.GetSessionId() <= 0 || req.GetUserMessageId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "некорректный запрос")
+	}
+	rows, getErr := c.chatUseCase.GetUserMessageEdits(ctx, userID, req.GetSessionId(), req.GetUserMessageId())
+	if getErr != nil {
+		msg := getErr.Error()
+		switch {
+		case errors.Is(getErr, domain.ErrUnauthorized):
+			return nil, status.Error(codes.PermissionDenied, "нет доступа к сессии")
+		case strings.Contains(msg, "некорректный"),
+			strings.Contains(msg, "не найдено"):
+			return nil, status.Error(codes.InvalidArgument, msg)
+		default:
+			return nil, ToStatusError(codes.Internal, getErr)
+		}
+	}
+
+	out := &chatpb.GetUserMessageEditsResponse{
+		Edits: make([]*chatpb.UserMessageEdit, 0, len(rows)),
+	}
+	for _, e := range rows {
+		if e == nil {
+			continue
+		}
+		out.Edits = append(out.Edits, &chatpb.UserMessageEdit{
+			Id:         e.Id,
+			MessageId:  e.MessageId,
+			CreatedAt:  e.CreatedAt.Unix(),
+			OldContent: e.OldContent,
+			NewContent: e.NewContent,
+		})
+	}
+	return out, nil
+}
+
+func (c *ChatHandler) GetSessionMessagesForUserMessageVersion(ctx context.Context, req *chatpb.GetSessionMessagesForUserMessageVersionRequest) (*chatpb.GetSessionMessagesResponse, error) {
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if req == nil || req.GetSessionId() <= 0 || req.GetUserMessageId() <= 0 || req.GetVersionIndex() < 0 {
+		return nil, status.Error(codes.InvalidArgument, "некорректный запрос")
+	}
+
+	msgs, getErr := c.chatUseCase.GetSessionMessagesForUserMessageVersion(
+		ctx,
+		userID,
+		req.GetSessionId(),
+		req.GetUserMessageId(),
+		req.GetVersionIndex(),
+	)
+
+	if getErr != nil {
+		msg := getErr.Error()
+		switch {
+		case errors.Is(getErr, domain.ErrUnauthorized):
+			return nil, status.Error(codes.PermissionDenied, "нет доступа к сессии")
+		case strings.Contains(msg, "некорректный"),
+			strings.Contains(msg, "не найдено"):
+			return nil, status.Error(codes.InvalidArgument, msg)
+		default:
+			return nil, ToStatusError(codes.Internal, getErr)
+		}
+	}
+
+	out := make([]*chatpb.ChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, mappers.MessageToProto(m))
+	}
+
+	return &chatpb.GetSessionMessagesResponse{
+		Messages: out,
+		Total:    int32(len(out)),
+		Page:     1,
+		PageSize: int32(len(out)),
+	}, nil
+}
+
 func (c *ChatHandler) CreateSession(ctx context.Context, req *chatpb.CreateSessionRequest) (*chatpb.ChatSession, error) {
 	logger.D("CreateSession: title=%s", req.GetTitle())
 	userID, err := c.getUserID(ctx)

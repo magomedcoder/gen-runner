@@ -11,9 +11,30 @@ import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 
 class ChatInputBar extends StatefulWidget {
-  const ChatInputBar({super.key, required this.isEnabled});
+  const ChatInputBar({
+    super.key,
+    required this.isEnabled,
+    this.initialText,
+    this.onSubmitText,
+    this.onCancel,
+    this.allowAttachments = true,
+    this.showRetry = true,
+    this.showStop = true,
+    this.clearOnSubmit = true,
+    this.submitLabel = 'Отправить',
+    this.submitIcon = Icons.send_rounded,
+  });
 
   final bool isEnabled;
+  final String? initialText;
+  final Future<void> Function(String text)? onSubmitText;
+  final VoidCallback? onCancel;
+  final bool allowAttachments;
+  final bool showRetry;
+  final bool showStop;
+  final bool clearOnSubmit;
+  final String submitLabel;
+  final IconData submitIcon;
 
   @override
   State<ChatInputBar> createState() => ChatInputBarState();
@@ -33,6 +54,11 @@ class ChatInputBarState extends State<ChatInputBar> {
   void initState() {
     super.initState();
     _textController.addListener(_onTextChanged);
+    final initial = widget.initialText;
+    if (initial != null && initial.isNotEmpty) {
+      _textController.text = initial;
+      _isComposing = initial.trim().isNotEmpty;
+    }
   }
 
   void _onTextChanged() {
@@ -69,6 +95,16 @@ class ChatInputBarState extends State<ChatInputBar> {
     final hasFile = _selectedFile != null;
 
     if (text.isEmpty && !hasFile) {
+      return;
+    }
+
+    if (widget.onSubmitText != null) {
+      await widget.onSubmitText!(text);
+      if (widget.clearOnSubmit) {
+        _textController.clear();
+        _focusNode.unfocus();
+        setState(() => _selectedFile = null);
+      }
       return;
     }
 
@@ -111,7 +147,7 @@ class ChatInputBarState extends State<ChatInputBar> {
   }
 
   Future<void> _pickFile() async {
-    if (!widget.isEnabled) {
+    if (!widget.isEnabled || !widget.allowAttachments) {
       return;
     }
 
@@ -179,7 +215,7 @@ class ChatInputBarState extends State<ChatInputBar> {
   }
 
   void setDroppedFile(PlatformFile file) {
-    if (!widget.isEnabled) {
+    if (!widget.isEnabled || !widget.allowAttachments) {
       return;
     }
 
@@ -333,23 +369,31 @@ class ChatInputBarState extends State<ChatInputBar> {
         ),
         child: Row(
           children: [
-            IconButton(
-              tooltip: 'Прикрепить файл',
-              onPressed: widget.isEnabled ? _pickFile : null,
-              icon: Icon(
-                Icons.attach_file_rounded,
-                color: widget.isEnabled
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            if (widget.allowAttachments)
+              IconButton(
+                tooltip: 'Прикрепить файл',
+                onPressed: widget.isEnabled ? _pickFile : null,
+                icon: Icon(
+                  Icons.attach_file_rounded,
+                  color: widget.isEnabled
+                    ? theme.colorScheme.onSurfaceVariant
+                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                ),
               ),
-            ),
-            if (state.retryText != null && !state.isStreaming) ...[
+            if (widget.showRetry && state.retryText != null && !state.isStreaming) ...[
               TextButton.icon(
                 onPressed: widget.isEnabled
                   ? () => context.read<ChatBloc>().add(const ChatRetryLastMessage())
                   : null,
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('Повторить'),
+              ),
+              const SizedBox(width: 6),
+            ],
+            if (widget.onCancel != null) ...[
+              TextButton(
+                onPressed: widget.isEnabled ? widget.onCancel : null,
+                child: const Text('Отмена'),
               ),
               const SizedBox(width: 6),
             ],
@@ -362,7 +406,7 @@ class ChatInputBarState extends State<ChatInputBar> {
                       constraints: BoxConstraints(
                         maxWidth: constraints.maxWidth,
                       ),
-                      child: state.isStreaming
+                      child: (state.isStreaming && widget.showStop)
                         ? FilledButton.tonal(
                           onPressed: _stopGeneration,
                           style: FilledButton.styleFrom(
@@ -406,11 +450,11 @@ class ChatInputBarState extends State<ChatInputBar> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.send_rounded, size: 20),
+                              Icon(widget.submitIcon, size: 20),
                               const SizedBox(width: 8),
                               Flexible(
                                 child: Text(
-                                  'Отправить',
+                                  widget.submitLabel,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   textAlign: TextAlign.center,
@@ -526,7 +570,7 @@ class ChatInputBarState extends State<ChatInputBar> {
                         style: inputTextStyle,
                         decoration: InputDecoration(
                           hintText: widget.isEnabled
-                            ? (isDesktop ? 'Сообщение...  Ctrl+Enter - новая строка' : 'Сообщение…')
+                            ? (isDesktop ? 'Сообщение...  Ctrl+Enter - новая строка' : 'Сообщение...')
                             : 'Обрабатываю...',
                           hintStyle: TextStyle(
                             fontSize: 14,

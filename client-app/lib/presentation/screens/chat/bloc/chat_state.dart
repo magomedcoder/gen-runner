@@ -2,6 +2,8 @@ import 'package:equatable/equatable.dart';
 import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
+import 'package:gen/domain/entities/assistant_message_regeneration.dart';
+import 'package:gen/domain/entities/user_message_edit.dart';
 
 const _kKeepCurrentSessionId = Symbol('_kKeepCurrentSessionId');
 const _kKeepToolProgress = Object();
@@ -26,6 +28,14 @@ class ChatState extends Equatable {
   final String? retryAttachmentFileName;
   final List<int>? retryAttachmentContent;
   final int? retryAttachmentFileId;
+  final Set<int> editedMessageIds;
+  final Map<int, List<UserMessageEdit>> editsByMessageId;
+  final Map<int, int> editCursorByMessageId;
+  final Map<int, int> pendingEditNavDeltaByMessageId;
+  final Set<int> regeneratedAssistantMessageIds;
+  final Map<int, List<AssistantMessageRegeneration>> regenerationsByMessageId;
+  final Map<int, int> regenerationCursorByMessageId;
+  final Map<int, int> pendingRegenerationNavDeltaByMessageId;
 
   const ChatState({
     this.isConnected = false,
@@ -47,6 +57,14 @@ class ChatState extends Equatable {
     this.retryAttachmentFileName,
     this.retryAttachmentContent,
     this.retryAttachmentFileId,
+    this.editedMessageIds = const {},
+    this.editsByMessageId = const {},
+    this.editCursorByMessageId = const {},
+    this.pendingEditNavDeltaByMessageId = const {},
+    this.regeneratedAssistantMessageIds = const {},
+    this.regenerationsByMessageId = const {},
+    this.regenerationCursorByMessageId = const {},
+    this.pendingRegenerationNavDeltaByMessageId = const {},
   });
 
   ChatState copyWith({
@@ -71,6 +89,14 @@ class ChatState extends Equatable {
     int? retryAttachmentFileId,
     bool clearRetryPayload = false,
     bool clearToolProgress = false,
+    Set<int>? editedMessageIds,
+    Map<int, List<UserMessageEdit>>? editsByMessageId,
+    Map<int, int>? editCursorByMessageId,
+    Map<int, int>? pendingEditNavDeltaByMessageId,
+    Set<int>? regeneratedAssistantMessageIds,
+    Map<int, List<AssistantMessageRegeneration>>? regenerationsByMessageId,
+    Map<int, int>? regenerationCursorByMessageId,
+    Map<int, int>? pendingRegenerationNavDeltaByMessageId,
   }) {
     return ChatState(
       isConnected: isConnected ?? this.isConnected,
@@ -104,6 +130,14 @@ class ChatState extends Equatable {
       retryAttachmentFileId: clearRetryPayload
         ? null
         : (retryAttachmentFileId ?? this.retryAttachmentFileId),
+      editedMessageIds: editedMessageIds ?? this.editedMessageIds,
+      editsByMessageId: editsByMessageId ?? this.editsByMessageId,
+      editCursorByMessageId: editCursorByMessageId ?? this.editCursorByMessageId,
+      pendingEditNavDeltaByMessageId: pendingEditNavDeltaByMessageId ?? this.pendingEditNavDeltaByMessageId,
+      regeneratedAssistantMessageIds: regeneratedAssistantMessageIds ?? this.regeneratedAssistantMessageIds,
+      regenerationsByMessageId: regenerationsByMessageId ?? this.regenerationsByMessageId,
+      regenerationCursorByMessageId: regenerationCursorByMessageId ?? this.regenerationCursorByMessageId,
+      pendingRegenerationNavDeltaByMessageId: pendingRegenerationNavDeltaByMessageId ?? this.pendingRegenerationNavDeltaByMessageId,
     );
   }
 
@@ -128,5 +162,13 @@ class ChatState extends Equatable {
     retryAttachmentFileName,
     retryAttachmentContent,
     retryAttachmentFileId,
+    editedMessageIds,
+    editsByMessageId,
+    editCursorByMessageId,
+    pendingEditNavDeltaByMessageId,
+    regeneratedAssistantMessageIds,
+    regenerationsByMessageId,
+    regenerationCursorByMessageId,
+    pendingRegenerationNavDeltaByMessageId,
   ];
 }

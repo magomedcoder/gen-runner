@@ -13,6 +13,8 @@ import 'package:gen/data/mappers/session_mapper.dart';
 import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/chat_stream_chunk.dart';
 import 'package:gen/domain/entities/message.dart';
+import 'package:gen/domain/entities/assistant_message_regeneration.dart';
+import 'package:gen/domain/entities/user_message_edit.dart';
 import 'package:gen/domain/entities/session_file_download.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/entities/spreadsheet_apply_result.dart';
@@ -41,6 +43,34 @@ abstract class IChatRemoteDataSource {
     int sessionId,
     int assistantMessageId,
   );
+
+  Stream<ChatStreamChunk> editUserMessageAndContinue(
+    int sessionId,
+    int userMessageId,
+    String newContent,
+  );
+
+  Future<List<UserMessageEdit>> getUserMessageEdits({
+    required int sessionId,
+    required int userMessageId,
+  });
+
+  Future<List<Message>> getSessionMessagesForUserMessageVersion({
+    required int sessionId,
+    required int userMessageId,
+    required int versionIndex,
+  });
+
+  Future<List<AssistantMessageRegeneration>> getAssistantMessageRegenerations({
+    required int sessionId,
+    required int assistantMessageId,
+  });
+
+  Future<List<Message>> getSessionMessagesForAssistantMessageVersion({
+    required int sessionId,
+    required int assistantMessageId,
+    required int versionIndex,
+  });
 
   Future<ChatSession> createSession(String title);
 
@@ -421,6 +451,302 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     };
 
     return controller.stream;
+  }
+
+  @override
+  Stream<ChatStreamChunk> editUserMessageAndContinue(
+    int sessionId,
+    int userMessageId,
+    String newContent,
+  ) {
+    Logs().d('ChatRemote: editUserMessageAndContinue sessionId=$sessionId msgId=$userMessageId');
+    final controller = StreamController<ChatStreamChunk>();
+    StreamSubscription<grpc.ChatResponse>? streamSubscription;
+
+    Future<void> closeWithError(Object error, [StackTrace? st]) async {
+      if (!controller.isClosed) {
+        controller.addError(error, st);
+      }
+
+      if (!controller.isClosed) {
+        await controller.close();
+      }
+    }
+
+    () async {
+      try {
+        if (userMessageId <= 0) {
+          throw ApiFailure('Некорректный идентификатор сообщения');
+        }
+
+        final content = newContent.trim();
+        if (content.isEmpty) {
+          throw ApiFailure('Текст не может быть пустым');
+        }
+
+        final request = grpc.EditUserMessageAndContinueRequest()
+          ..sessionId = Int64(sessionId)
+          ..userMessageId = Int64(userMessageId)
+          ..newContent = content;
+        final responseStream = _client.editUserMessageAndContinue(request);
+        streamSubscription = responseStream.listen(
+          (response) {
+            if (controller.isClosed) {
+              return;
+            }
+
+            if (response.done) {
+              Logs().i('ChatRemote: editUserMessageAndContinue завершён');
+              controller.close();
+              return;
+            }
+
+            final mid = response.id.toInt();
+            if (response.chunkKind == chat_pb.StreamChunkKind.STREAM_CHUNK_KIND_TOOL_STATUS) {
+              controller.add(
+                ChatStreamChunk(
+                  kind: ChatStreamChunkKind.toolStatus,
+                  text: response.content,
+                  toolName: response.hasToolName() ? response.toolName : null,
+                  messageId: mid,
+                ),
+              );
+              return;
+            }
+
+            if (response.content.isNotEmpty) {
+              controller.add(
+                ChatStreamChunk(
+                  kind: ChatStreamChunkKind.text,
+                  text: response.content,
+                  messageId: mid,
+                ),
+              );
+            }
+          },
+          onError: (Object e, StackTrace st) async {
+            if (e is GrpcError && e.code == StatusCode.deadlineExceeded) {
+              await closeWithError(NetworkFailure('Таймаут запроса gRPC'), st);
+              return;
+            }
+
+            if (e is GrpcError) {
+              Logs().e('ChatRemote: editUserMessageAndContinue', exception: e);
+              if (e.code == StatusCode.unauthenticated) {
+                await closeWithError(UnauthorizedFailure(kSessionExpiredMessage), st);
+              } else if (e.code == StatusCode.invalidArgument) {
+                final detail = e.message?.trim();
+                await closeWithError(ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Некорректные данные запроса'), st);
+              } else if (e.code == StatusCode.permissionDenied) {
+                final detail = e.message?.trim();
+                await closeWithError(ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Нет доступа к сессии'), st);
+              } else {
+                await closeWithError(NetworkFailure('Ошибка gRPC'), st);
+              }
+              return;
+            }
+            await closeWithError(ApiFailure('Ошибка редактирования сообщения'), st);
+          },
+          onDone: () async {
+            if (!controller.isClosed) {
+              Logs().i('ChatRemote: editUserMessageAndContinue завершён');
+              await controller.close();
+            }
+          },
+          cancelOnError: true,
+        );
+      } on GrpcError catch (e) {
+        if (e.code == StatusCode.deadlineExceeded) {
+          await closeWithError(NetworkFailure('Таймаут запроса gRPC'));
+          return;
+        }
+
+        Logs().e('ChatRemote: editUserMessageAndContinue', exception: e);
+        if (e.code == StatusCode.unauthenticated) {
+          await closeWithError(UnauthorizedFailure(kSessionExpiredMessage));
+        } else if (e.code == StatusCode.invalidArgument) {
+          final detail = e.message?.trim();
+          await closeWithError(ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Некорректные данные запроса'));
+        } else if (e.code == StatusCode.permissionDenied) {
+          final detail = e.message?.trim();
+          await closeWithError(ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Нет доступа к сессии'));
+        } else {
+          await closeWithError(NetworkFailure('Ошибка gRPC'));
+        }
+      } on Failure catch (e, st) {
+        await closeWithError(e, st);
+      } catch (e, st) {
+        Logs().e('ChatRemote: editUserMessageAndContinue', exception: e);
+        await closeWithError(ApiFailure('Ошибка редактирования сообщения'), st);
+      }
+    }();
+
+    controller.onCancel = () async {
+      Logs().d('ChatRemote: editUserMessageAndContinue отменён клиентом');
+      await streamSubscription?.cancel();
+      streamSubscription = null;
+    };
+
+    return controller.stream;
+  }
+
+  DateTime _dtFromUnixSeconds(int seconds) {
+    return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+  }
+
+  @override
+  Future<List<UserMessageEdit>> getUserMessageEdits({
+    required int sessionId,
+    required int userMessageId,
+  }) async {
+    try {
+      final req = grpc.GetUserMessageEditsRequest()
+        ..sessionId = Int64(sessionId)
+        ..userMessageId = Int64(userMessageId);
+      final resp = await _authGuard.execute(() => _client.getUserMessageEdits(req));
+      return resp.edits.map((e) => UserMessageEdit(
+        id: e.id.toInt(),
+        messageId: e.messageId.toInt(),
+        createdAt: _dtFromUnixSeconds(e.createdAt.toInt()),
+        oldContent: e.oldContent,
+        newContent: e.newContent,
+      ))
+      .toList();
+    } on GrpcError catch (e) {
+      Logs().e('ChatRemote: getUserMessageEdits', exception: e);
+      if (e.code == StatusCode.unauthenticated) {
+        throw UnauthorizedFailure(kSessionExpiredMessage);
+      }
+
+      if (e.code == StatusCode.invalidArgument) {
+        final detail = e.message?.trim();
+        throw ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Некорректный запрос истории правок');
+      }
+      if (e.code == StatusCode.permissionDenied) {
+        final detail = e.message?.trim();
+        throw ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Нет доступа');
+      }
+      throwGrpcError(e, 'Ошибка gRPC при получении истории правок');
+    } catch (e) {
+      if (e is Failure) rethrow;
+      throw ApiFailure('Ошибка получения истории правок');
+    }
+  }
+
+  @override
+  Future<List<Message>> getSessionMessagesForUserMessageVersion({
+    required int sessionId,
+    required int userMessageId,
+    required int versionIndex,
+  }) async {
+    try {
+      final req = grpc.GetSessionMessagesForUserMessageVersionRequest()
+        ..sessionId = Int64(sessionId)
+        ..userMessageId = Int64(userMessageId)
+        ..versionIndex = versionIndex;
+      final resp = await _authGuard.execute(() => _client.getSessionMessagesForUserMessageVersion(req));
+
+      return MessageMapper.listFromProto(resp.messages);
+    } on GrpcError catch (e) {
+      Logs().e('ChatRemote: getSessionMessagesForUserMessageVersion', exception: e);
+      if (e.code == StatusCode.unauthenticated) {
+        throw UnauthorizedFailure(kSessionExpiredMessage);
+      }
+
+      if (e.code == StatusCode.invalidArgument) {
+        final detail = e.message?.trim();
+        throw ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Некорректный запрос версии',);
+      }
+
+      if (e.code == StatusCode.permissionDenied) {
+        final detail = e.message?.trim();
+        throw ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Нет доступа');
+      }
+
+      throwGrpcError(e, 'Ошибка gRPC при получении версии истории');
+    } catch (e) {
+      if (e is Failure) rethrow;
+      throw ApiFailure('Ошибка получения версии истории');
+    }
+  }
+
+  @override
+  Future<List<AssistantMessageRegeneration>> getAssistantMessageRegenerations({
+    required int sessionId,
+    required int assistantMessageId,
+  }) async {
+    try {
+      final req = grpc.GetAssistantMessageRegenerationsRequest()
+        ..sessionId = Int64(sessionId)
+        ..assistantMessageId = Int64(assistantMessageId);
+      final resp = await _authGuard.execute(() => _client.getAssistantMessageRegenerations(req));
+
+      return resp.regenerations.map((r) => AssistantMessageRegeneration(
+        id: r.id.toInt(),
+        messageId: r.messageId.toInt(),
+        createdAt: _dtFromUnixSeconds(r.createdAt.toInt()),
+        oldContent: r.oldContent,
+        newContent: r.newContent,
+      ))
+      .toList();
+    } on GrpcError catch (e) {
+      Logs().e('ChatRemote: getAssistantMessageRegenerations', exception: e);
+      if (e.code == StatusCode.unauthenticated) {
+        throw UnauthorizedFailure(kSessionExpiredMessage);
+      }
+
+      if (e.code == StatusCode.invalidArgument) {
+        final detail = e.message?.trim();
+        throw ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Некорректный запрос истории перегенераций');
+      }
+
+      if (e.code == StatusCode.permissionDenied) {
+        final detail = e.message?.trim();
+        throw ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Нет доступа');
+      }
+
+      throwGrpcError(e, 'Ошибка gRPC при получении истории перегенераций');
+    } catch (e) {
+      if (e is Failure) rethrow;
+      throw ApiFailure('Ошибка получения истории перегенераций');
+    }
+  }
+
+  @override
+  Future<List<Message>> getSessionMessagesForAssistantMessageVersion({
+    required int sessionId,
+    required int assistantMessageId,
+    required int versionIndex,
+  }) async {
+    try {
+      final req = grpc.GetSessionMessagesForAssistantMessageVersionRequest()
+        ..sessionId = Int64(sessionId)
+        ..assistantMessageId = Int64(assistantMessageId)
+        ..versionIndex = versionIndex;
+      final resp = await _authGuard.execute(() => _client.getSessionMessagesForAssistantMessageVersion(req));
+
+      return MessageMapper.listFromProto(resp.messages);
+    } on GrpcError catch (e) {
+      Logs().e('ChatRemote: getSessionMessagesForAssistantMessageVersion', exception: e);
+      if (e.code == StatusCode.unauthenticated) {
+        throw UnauthorizedFailure(kSessionExpiredMessage);
+      }
+
+      if (e.code == StatusCode.invalidArgument) {
+        final detail = e.message?.trim();
+        throw ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Некорректный запрос версии');
+      }
+
+      if (e.code == StatusCode.permissionDenied) {
+        final detail = e.message?.trim();
+        throw ApiFailure(detail != null && detail.isNotEmpty ? detail : 'Нет доступа');
+      }
+
+      throwGrpcError(e, 'Ошибка gRPC при получении версии ответа');
+    } catch (e) {
+      if (e is Failure) rethrow;
+      throw ApiFailure('Ошибка получения версии ответа');
+    }
   }
 
   @override

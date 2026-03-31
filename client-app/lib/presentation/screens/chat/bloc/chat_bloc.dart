@@ -8,6 +8,8 @@ import 'package:gen/core/request_logout_on_unauthorized.dart';
 import 'package:gen/domain/entities/chat_stream_chunk.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/runner_info.dart';
+import 'package:gen/domain/entities/assistant_message_regeneration.dart';
+import 'package:gen/domain/entities/user_message_edit.dart';
 import 'package:gen/domain/usecases/chat/connect_usecase.dart';
 import 'package:gen/domain/usecases/chat/create_session_usecase.dart';
 import 'package:gen/domain/usecases/chat/delete_session_usecase.dart';
@@ -16,6 +18,11 @@ import 'package:gen/domain/usecases/chat/get_sessions_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_session_settings_usecase.dart';
 import 'package:gen/domain/usecases/chat/regenerate_assistant_usecase.dart';
+import 'package:gen/domain/usecases/chat/edit_user_message_and_continue_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_assistant_message_regenerations_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_user_message_edits_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_session_messages_for_assistant_message_version_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_session_messages_for_user_message_version_usecase.dart';
 import 'package:gen/domain/usecases/chat/send_message_usecase.dart';
 import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_settings_usecase.dart';
@@ -38,6 +45,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final UpdateSessionSettingsUseCase updateSessionSettingsUseCase;
   final SendMessageUseCase sendMessageUseCase;
   final RegenerateAssistantUseCase regenerateAssistantUseCase;
+  final EditUserMessageAndContinueUseCase editUserMessageAndContinueUseCase;
+  final GetUserMessageEditsUseCase getUserMessageEditsUseCase;
+  final GetSessionMessagesForUserMessageVersionUseCase getSessionMessagesForUserMessageVersionUseCase;
+  final GetAssistantMessageRegenerationsUseCase getAssistantMessageRegenerationsUseCase;
+  final GetSessionMessagesForAssistantMessageVersionUseCase getSessionMessagesForAssistantMessageVersionUseCase;
   final CreateSessionUseCase createSessionUseCase;
   final GetSessionsUseCase getSessionsUseCase;
   final GetSessionMessagesUseCase getSessionMessagesUseCase;
@@ -52,6 +64,124 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
   int _streamingAssistantMessageId = 0;
 
+  Future<List<Message>?> _resetViewToLatestBranchIfNeeded(
+    Emitter<ChatState> emit,
+  ) async {
+    final sessionId = state.currentSessionId;
+    if (sessionId == null) {
+      return null;
+    }
+
+    int? userMessageId;
+    List<UserMessageEdit>? edits;
+    for (var i = state.messages.length - 1; i >= 0; i--) {
+      final m = state.messages[i];
+      if (m.role != MessageRole.user || m.id <= 0) {
+        continue;
+      }
+      final e = state.editsByMessageId[m.id];
+      if (e != null && e.isNotEmpty) {
+        userMessageId = m.id;
+        edits = e;
+        break;
+      }
+    }
+    if (userMessageId == null || edits == null) {
+      return null;
+    }
+
+    final latestIdx = edits.length;
+    final currentIdx = state.editCursorByMessageId[userMessageId] ?? latestIdx;
+    if (currentIdx == latestIdx) {
+      return null;
+    }
+
+    final cursorById = Map<int, int>.from(state.editCursorByMessageId);
+    cursorById[userMessageId] = latestIdx;
+    emit(state.copyWith(editCursorByMessageId: cursorById));
+    if (emit.isDone) {
+      return null;
+    }
+
+    final view = await getSessionMessagesForUserMessageVersionUseCase(
+      sessionId: sessionId,
+      userMessageId: userMessageId,
+      versionIndex: latestIdx,
+    );
+
+    if (emit.isDone) {
+      return null;
+    }
+
+    emit(state.copyWith(messages: view));
+
+    return view;
+  }
+
+  Future<void> _prefetchEditsForMessages(
+    int sessionId,
+    List<Message> messages,
+    Emitter<ChatState> emit,
+  ) async {
+    final candidates = <Message>[];
+    for (final m in messages) {
+      if (m.role != MessageRole.user || m.id <= 0) {
+        continue;
+      }
+
+      final ua = m.updatedAt;
+      if (ua == null) {
+        continue;
+      }
+
+      if (ua.millisecondsSinceEpoch == m.createdAt.millisecondsSinceEpoch) {
+        continue;
+      }
+
+      candidates.add(m);
+    }
+    if (candidates.isEmpty) {
+      return;
+    }
+
+    final take = candidates.length > 20 ? candidates.sublist(candidates.length - 20) : candidates;
+    final editsById = Map<int, List<UserMessageEdit>>.from(state.editsByMessageId);
+    final cursorById = Map<int, int>.from(state.editCursorByMessageId);
+    final editedIds = <int>{...state.editedMessageIds};
+
+    for (final m in take) {
+      final existing = editsById[m.id];
+      if (existing != null) {
+        cursorById[m.id] = existing.isEmpty ? 0 : existing.length;
+        editedIds.add(m.id);
+        continue;
+      }
+
+      try {
+        final editsRaw = await getUserMessageEditsUseCase(
+          sessionId: sessionId,
+          userMessageId: m.id,
+        );
+
+        final edits = [...editsRaw]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        editsById[m.id] = edits;
+        cursorById[m.id] = edits.isEmpty ? 0 : edits.length;
+        editedIds.add(m.id);
+      } catch (_) {
+
+      }
+      if (emit.isDone) {
+        return;
+      }
+    }
+
+    emit(state.copyWith(
+      editsByMessageId: editsById,
+      editCursorByMessageId: cursorById,
+      editedMessageIds: editedIds,
+    ));
+  }
+
   ChatBloc({
     required this.authBloc,
     required this.connectUseCase,
@@ -61,6 +191,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     required this.updateSessionSettingsUseCase,
     required this.sendMessageUseCase,
     required this.regenerateAssistantUseCase,
+    required this.editUserMessageAndContinueUseCase,
+    required this.getUserMessageEditsUseCase,
+    required this.getSessionMessagesForUserMessageVersionUseCase,
+    required this.getAssistantMessageRegenerationsUseCase,
+    required this.getSessionMessagesForAssistantMessageVersionUseCase,
     required this.createSessionUseCase,
     required this.getSessionsUseCase,
     required this.getSessionMessagesUseCase,
@@ -80,12 +215,375 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatStopGeneration>(_onChatStopGeneration);
     on<ChatRetryLastMessage>(_onRetryLastMessage);
     on<ChatRegenerateAssistant>(_onRegenerateAssistant, transformer: droppable());
+    on<ChatEditUserMessageAndContinue>(_onEditUserMessageAndContinue, transformer: droppable());
+    on<ChatShowUserMessageEdits>(_onShowUserMessageEdits, transformer: droppable());
+    on<ChatNavigateUserMessageEdit>(_onNavigateUserMessageEdit, transformer: droppable());
+    on<ChatShowAssistantMessageRegenerations>(_onShowAssistantMessageRegenerations, transformer: droppable());
+    on<ChatNavigateAssistantMessageRegeneration>(_onNavigateAssistantMessageRegeneration, transformer: droppable());
     on<ChatDeleteSession>(_onDeleteSession);
     on<ChatUpdateSessionTitle>(_onUpdateSessionTitle);
     on<ChatLoadRunners>(_onLoadRunners);
     on<ChatSelectRunner>(_onSelectRunner);
     on<ChatLoadSessionSettings>(_onLoadSessionSettings);
     on<ChatUpdateSessionSettings>(_onUpdateSessionSettings);
+  }
+
+  Future<void> _onShowUserMessageEdits(
+    ChatShowUserMessageEdits event,
+    Emitter<ChatState> emit,
+  ) async {
+    final sessionId = state.currentSessionId;
+    if (sessionId == null) {
+      return;
+    }
+
+    if (state.isStreaming) {
+      return;
+    }
+
+    try {
+      final editsRaw = await getUserMessageEditsUseCase(
+        sessionId: sessionId,
+        userMessageId: event.userMessageId,
+      );
+      final edits = [...editsRaw]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+      final editsById = Map<int, List<UserMessageEdit>>.from(state.editsByMessageId);
+      editsById[event.userMessageId] = edits;
+
+      final cursorById = Map<int, int>.from(state.editCursorByMessageId);
+      cursorById[event.userMessageId] = edits.isEmpty ? 0 : edits.length;
+
+      final pending = state.pendingEditNavDeltaByMessageId[event.userMessageId];
+      final pendingMap = Map<int, int>.from(state.pendingEditNavDeltaByMessageId);
+      pendingMap.remove(event.userMessageId);
+
+      if (pending != null && edits.isNotEmpty) {
+        final versionsCount = edits.length + 1;
+        final cur = cursorById[event.userMessageId] ?? (versionsCount - 1);
+        cursorById[event.userMessageId] = (cur + pending).clamp(0, versionsCount - 1);
+      }
+
+      emit(state.copyWith(
+        editsByMessageId: editsById,
+        editCursorByMessageId: cursorById,
+        pendingEditNavDeltaByMessageId: pendingMap,
+      ));
+    } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
+      emit(state.copyWith(error: 'Не удалось загрузить историю правок'));
+    }
+  }
+
+  Future<void> _onNavigateUserMessageEdit(
+    ChatNavigateUserMessageEdit event,
+    Emitter<ChatState> emit,
+  ) async {
+    final edits = state.editsByMessageId[event.userMessageId];
+    if (edits == null) {
+      final pending = Map<int, int>.from(state.pendingEditNavDeltaByMessageId);
+      pending[event.userMessageId] = event.delta;
+      emit(state.copyWith(pendingEditNavDeltaByMessageId: pending));
+      add(ChatShowUserMessageEdits(event.userMessageId));
+      return;
+    }
+
+    if (edits.isEmpty) {
+      return;
+    }
+
+    final versionsCount = edits.length + 1;
+    final current = state.editCursorByMessageId[event.userMessageId] ?? (versionsCount - 1);
+    final next = (current + event.delta).clamp(0, versionsCount - 1);
+    if (next == current) {
+      return;
+    }
+
+    final cursorById = Map<int, int>.from(state.editCursorByMessageId);
+    cursorById[event.userMessageId] = next;
+    emit(state.copyWith(editCursorByMessageId: cursorById));
+
+    final sessionId = state.currentSessionId;
+    if (sessionId != null) {
+      try {
+        final view = await getSessionMessagesForUserMessageVersionUseCase(
+          sessionId: sessionId,
+          userMessageId: event.userMessageId,
+          versionIndex: next,
+        );
+
+        if (emit.isDone) {
+          return;
+        }
+
+        emit(state.copyWith(messages: view));
+      } catch (e) {
+        requestLogoutIfUnauthorized(e, authBloc);
+        if (emit.isDone) {
+          return;
+        }
+
+        emit(state.copyWith(error: 'Не удалось загрузить ветку версии'));
+      }
+    }
+  }
+
+  Future<void> _onShowAssistantMessageRegenerations(
+    ChatShowAssistantMessageRegenerations event,
+    Emitter<ChatState> emit,
+  ) async {
+    final sessionId = state.currentSessionId;
+    if (sessionId == null) {
+      return;
+    }
+    if (state.isStreaming) {
+      return;
+    }
+    try {
+      final rowsRaw = await getAssistantMessageRegenerationsUseCase(
+        sessionId: sessionId,
+        assistantMessageId: event.assistantMessageId,
+      );
+      final rows = [...rowsRaw]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+      final byId = Map<int, List<AssistantMessageRegeneration>>.from(state.regenerationsByMessageId);
+      byId[event.assistantMessageId] = rows;
+
+      final cursorById = Map<int, int>.from(state.regenerationCursorByMessageId);
+      cursorById[event.assistantMessageId] = rows.isEmpty ? 0 : rows.length;
+
+      final pending = state.pendingRegenerationNavDeltaByMessageId[event.assistantMessageId];
+      final pendingMap = Map<int, int>.from(state.pendingRegenerationNavDeltaByMessageId);
+      pendingMap.remove(event.assistantMessageId);
+
+      if (pending != null && rows.isNotEmpty) {
+        final versionsCount = rows.length + 1;
+        final cur = cursorById[event.assistantMessageId] ?? (versionsCount - 1);
+        cursorById[event.assistantMessageId] = (cur + pending).clamp(0, versionsCount - 1);
+      }
+
+      final regeneratedIds = <int>{...state.regeneratedAssistantMessageIds, event.assistantMessageId};
+
+      emit(state.copyWith(
+        regenerationsByMessageId: byId,
+        regenerationCursorByMessageId: cursorById,
+        pendingRegenerationNavDeltaByMessageId: pendingMap,
+        regeneratedAssistantMessageIds: regeneratedIds,
+      ));
+    } catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
+      emit(state.copyWith(error: 'Не удалось загрузить историю перегенераций'));
+    }
+  }
+
+  Future<void> _onNavigateAssistantMessageRegeneration(
+    ChatNavigateAssistantMessageRegeneration event,
+    Emitter<ChatState> emit,
+  ) async {
+    final regens = state.regenerationsByMessageId[event.assistantMessageId];
+    if (regens == null) {
+      final pending = Map<int, int>.from(state.pendingRegenerationNavDeltaByMessageId);
+      pending[event.assistantMessageId] = event.delta;
+      emit(state.copyWith(pendingRegenerationNavDeltaByMessageId: pending));
+      add(ChatShowAssistantMessageRegenerations(event.assistantMessageId));
+      return;
+    }
+
+    if (regens.isEmpty) {
+      return;
+    }
+
+    final versionsCount = regens.length + 1;
+    final current = state.regenerationCursorByMessageId[event.assistantMessageId] ?? (versionsCount - 1);
+    final next = (current + event.delta).clamp(0, versionsCount - 1);
+    if (next == current) {
+      return;
+    }
+
+    final cursorById = Map<int, int>.from(state.regenerationCursorByMessageId);
+    cursorById[event.assistantMessageId] = next;
+    emit(state.copyWith(regenerationCursorByMessageId: cursorById));
+
+    final sessionId = state.currentSessionId;
+    if (sessionId != null) {
+      try {
+        final view = await getSessionMessagesForAssistantMessageVersionUseCase(
+          sessionId: sessionId,
+          assistantMessageId: event.assistantMessageId,
+          versionIndex: next,
+        );
+
+        if (emit.isDone) {
+          return;
+        }
+
+        emit(state.copyWith(messages: view));
+      } catch (e) {
+        requestLogoutIfUnauthorized(e, authBloc);
+        if (emit.isDone) {
+          return;
+        }
+        emit(state.copyWith(error: 'Не удалось загрузить версию ответа'));
+      }
+    }
+  }
+
+  Future<void> _onEditUserMessageAndContinue(
+    ChatEditUserMessageAndContinue event,
+    Emitter<ChatState> emit,
+  ) async {
+    final sessionId = state.currentSessionId;
+    if (sessionId == null) {
+      return;
+    }
+
+    if (state.isStreaming) {
+      return;
+    }
+
+    final newText = event.newContent.trim();
+    if (newText.isEmpty) {
+      return;
+    }
+
+    final idx = state.messages.indexWhere((m) => m.id == event.userMessageId);
+    if (idx < 0) {
+      return;
+    }
+
+    final target = state.messages[idx];
+    if (target.role != MessageRole.user || target.id <= 0) {
+      return;
+    }
+
+    await _streamSubscription?.cancel();
+    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
+      _streamCompleter!.complete(true);
+    }
+
+    _streamSubscription = null;
+    _streamCompleter = null;
+    _streamingAssistantMessageId = 0;
+
+    final updatedUser = Message(
+      id: target.id,
+      content: newText,
+      role: MessageRole.user,
+      createdAt: target.createdAt,
+      updatedAt: DateTime.now(),
+      attachmentFileName: target.attachmentFileName,
+      attachmentContent: target.attachmentContent,
+      attachmentFileId: target.attachmentFileId,
+    );
+    final prefixMessages = [
+      ...state.messages.sublist(0, idx),
+      updatedUser,
+    ];
+
+    var streamingText = '';
+
+    final edited = <int>{...state.editedMessageIds, target.id};
+    emit(state.copyWith(
+      messages: prefixMessages,
+      editedMessageIds: edited,
+      isLoading: true,
+      isStreaming: true,
+      currentStreamingText: '',
+      clearToolProgress: true,
+      error: null,
+      clearRetryPayload: true,
+    ));
+
+    _streamCompleter = Completer<bool>();
+
+    try {
+      final stream = editUserMessageAndContinueUseCase(
+        sessionId,
+        event.userMessageId,
+        newText,
+      );
+
+      _streamSubscription = stream.listen(
+        (chunk) {
+          if (chunk.kind == ChatStreamChunkKind.toolStatus) {
+            final line = chunk.text.trim().isNotEmpty ? chunk.text : (chunk.toolName ?? 'инструмент');
+            emit(state.copyWith(toolProgressLabel: line));
+            return;
+          }
+
+          if (chunk.messageId > 0) {
+            _streamingAssistantMessageId = chunk.messageId;
+          }
+
+          streamingText += chunk.text;
+          emit(state.copyWith(
+            currentStreamingText: streamingText,
+            clearToolProgress: true,
+          ));
+        },
+        onDone: () {
+          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
+            _streamCompleter!.complete(false);
+          }
+        },
+        onError: (e, st) {
+          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
+            _streamCompleter!.completeError(e, st);
+          }
+        },
+        cancelOnError: false,
+      );
+
+      final cancelled = await _streamCompleter!.future;
+      if (cancelled) {
+        return;
+      }
+
+      if (streamingText.isNotEmpty) {
+        final aid = _streamingAssistantMessageId > 0
+            ? _streamingAssistantMessageId
+            : _localTempMessageId();
+        final assistantMessage = Message(
+          id: aid,
+          content: streamingText,
+          role: MessageRole.assistant,
+          createdAt: DateTime.now(),
+        );
+
+        emit(state.copyWith(
+          messages: [...prefixMessages, assistantMessage],
+          isLoading: false,
+          isStreaming: false,
+          currentStreamingText: null,
+          clearToolProgress: true,
+          clearRetryPayload: true,
+        ));
+
+        add(ChatShowUserMessageEdits(event.userMessageId));
+      } else {
+        emit(state.copyWith(
+          messages: prefixMessages,
+          isLoading: false,
+          isStreaming: false,
+          currentStreamingText: null,
+          clearToolProgress: true,
+          error: 'Сервер не вернул ответ. Проверьте доступность раннера и попробуйте снова.',
+        ));
+      }
+    } on Object catch (e) {
+      requestLogoutIfUnauthorized(e, authBloc);
+      emit(state.copyWith(
+        messages: prefixMessages,
+        isLoading: false,
+        isStreaming: false,
+        error: 'Ошибка редактирования сообщения',
+      ));
+    } finally {
+      await _streamSubscription?.cancel();
+      _streamSubscription = null;
+      _streamCompleter = null;
+      _streamingAssistantMessageId = 0;
+    }
   }
 
   List<String> _extractAvailableRunners(List<RunnerInfo> runners) {
@@ -186,6 +684,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               pageSize: 50,
             );
             messages = sessionMessages;
+            await _prefetchEditsForMessages(currentSessionId, messages, emit);
             try {
               final s = await getSessionSettingsUseCase(currentSessionId);
               emit(state.copyWith(sessionSettings: s));
@@ -321,6 +820,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         isLoading: false,
         selectedRunner: runnerForSession,
       ));
+      await _prefetchEditsForMessages(event.sessionId, messages, emit);
       add(ChatLoadSessionSettings(event.sessionId));
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
@@ -574,6 +1074,16 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (state.isStreaming) {
       return;
     }
+
+    try {
+      await _resetViewToLatestBranchIfNeeded(emit);
+    } catch (_) {
+
+    }
+    if (emit.isDone) {
+      return;
+    }
+
     final idx = state.messages.indexWhere((m) => m.id == event.assistantMessageId);
     if (idx < 0) {
       return;
@@ -661,14 +1171,18 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           createdAt: DateTime.now(),
         );
 
+        final regenerated = <int>{...state.regeneratedAssistantMessageIds, aid};
         emit(state.copyWith(
           messages: [...prefixMessages, assistantMessage],
+          regeneratedAssistantMessageIds: regenerated,
           isLoading: false,
           isStreaming: false,
           currentStreamingText: null,
           clearToolProgress: true,
           clearRetryPayload: true,
         ));
+
+        add(ChatShowAssistantMessageRegenerations(aid));
       } else {
         Logs().w('ChatBloc: пустой ответ при перегенерации');
         emit(state.copyWith(

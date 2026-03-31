@@ -9,6 +9,7 @@ class Message extends Equatable {
   final String content;
   final MessageRole role;
   final DateTime createdAt;
+  final DateTime? updatedAt;
   final String? attachmentFileName;
   final Uint8List? attachmentContent;
   final int? attachmentFileId;
@@ -18,16 +19,25 @@ class Message extends Equatable {
     required this.content,
     required this.role,
     required this.createdAt,
+    this.updatedAt,
     this.attachmentFileName,
     this.attachmentContent,
     this.attachmentFileId,
   });
 
   Map<String, dynamic> toJson() => {
-        'role': role == MessageRole.user ? 'user' : 'assistant',
-        'content': content,
-      };
+    'role': role == MessageRole.user ? 'user' : 'assistant',
+    'content': content,
+  };
 
   @override
-  List<Object?> get props => [id, content, role, createdAt, attachmentFileName, attachmentFileId];
+  List<Object?> get props => [
+    id,
+    content,
+    role,
+    createdAt,
+    updatedAt,
+    attachmentFileName,
+    attachmentFileId,
+  ];
 }

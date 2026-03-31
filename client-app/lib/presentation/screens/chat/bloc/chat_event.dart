@@ -92,6 +92,54 @@ class ChatRegenerateAssistant extends ChatEvent {
   List<Object?> get props => [assistantMessageId];
 }
 
+class ChatEditUserMessageAndContinue extends ChatEvent {
+  final int userMessageId;
+  final String newContent;
+
+  const ChatEditUserMessageAndContinue(this.userMessageId, this.newContent);
+
+  @override
+  List<Object?> get props => [userMessageId, newContent];
+}
+
+class ChatShowUserMessageEdits extends ChatEvent {
+  final int userMessageId;
+
+  const ChatShowUserMessageEdits(this.userMessageId);
+
+  @override
+  List<Object?> get props => [userMessageId];
+}
+
+class ChatNavigateUserMessageEdit extends ChatEvent {
+  final int userMessageId;
+  final int delta;
+
+  const ChatNavigateUserMessageEdit(this.userMessageId, this.delta);
+
+  @override
+  List<Object?> get props => [userMessageId, delta];
+}
+
+class ChatShowAssistantMessageRegenerations extends ChatEvent {
+  final int assistantMessageId;
+
+  const ChatShowAssistantMessageRegenerations(this.assistantMessageId);
+
+  @override
+  List<Object?> get props => [assistantMessageId];
+}
+
+class ChatNavigateAssistantMessageRegeneration extends ChatEvent {
+  final int assistantMessageId;
+  final int delta;
+
+  const ChatNavigateAssistantMessageRegeneration(this.assistantMessageId, this.delta);
+
+  @override
+  List<Object?> get props => [assistantMessageId, delta];
+}
+
 class ChatLoadRunners extends ChatEvent {
   const ChatLoadRunners();
 }

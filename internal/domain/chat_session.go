@@ -28,6 +28,19 @@ type Message struct {
 	DeletedAt         *time.Time
 }
 
+type MessageEdit struct {
+	Id              int64
+	SessionId       int64
+	MessageId       int64
+	EditorUserId    int
+	OldContent      string
+	NewContent      string
+	SoftDeletedFrom int64
+	SoftDeletedTo   int64
+	CreatedAt       time.Time
+	RevertedAt      *time.Time
+}
+
 func NewChatSession(userId int, title string, model string) *ChatSession {
 	return &ChatSession{
 		UserId:    userId,

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"time"
 )
 
 type UserRepository interface {
@@ -67,9 +68,23 @@ type MessageRepository interface {
 
 	ListMessagesWithIDLessThan(ctx context.Context, sessionID int64, beforeMessageID int64) ([]*Message, error)
 
+	ListMessagesUpToID(ctx context.Context, sessionID int64, upToMessageID int64) ([]*Message, error)
+
+	SoftDeleteAfterID(ctx context.Context, sessionID int64, afterMessageID int64) error
+
+	SoftDeleteRangeAfterID(ctx context.Context, sessionID int64, afterMessageID int64, upToMessageID int64) error
+
 	ResetAssistantForRegenerate(ctx context.Context, sessionID int64, messageID int64) error
 
 	MaxMessageIDInSession(ctx context.Context, sessionID int64) (int64, error)
+
+	ListBySessionCreatedAtWindowIncludingDeleted(ctx context.Context, sessionID int64, fromInclusive, toExclusive time.Time) ([]*Message, error)
+}
+
+type MessageEditRepository interface {
+	Create(ctx context.Context, edit *MessageEdit) error
+
+	ListByMessageID(ctx context.Context, messageID int64, limit int32) ([]*MessageEdit, error)
 }
 
 type FileRepository interface {

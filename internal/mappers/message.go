@@ -18,6 +18,7 @@ func MessageToProto(msg *domain.Message) *chatpb.ChatMessage {
 		Content:   msg.Content,
 		Role:      domain.ToProtoRole(msg.Role),
 		CreatedAt: msg.CreatedAt.Unix(),
+		UpdatedAt: msg.UpdatedAt.Unix(),
 	}
 
 	if msg.AttachmentName != "" {
@@ -60,12 +61,17 @@ func MessagesFromProto(pbMsgs []*chatpb.ChatMessage, sessionID int64) []*domain.
 		if m.CreatedAt != 0 {
 			createdAt = time.Unix(m.CreatedAt, 0)
 		}
+		var updatedAt time.Time
+		if m.UpdatedAt != 0 {
+			updatedAt = time.Unix(m.UpdatedAt, 0)
+		}
 		msg := &domain.Message{
 			Id:        m.Id,
 			SessionId: sessionID,
 			Content:   m.Content,
 			Role:      domain.FromProtoRole(m.Role),
 			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
 		}
 		if m.AttachmentName != nil {
 			msg.AttachmentName = *m.AttachmentName
