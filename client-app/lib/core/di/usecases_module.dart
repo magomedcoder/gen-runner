@@ -15,6 +15,7 @@ import 'package:gen/domain/usecases/chat/get_session_messages_usecase.dart';
 import 'package:gen/domain/usecases/chat/put_session_file_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_session_settings_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_sessions_usecase.dart';
+import 'package:gen/domain/usecases/chat/regenerate_assistant_usecase.dart';
 import 'package:gen/domain/usecases/chat/send_message_usecase.dart';
 import 'package:gen/domain/usecases/chat/set_default_runner_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
@@ -32,6 +33,7 @@ import 'package:get_it/get_it.dart';
 void registerUseCasesModule(GetIt sl) {
   sl.registerFactory(() => ConnectUseCase(sl()));
   sl.registerFactory(() => SendMessageUseCase(sl()));
+  sl.registerFactory(() => RegenerateAssistantUseCase(sl()));
   sl.registerFactory(() => CreateSessionUseCase(sl()));
   sl.registerFactory(() => GetSessionsUseCase(sl()));
   sl.registerFactory(() => GetSessionMessagesUseCase(sl()));

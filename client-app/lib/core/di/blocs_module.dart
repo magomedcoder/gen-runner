@@ -29,6 +29,7 @@ void registerBlocsModule(GetIt sl) {
       getSessionSettingsUseCase: sl(),
       updateSessionSettingsUseCase: sl(),
       sendMessageUseCase: sl(),
+      regenerateAssistantUseCase: sl(),
       createSessionUseCase: sl(),
       getSessionsUseCase: sl(),
       getSessionMessagesUseCase: sl(),

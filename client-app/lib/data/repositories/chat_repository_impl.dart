@@ -38,6 +38,21 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
+  Stream<ChatStreamChunk> regenerateAssistantResponse(
+    int sessionId,
+    int assistantMessageId,
+  ) {
+    try {
+      return dataSource.regenerateAssistantResponse(
+        sessionId,
+        assistantMessageId,
+      );
+    } catch (e) {
+      throw ApiFailure('Ошибка перегенерации: $e');
+    }
+  }
+
+  @override
   Future<ChatSession> createSession(String title) async {
     try {
       return await dataSource.createSession(title);

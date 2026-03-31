@@ -33,6 +33,7 @@ class ChatBubble extends StatefulWidget {
   final int? sessionId;
   final bool isStreaming;
   final String? streamingStatus;
+  final VoidCallback? onRegenerate;
 
   const ChatBubble({
     super.key,
@@ -40,6 +41,7 @@ class ChatBubble extends StatefulWidget {
     this.sessionId,
     this.isStreaming = false,
     this.streamingStatus,
+    this.onRegenerate,
   });
 
   @override
@@ -359,45 +361,63 @@ class _ChatBubbleState extends State<ChatBubble> {
                 ],
               ),
             ),
-            if (hasCopyableText || isStreaming)
+            if (hasCopyableText || isStreaming || widget.onRegenerate != null)
               Padding(
                 padding: const EdgeInsets.only(left: 4, right: 4, top: 2, bottom: 4),
-                child: IconButton(
-                  onPressed: hasCopyableText
-                      ? () async {
-                          await Clipboard.setData(
-                            ClipboardData(text: message.content),
-                          );
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasCopyableText || isStreaming)
+                      IconButton(
+                        onPressed: hasCopyableText
+                            ? () async {
+                                await Clipboard.setData(
+                                  ClipboardData(text: message.content),
+                                );
 
-                          if (!mounted) {
-                            return;
-                          }
+                                if (!mounted) {
+                                  return;
+                                }
 
-                          setState(() => _justCopied = true);
+                                setState(() => _justCopied = true);
 
-                          Future.delayed(const Duration(seconds: 2), () {
-                            if (mounted) {
-                              setState(() => _justCopied = false);
-                            }
-                          });
-                        }
-                      : null,
-                  icon: Icon(
-                    _justCopied ? Icons.check_rounded : Icons.copy_rounded,
-                    size: 18,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: hasCopyableText ? 1 : 0.4,
-                    ),
-                  ),
-                  tooltip: _justCopied ? 'Скопировано' : 'Копировать',
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  style: IconButton.styleFrom(
-                    foregroundColor: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: hasCopyableText ? 1 : 0.4,
-                    ),
-                  ),
+                                Future.delayed(const Duration(seconds: 2), () {
+                                  if (mounted) {
+                                    setState(() => _justCopied = false);
+                                  }
+                                });
+                              }
+                            : null,
+                        icon: Icon(
+                          _justCopied ? Icons.check_rounded : Icons.copy_rounded,
+                          size: 18,
+                          color: theme.colorScheme.onSurfaceVariant.withValues(
+                            alpha: hasCopyableText ? 1 : 0.4,
+                          ),
+                        ),
+                        tooltip: _justCopied ? 'Скопировано' : 'Копировать',
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        style: IconButton.styleFrom(
+                          foregroundColor: theme.colorScheme.onSurfaceVariant.withValues(
+                            alpha: hasCopyableText ? 1 : 0.4,
+                          ),
+                        ),
+                      ),
+                    if (widget.onRegenerate != null)
+                      IconButton(
+                        onPressed: widget.onRegenerate,
+                        icon: Icon(
+                          Icons.refresh_rounded,
+                          size: 18,
+                        ),
+                        tooltip: 'Перегенерировать ответ',
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                  ],
                 ),
               ),
           ],

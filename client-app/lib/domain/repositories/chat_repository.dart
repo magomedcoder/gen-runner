@@ -16,6 +16,11 @@ abstract interface class ChatRepository {
     List<Message> messages,
   );
 
+  Stream<ChatStreamChunk> regenerateAssistantResponse(
+    int sessionId,
+    int assistantMessageId,
+  );
+
   Future<ChatSession> createSession(String title);
 
   Future<ChatSession> getSession(int sessionId);

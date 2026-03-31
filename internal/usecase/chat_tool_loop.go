@@ -111,7 +111,7 @@ func drainLLMStringChannel(ch chan string) string {
 	return b.String()
 }
 
-var reActionJSON = regexp.MustCompile("(?is)Action:\\s*" + "```" + `json\s*([\s\S]*?)` + "```")
+var reActionJSON = regexp.MustCompile("(?is)(?:Action|Действие):\\s*" + "```" + `json\s*([\s\S]*?)` + "```")
 
 func extractCohereActionJSON(text string) string {
 	m := reActionJSON.FindStringSubmatch(text)

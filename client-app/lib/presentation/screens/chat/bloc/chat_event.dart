@@ -83,6 +83,15 @@ class ChatRetryLastMessage extends ChatEvent {
   const ChatRetryLastMessage();
 }
 
+class ChatRegenerateAssistant extends ChatEvent {
+  final int assistantMessageId;
+
+  const ChatRegenerateAssistant(this.assistantMessageId);
+
+  @override
+  List<Object?> get props => [assistantMessageId];
+}
+
 class ChatLoadRunners extends ChatEvent {
   const ChatLoadRunners();
 }

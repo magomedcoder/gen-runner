@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/magomedcoder/gen/internal/domain"
@@ -30,7 +31,15 @@ func (m mapFileRepo) GetById(_ context.Context, id int64) (*domain.File, error) 
 	return f, nil
 }
 
-func TestHydrateImageAttachmentsForRunner_loadsFromDisk(t *testing.T) {
+func (m mapFileRepo) DeleteExpired(context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (m mapFileRepo) CountSessionTTLArtifacts(context.Context, int64, int) (int32, int64, error) {
+	return 0, 0, nil
+}
+
+func TestHydrateAttachmentsForRunner_loadsImageFromDisk(t *testing.T) {
 	dir := t.TempDir()
 	sid := int64(7)
 	sessDir := filepath.Join(dir, strconv.FormatInt(sid, 10))
@@ -61,11 +70,11 @@ func TestHydrateImageAttachmentsForRunner_loadsFromDisk(t *testing.T) {
 			SessionId:        sid,
 			AttachmentName:   "img.png",
 			AttachmentFileID: &fid,
-			Content:          "caption",
+			Content:          "подпись",
 		},
 	}
 
-	if err := c.hydrateImageAttachmentsForRunner(context.Background(), msgs); err != nil {
+	if err := c.hydrateAttachmentsForRunner(context.Background(), msgs); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,7 +83,7 @@ func TestHydrateImageAttachmentsForRunner_loadsFromDisk(t *testing.T) {
 	}
 }
 
-func TestHydrateImageAttachmentsForRunner_rejectsPathOutsideSession(t *testing.T) {
+func TestHydrateAttachmentsForRunner_rejectsPathOutsideSession(t *testing.T) {
 	dir := t.TempDir()
 	sid := int64(7)
 	other := filepath.Join(dir, "other", "evil.png")
@@ -99,7 +108,51 @@ func TestHydrateImageAttachmentsForRunner_rejectsPathOutsideSession(t *testing.T
 			AttachmentFileID: &fid,
 		},
 	}
-	if err := c.hydrateImageAttachmentsForRunner(context.Background(), msgs); err == nil {
+	if err := c.hydrateAttachmentsForRunner(context.Background(), msgs); err == nil {
 		t.Fatal("ожидалась ошибка: путь к файлу вне каталога сессии")
+	}
+}
+
+func TestHydrateAttachmentsForRunner_expandsDocumentText(t *testing.T) {
+	dir := t.TempDir()
+	sid := int64(7)
+	sessDir := filepath.Join(dir, strconv.FormatInt(sid, 10))
+	if err := os.MkdirAll(sessDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(sessDir, "55_notes.txt")
+	want := []byte("альфа")
+	if err := os.WriteFile(path, want, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fid := int64(55)
+	c := &ChatUseCase{
+		fileRepo: mapFileRepo{
+			fid: {
+				Id:          fid,
+				Filename:    "notes.txt",
+				StoragePath: path,
+			},
+		},
+		attachmentsSaveDir: dir,
+	}
+
+	msgs := []*domain.Message{
+		{
+			SessionId:        sid,
+			AttachmentName:   "notes.txt",
+			AttachmentFileID: &fid,
+			Content:          "вопрос",
+		},
+	}
+
+	if err := c.hydrateAttachmentsForRunner(context.Background(), msgs); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(msgs[0].Content, "альфа") || !strings.Contains(msgs[0].Content, "вопрос") {
+		t.Fatalf("ожидалось развёрнутое содержимое, получено %q", msgs[0].Content)
 	}
 }

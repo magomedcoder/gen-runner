@@ -37,6 +37,11 @@ abstract class IChatRemoteDataSource {
     List<Message> messages,
   );
 
+  Stream<ChatStreamChunk> regenerateAssistantResponse(
+    int sessionId,
+    int assistantMessageId,
+  );
+
   Future<ChatSession> createSession(String title);
 
   Future<ChatSession> getSession(int sessionId);
@@ -258,6 +263,159 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
     controller.onCancel = () async {
       Logs().d('ChatRemote: sendMessage отменён клиентом');
+      await streamSubscription?.cancel();
+      streamSubscription = null;
+    };
+
+    return controller.stream;
+  }
+
+  @override
+  Stream<ChatStreamChunk> regenerateAssistantResponse(
+    int sessionId,
+    int assistantMessageId,
+  ) {
+    Logs().d(
+      'ChatRemote: regenerateAssistantResponse sessionId=$sessionId msgId=$assistantMessageId',
+    );
+    final controller = StreamController<ChatStreamChunk>();
+    StreamSubscription<grpc.ChatResponse>? streamSubscription;
+
+    Future<void> closeWithError(Object error, [StackTrace? st]) async {
+      if (!controller.isClosed) {
+        controller.addError(error, st);
+      }
+      if (!controller.isClosed) {
+        await controller.close();
+      }
+    }
+
+    () async {
+      try {
+        if (assistantMessageId <= 0) {
+          throw ApiFailure('Некорректный идентификатор сообщения');
+        }
+        final request = grpc.RegenerateAssistantRequest()
+          ..sessionId = Int64(sessionId)
+          ..assistantMessageId = Int64(assistantMessageId);
+        final responseStream = _client.regenerateAssistantResponse(request);
+        streamSubscription = responseStream.listen(
+          (response) {
+            if (controller.isClosed) {
+              return;
+            }
+            if (response.done) {
+              Logs().i('ChatRemote: regenerateAssistantResponse завершён');
+              controller.close();
+              return;
+            }
+            final mid = response.id.toInt();
+            if (response.chunkKind ==
+                chat_pb.StreamChunkKind.STREAM_CHUNK_KIND_TOOL_STATUS) {
+              controller.add(
+                ChatStreamChunk(
+                  kind: ChatStreamChunkKind.toolStatus,
+                  text: response.content,
+                  toolName:
+                      response.hasToolName() ? response.toolName : null,
+                  messageId: mid,
+                ),
+              );
+              return;
+            }
+            if (response.content.isNotEmpty) {
+              controller.add(
+                ChatStreamChunk(
+                  kind: ChatStreamChunkKind.text,
+                  text: response.content,
+                  messageId: mid,
+                ),
+              );
+            }
+          },
+          onError: (Object e, StackTrace st) async {
+            if (e is GrpcError && e.code == StatusCode.deadlineExceeded) {
+              await closeWithError(NetworkFailure('Таймаут запроса gRPC'), st);
+              return;
+            }
+            if (e is GrpcError) {
+              Logs().e('ChatRemote: regenerateAssistantResponse', exception: e);
+              if (e.code == StatusCode.unauthenticated) {
+                await closeWithError(UnauthorizedFailure(kSessionExpiredMessage), st);
+              } else if (e.code == StatusCode.invalidArgument) {
+                final detail = e.message?.trim();
+                await closeWithError(
+                  ApiFailure(
+                    detail != null && detail.isNotEmpty
+                        ? detail
+                        : 'Некорректные данные запроса',
+                  ),
+                  st,
+                );
+              } else if (e.code == StatusCode.failedPrecondition) {
+                final detail = e.message?.trim();
+                await closeWithError(
+                  ApiFailure(
+                    detail != null && detail.isNotEmpty
+                        ? detail
+                        : 'Операция недоступна в текущем состоянии',
+                  ),
+                  st,
+                );
+              } else {
+                await closeWithError(NetworkFailure('Ошибка gRPC'), st);
+              }
+              return;
+            }
+            await closeWithError(ApiFailure('Ошибка перегенерации ответа'), st);
+          },
+          onDone: () async {
+            if (!controller.isClosed) {
+              Logs().i('ChatRemote: regenerateAssistantResponse завершён');
+              await controller.close();
+            }
+          },
+          cancelOnError: true,
+        );
+      } on GrpcError catch (e) {
+        if (e.code == StatusCode.deadlineExceeded) {
+          await closeWithError(NetworkFailure('Таймаут запроса gRPC'));
+          return;
+        }
+        Logs().e('ChatRemote: regenerateAssistantResponse', exception: e);
+        if (e.code == StatusCode.unauthenticated) {
+          await closeWithError(UnauthorizedFailure(kSessionExpiredMessage));
+        } else if (e.code == StatusCode.invalidArgument) {
+          final detail = e.message?.trim();
+          await closeWithError(
+            ApiFailure(
+              detail != null && detail.isNotEmpty
+                  ? detail
+                  : 'Некорректные данные запроса',
+            ),
+          );
+        } else if (e.code == StatusCode.failedPrecondition) {
+          final detail = e.message?.trim();
+          await closeWithError(
+            ApiFailure(
+              detail != null && detail.isNotEmpty
+                  ? detail
+                  : 'Операция недоступна в текущем состоянии',
+            ),
+          );
+        } else {
+          await closeWithError(NetworkFailure('Ошибка gRPC'));
+        }
+      } on Failure catch (e, st) {
+        await closeWithError(e, st);
+      } catch (e, st) {
+        Logs().e('ChatRemote: regenerateAssistantResponse', exception: e);
+        await closeWithError(ApiFailure('Ошибка перегенерации ответа'), st);
+      }
+    }();
+
+    controller.onCancel = () async {
+      Logs().d('ChatRemote: regenerateAssistantResponse отменён клиентом');
       await streamSubscription?.cancel();
       streamSubscription = null;
     };

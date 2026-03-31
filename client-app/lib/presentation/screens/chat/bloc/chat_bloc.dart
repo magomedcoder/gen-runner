@@ -15,6 +15,7 @@ import 'package:gen/domain/usecases/chat/get_session_messages_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_sessions_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_session_settings_usecase.dart';
+import 'package:gen/domain/usecases/chat/regenerate_assistant_usecase.dart';
 import 'package:gen/domain/usecases/chat/send_message_usecase.dart';
 import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_settings_usecase.dart';
@@ -34,6 +35,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final GetSessionSettingsUseCase getSessionSettingsUseCase;
   final UpdateSessionSettingsUseCase updateSessionSettingsUseCase;
   final SendMessageUseCase sendMessageUseCase;
+  final RegenerateAssistantUseCase regenerateAssistantUseCase;
   final CreateSessionUseCase createSessionUseCase;
   final GetSessionsUseCase getSessionsUseCase;
   final GetSessionMessagesUseCase getSessionMessagesUseCase;
@@ -46,6 +48,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   StreamSubscription<ChatStreamChunk>? _streamSubscription;
   Completer<bool>? _streamCompleter;
 
+  int _streamingAssistantMessageId = 0;
+
   ChatBloc({
     required this.authBloc,
     required this.connectUseCase,
@@ -53,6 +57,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     required this.getSessionSettingsUseCase,
     required this.updateSessionSettingsUseCase,
     required this.sendMessageUseCase,
+    required this.regenerateAssistantUseCase,
     required this.createSessionUseCase,
     required this.getSessionsUseCase,
     required this.getSessionMessagesUseCase,
@@ -71,6 +76,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatClearError>(_onChatClearError);
     on<ChatStopGeneration>(_onChatStopGeneration);
     on<ChatRetryLastMessage>(_onRetryLastMessage);
+    on<ChatRegenerateAssistant>(_onRegenerateAssistant, transformer: droppable());
     on<ChatDeleteSession>(_onDeleteSession);
     on<ChatUpdateSessionTitle>(_onUpdateSessionTitle);
     on<ChatLoadRunners>(_onLoadRunners);
@@ -373,6 +379,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
     _streamSubscription = null;
     _streamCompleter = null;
+    _streamingAssistantMessageId = 0;
 
     var sessionId = state.currentSessionId;
     if (sessionId == null) {
@@ -452,6 +459,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             emit(state.copyWith(toolProgressLabel: line));
             return;
           }
+          if (chunk.messageId > 0) {
+            _streamingAssistantMessageId = chunk.messageId;
+          }
           streamingText += chunk.text;
           emit(state.copyWith(
             currentStreamingText: streamingText,
@@ -478,8 +488,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
 
       if (streamingText.isNotEmpty) {
+        final aid = _streamingAssistantMessageId > 0
+            ? _streamingAssistantMessageId
+            : _localTempMessageId();
         final assistantMessage = Message(
-          id: _localTempMessageId(),
+          id: aid,
           content: streamingText,
           role: MessageRole.assistant,
           createdAt: DateTime.now(),
@@ -525,6 +538,142 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       await _streamSubscription?.cancel();
       _streamSubscription = null;
       _streamCompleter = null;
+      _streamingAssistantMessageId = 0;
+    }
+  }
+
+  Future<void> _onRegenerateAssistant(
+    ChatRegenerateAssistant event,
+    Emitter<ChatState> emit,
+  ) async {
+    final sessionId = state.currentSessionId;
+    if (sessionId == null) {
+      return;
+    }
+    if (state.isStreaming) {
+      return;
+    }
+    final idx = state.messages.indexWhere((m) => m.id == event.assistantMessageId);
+    if (idx < 0) {
+      return;
+    }
+    if (idx != state.messages.length - 1) {
+      return;
+    }
+    final target = state.messages[idx];
+    if (target.role != MessageRole.assistant) {
+      return;
+    }
+
+    await _streamSubscription?.cancel();
+    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
+      _streamCompleter!.complete(true);
+    }
+    _streamSubscription = null;
+    _streamCompleter = null;
+    _streamingAssistantMessageId = 0;
+
+    final prefixMessages = state.messages.sublist(0, idx);
+    final previousAssistant = target;
+    var streamingText = '';
+
+    emit(state.copyWith(
+      messages: prefixMessages,
+      isLoading: true,
+      isStreaming: true,
+      currentStreamingText: '',
+      clearToolProgress: true,
+      error: null,
+      clearRetryPayload: true,
+    ));
+
+    _streamCompleter = Completer<bool>();
+
+    try {
+      final stream = regenerateAssistantUseCase(sessionId, event.assistantMessageId);
+
+      _streamSubscription = stream.listen(
+        (chunk) {
+          if (chunk.kind == ChatStreamChunkKind.toolStatus) {
+            final line = chunk.text.trim().isNotEmpty
+                ? chunk.text
+                : (chunk.toolName ?? 'инструмент');
+            emit(state.copyWith(toolProgressLabel: line));
+            return;
+          }
+          if (chunk.messageId > 0) {
+            _streamingAssistantMessageId = chunk.messageId;
+          }
+          streamingText += chunk.text;
+          emit(state.copyWith(
+            currentStreamingText: streamingText,
+            clearToolProgress: true,
+          ));
+        },
+        onDone: () {
+          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
+            _streamCompleter!.complete(false);
+          }
+        },
+        onError: (e, st) {
+          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
+            _streamCompleter!.completeError(e, st);
+          }
+        },
+        cancelOnError: false,
+      );
+
+      final cancelled = await _streamCompleter!.future;
+
+      if (cancelled) {
+        return;
+      }
+
+      if (streamingText.isNotEmpty) {
+        final aid = _streamingAssistantMessageId > 0
+            ? _streamingAssistantMessageId
+            : event.assistantMessageId;
+        final assistantMessage = Message(
+          id: aid,
+          content: streamingText,
+          role: MessageRole.assistant,
+          createdAt: DateTime.now(),
+        );
+
+        emit(state.copyWith(
+          messages: [...prefixMessages, assistantMessage],
+          isLoading: false,
+          isStreaming: false,
+          currentStreamingText: null,
+          clearToolProgress: true,
+          clearRetryPayload: true,
+        ));
+      } else {
+        Logs().w('ChatBloc: пустой ответ при перегенерации');
+        emit(state.copyWith(
+          messages: [...prefixMessages, previousAssistant],
+          isLoading: false,
+          isStreaming: false,
+          currentStreamingText: null,
+          clearToolProgress: true,
+          error:
+              'Сервер не вернул ответ. Проверьте доступность раннера и попробуйте снова.',
+        ));
+      }
+    } on Object catch (e) {
+      Logs().e('ChatBloc: ошибка перегенерации', exception: e);
+      requestLogoutIfUnauthorized(e, authBloc);
+      emit(state.copyWith(
+        messages: [...prefixMessages, previousAssistant],
+        isLoading: false,
+        isStreaming: false,
+        error: 'Ошибка перегенерации ответа',
+      ));
+    } finally {
+      await _streamSubscription?.cancel();
+      _streamSubscription = null;
+      _streamCompleter = null;
+      _streamingAssistantMessageId = 0;
     }
   }
 
@@ -723,8 +872,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
     if (state.currentStreamingText != null &&
         state.currentStreamingText!.isNotEmpty) {
+      final aid = _streamingAssistantMessageId > 0
+          ? _streamingAssistantMessageId
+          : _localTempMessageId();
       final assistantMessage = Message(
-        id: _localTempMessageId(),
+        id: aid,
         content: state.currentStreamingText!,
         role: MessageRole.assistant,
         createdAt: DateTime.now(),
@@ -745,6 +897,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         currentStreamingText: null,
       ));
     }
+    _streamingAssistantMessageId = 0;
   }
 
   @override
