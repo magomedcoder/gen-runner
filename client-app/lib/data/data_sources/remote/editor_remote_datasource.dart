@@ -75,7 +75,7 @@ class EditorRemoteDataSource implements IEditorRemoteDataSource {
         throw ApiFailure('Обработка остановлена');
       }
       Logs().e('EditorRemoteDataSource: ошибка transform', exception: e);
-      throwGrpcError(e, 'Ошибка обработки текста');
+      throwGrpcError(e, 'редактор transform');
     } catch (e) {
       if (e is Failure) rethrow;
       Logs().e('EditorRemoteDataSource: ошибка transform', exception: e);

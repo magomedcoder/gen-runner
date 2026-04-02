@@ -3,65 +3,61 @@ package postgres
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/repository/postgres/model"
+	"gorm.io/gorm"
 )
 
 type userSessionRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewUserSessionRepository(db *pgxpool.Pool) domain.TokenRepository {
+func NewUserSessionRepository(db *gorm.DB) domain.TokenRepository {
 	return &userSessionRepository{db: db}
 }
 
 func (u *userSessionRepository) Create(ctx context.Context, token *domain.Token) error {
-	err := u.db.QueryRow(ctx,
-		`
-		INSERT INTO user_sessions (user_id, token, type, expires_at, created_at)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id
-	`,
-		token.UserId,
-		token.Token,
-		token.Type,
-		token.ExpiresAt,
-		token.CreatedAt,
-	).Scan(&token.Id)
-
-	return err
+	row := model.UserSession{
+		UserID:    token.UserId,
+		Token:     token.Token,
+		Type:      string(token.Type),
+		ExpiresAt: token.ExpiresAt,
+		CreatedAt: token.CreatedAt,
+	}
+	if err := u.db.WithContext(ctx).Create(&row).Error; err != nil {
+		return err
+	}
+	token.Id = row.ID
+	return nil
 }
 
 func (u *userSessionRepository) GetByToken(ctx context.Context, token string) (*domain.Token, error) {
-	var t domain.Token
-	err := u.db.QueryRow(ctx,
-		`
-		SELECT id, user_id, token, type, expires_at, created_at, deleted_at
-		FROM user_sessions
-		WHERE token = $1 AND deleted_at IS NULL
-	`, token).Scan(
-		&t.Id,
-		&t.UserId,
-		&t.Token,
-		&t.Type,
-		&t.ExpiresAt,
-		&t.CreatedAt,
-		&t.DeletedAt,
-	)
-
+	var row model.UserSession
+	err := u.db.WithContext(ctx).
+		Where("token = ?", token).
+		First(&row).Error
 	if err != nil {
 		return nil, handleNotFound(err, "токен не найден")
 	}
-
-	return &t, nil
+	return &domain.Token{
+		Id:        row.ID,
+		UserId:    row.UserID,
+		Token:     row.Token,
+		Type:      domain.TokenType(row.Type),
+		ExpiresAt: row.ExpiresAt,
+		CreatedAt: row.CreatedAt,
+		DeletedAt: gormDeletedAtToPtr(row.DeletedAt),
+	}, nil
 }
 
 func (u *userSessionRepository) DeleteByToken(ctx context.Context, token string) error {
-	_, err := u.db.Exec(ctx, `UPDATE user_sessions SET deleted_at = NOW() WHERE token = $1 AND deleted_at IS NULL`, token)
-	return err
+	return u.db.WithContext(ctx).
+		Where("token = ?", token).
+		Delete(&model.UserSession{}).Error
 }
 
 func (u *userSessionRepository) DeleteByUserId(ctx context.Context, userID int, tokenType domain.TokenType) error {
-	_, err := u.db.Exec(ctx, `UPDATE user_sessions SET deleted_at = NOW() WHERE user_id = $1 AND type = $2 AND deleted_at IS NULL`, userID, tokenType)
-	return err
+	return u.db.WithContext(ctx).
+		Where("user_id = ? AND type = ?", userID, string(tokenType)).
+		Delete(&model.UserSession{}).Error
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/attachment_settings.dart';
+import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
@@ -41,9 +42,11 @@ class ChatInputBar extends StatefulWidget {
 }
 
 class ChatInputBarState extends State<ChatInputBar> {
-  static const double _inputCardMinHeight = 92.0;
+  static const double _inputCardMinHeight = 90.0;
   static const double _inputCardGrowthStep = 50.0;
   static const double _inputCardMaxWindowFactor = 0.5;
+  static const double _cardBorderRadius = 22.0;
+  static const EdgeInsets _inputContentPadding = EdgeInsets.fromLTRB(16, 16, 16, 16);
 
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
@@ -113,8 +116,9 @@ class ChatInputBarState extends State<ChatInputBar> {
       final bytes = file.bytes;
       if (bytes == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Не удалось прочитать файл. Попробуйте снова.')),
+          showAppTopNotice(
+            'Не удалось прочитать файл. Попробуйте снова.',
+            error: true,
           );
         }
         return;
@@ -122,10 +126,9 @@ class ChatInputBarState extends State<ChatInputBar> {
 
       if (bytes.length > AttachmentSettings.maxFileSizeBytes) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Файл слишком большой (рекомендуется до ${AttachmentSettings.maxFileSizeLabel})'),
-            ),
+          showAppTopNotice(
+            'Файл слишком большой (рекомендуется до ${AttachmentSettings.maxFileSizeLabel})',
+            error: true,
           );
         }
 
@@ -165,12 +168,9 @@ class ChatInputBarState extends State<ChatInputBar> {
     final file = result.files.single;
     if (!AttachmentSettings.isSupportedExtension(file.name)) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Неподдерживаемый формат. Доступно: ${AttachmentSettings.textFormatLabels.join(', ')}, ${AttachmentSettings.documentFormatLabels.join(', ')}',
-            ),
-          ),
+        showAppTopNotice(
+          'Неподдерживаемый формат. Доступно: ${AttachmentSettings.textFormatLabels.join(', ')}, ${AttachmentSettings.documentFormatLabels.join(', ')}',
+          error: true,
         );
       }
       return;
@@ -178,10 +178,9 @@ class ChatInputBarState extends State<ChatInputBar> {
 
     if (file.bytes == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Не удалось загрузить содержимое файла'),
-          ),
+        showAppTopNotice(
+          'Не удалось загрузить содержимое файла',
+          error: true,
         );
       }
       return;
@@ -189,12 +188,9 @@ class ChatInputBarState extends State<ChatInputBar> {
 
     if (file.bytes!.length > AttachmentSettings.maxFileSizeBytes) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Файл слишком большой (рекомендуется до ${AttachmentSettings.maxFileSizeLabel})',
-            ),
-          ),
+        showAppTopNotice(
+          'Файл слишком большой (рекомендуется до ${AttachmentSettings.maxFileSizeLabel})',
+          error: true,
         );
       }
       return;
@@ -225,12 +221,9 @@ class ChatInputBarState extends State<ChatInputBar> {
 
     if (!AttachmentSettings.isSupportedExtension(file.name)) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Неподдерживаемый формат. Доступно: ${AttachmentSettings.textFormatLabels.join(', ')}, ${AttachmentSettings.documentFormatLabels.join(', ')}',
-            ),
-          ),
+        showAppTopNotice(
+          'Неподдерживаемый формат. Доступно: ${AttachmentSettings.textFormatLabels.join(', ')}, ${AttachmentSettings.documentFormatLabels.join(', ')}',
+          error: true,
         );
       }
       return;
@@ -238,12 +231,9 @@ class ChatInputBarState extends State<ChatInputBar> {
 
     if (file.bytes!.length > AttachmentSettings.maxFileSizeBytes) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Файл слишком большой (рекомендуется до ${AttachmentSettings.maxFileSizeLabel})',
-            ),
-          ),
+        showAppTopNotice(
+          'Файл слишком большой (рекомендуется до ${AttachmentSettings.maxFileSizeLabel})',
+          error: true,
         );
       }
       return;
@@ -290,9 +280,13 @@ class ChatInputBarState extends State<ChatInputBar> {
     BuildContext context, {
     required TextStyle textStyle,
     required double horizontalPadding,
+    required double layoutWidth,
   }) {
-    final windowWidth = MediaQuery.sizeOf(context).width;
-    final availableTextWidth = math.max(120.0, windowWidth - (horizontalPadding * 2) - 24.0);
+    final contentHInset = _inputContentPadding.left + _inputContentPadding.right;
+    final availableTextWidth = math.max(
+      120.0,
+      layoutWidth - (horizontalPadding * 2) - 24.0 - contentHInset,
+    );
     final lines = _estimatedLineCount(
       context: context,
       textStyle: textStyle,
@@ -493,111 +487,124 @@ class ChatInputBarState extends State<ChatInputBar> {
         : theme.colorScheme.onSurfaceVariant,
     );
 
-    return BlocBuilder<ChatBloc, ChatState>(
-      builder: (context, state) {
-        final cardHeight = _cardHeightForText(
-          context,
-          textStyle: inputTextStyle,
-          horizontalPadding: horizontal,
-        );
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          curve: Curves.easeOutCubic,
-          height: cardHeight,
-          constraints: BoxConstraints(
-            maxHeight: _cardMaxHeight(context),
-            minHeight: _inputCardMinHeight,
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.max,
-                children: [
-                  _buildAttachmentChip(theme),
-                  Expanded(
-                    child: CallbackShortcuts(
-                      bindings: {
-                        const SingleActivator(
-                          LogicalKeyboardKey.enter,
-                          shift: true,
-                        ): _insertNewlineAtCursor,
-                        const SingleActivator(
-                          LogicalKeyboardKey.numpadEnter,
-                          shift: true,
-                        ): _insertNewlineAtCursor,
-                        if (isDesktop) ...{
-                          const SingleActivator(
-                            LogicalKeyboardKey.enter,
-                            control: true,
-                          ): _insertNewlineAtCursor,
-                          const SingleActivator(
-                            LogicalKeyboardKey.enter,
-                            meta: true,
-                          ): _insertNewlineAtCursor,
-                          const SingleActivator(
-                            LogicalKeyboardKey.numpadEnter,
-                            control: true,
-                          ): _insertNewlineAtCursor,
-                          const SingleActivator(
-                            LogicalKeyboardKey.numpadEnter,
-                            meta: true,
-                          ): _insertNewlineAtCursor,
-                        },
-                        const SingleActivator(LogicalKeyboardKey.enter): () {
-                          if (widget.isEnabled) {
-                            _sendMessage();
-                          }
-                        },
-                        const SingleActivator(
-                          LogicalKeyboardKey.numpadEnter,
-                        ): () {
-                          if (widget.isEnabled) {
-                            _sendMessage();
-                          }
-                        },
-                      },
-                      child: TextField(
-                        controller: _textController,
-                        focusNode: _focusNode,
-                        enabled: widget.isEnabled,
-                        expands: true,
-                        maxLines: null,
-                        minLines: null,
-                        textAlignVertical: TextAlignVertical.top,
-                        style: inputTextStyle,
-                        decoration: InputDecoration(
-                          hintText: widget.isEnabled
-                            ? (isDesktop ? 'Сообщение...  Ctrl+Enter - новая строка' : 'Сообщение...')
-                            : 'Обрабатываю...',
-                          hintStyle: TextStyle(
-                            fontSize: 14,
-                            height: 1.45,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
-                          ),
-                          border: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          isDense: true,
-                          contentPadding: const EdgeInsets.fromLTRB(10, 12, 10, 4),
-                        ),
-                        textInputAction: TextInputAction.newline,
-                        keyboardType: TextInputType.multiline,
-                        scrollPhysics: const BouncingScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
-                        onTapOutside: (_) => _focusNode.unfocus(),
-                      ),
-                    ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layoutWidth = constraints.hasBoundedWidth && constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        return BlocBuilder<ChatBloc, ChatState>(
+          builder: (context, state) {
+            final cardHeight = _cardHeightForText(
+              context,
+              textStyle: inputTextStyle,
+              horizontalPadding: horizontal,
+              layoutWidth: layoutWidth,
+            );
+            final cardRadius = BorderRadius.circular(_cardBorderRadius);
+            return ClipRRect(
+              borderRadius: cardRadius,
+              clipBehavior: Clip.antiAlias,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOutCubic,
+                height: cardHeight,
+                constraints: BoxConstraints(
+                  maxHeight: _cardMaxHeight(context),
+                  minHeight: _inputCardMinHeight,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                  borderRadius: cardRadius,
+                  border: Border.all(
+                    color: theme.dividerColor.withValues(alpha: 0.16),
+                    width: 1,
                   ),
-                  _buildBottomActionsBar(state, theme),
-                ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    _buildAttachmentChip(theme),
+                    Expanded(
+                      child: CallbackShortcuts(
+                          bindings: {
+                            const SingleActivator(
+                              LogicalKeyboardKey.enter,
+                              shift: true,
+                            ): _insertNewlineAtCursor,
+                            const SingleActivator(
+                              LogicalKeyboardKey.numpadEnter,
+                              shift: true,
+                            ): _insertNewlineAtCursor,
+                            if (isDesktop) ...{
+                              const SingleActivator(
+                                LogicalKeyboardKey.enter,
+                                control: true,
+                              ): _insertNewlineAtCursor,
+                              const SingleActivator(
+                                LogicalKeyboardKey.enter,
+                                meta: true,
+                              ): _insertNewlineAtCursor,
+                              const SingleActivator(
+                                LogicalKeyboardKey.numpadEnter,
+                                control: true,
+                              ): _insertNewlineAtCursor,
+                              const SingleActivator(
+                                LogicalKeyboardKey.numpadEnter,
+                                meta: true,
+                              ): _insertNewlineAtCursor,
+                            },
+                            const SingleActivator(LogicalKeyboardKey.enter): () {
+                              if (widget.isEnabled) {
+                                _sendMessage();
+                              }
+                            },
+                            const SingleActivator(
+                              LogicalKeyboardKey.numpadEnter,
+                            ): () {
+                              if (widget.isEnabled) {
+                                _sendMessage();
+                              }
+                            },
+                          },
+                          child: TextField(
+                            controller: _textController,
+                            focusNode: _focusNode,
+                            enabled: widget.isEnabled,
+                            expands: true,
+                            maxLines: null,
+                            minLines: null,
+                            textAlignVertical: TextAlignVertical.top,
+                            style: inputTextStyle,
+                            decoration: InputDecoration(
+                              hintText: widget.isEnabled
+                                ? (isDesktop ? 'Сообщение...  Ctrl+Enter - новая строка' : 'Сообщение...')
+                                : 'Обрабатываю...',
+                              hintStyle: TextStyle(
+                                fontSize: 14,
+                                height: 1.45,
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                              ),
+                              border: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              isDense: true,
+                              contentPadding: _inputContentPadding,
+                            ),
+                            textInputAction: TextInputAction.newline,
+                            keyboardType: TextInputType.multiline,
+                            scrollPhysics: const BouncingScrollPhysics(
+                              parent: AlwaysScrollableScrollPhysics(),
+                            ),
+                            onTapOutside: (_) => _focusNode.unfocus(),
+                          ),
+                        ),
+                      ),
+                    _buildBottomActionsBar(state, theme),
+                  ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );

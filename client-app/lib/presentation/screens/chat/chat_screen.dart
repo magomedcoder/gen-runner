@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/layout/responsive.dart';
+import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
@@ -159,9 +160,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось прочитать файл')),
-        );
+        showAppTopNotice('Не удалось прочитать файл', error: true);
       }
     }
   }
@@ -257,16 +256,18 @@ class _ChatScreenState extends State<ChatScreen> {
               if (!mounted) {
                 return;
               }
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(state.error!),
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              );
+              showAppTopNotice(state.error!, error: true);
+            });
+          }
+
+          final notice = state.streamNotice;
+          if (notice != null && notice != prev.streamNotice) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) {
+                return;
+              }
+              showAppTopNotice(notice);
+              context.read<ChatBloc>().add(const ChatDismissStreamNotice());
             });
           }
         },
@@ -289,6 +290,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 )
                 : null,
               body: SafeArea(
+                top: false,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -327,90 +329,120 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     Expanded(
                       child: Material(
-                        color: theme.colorScheme.surface,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surface,
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: theme.dividerColor.withValues(
-                                      alpha: 0.12,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  if (useDrawer)
-                                    IconButton(
-                                      icon: const Icon(Icons.menu_rounded),
-                                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-                                      tooltip: 'Список чатов',
-                                    ),
-                                  if (!useDrawer && !_isSidebarExpanded)
-                                    IconButton(
-                                      icon: const Icon(Icons.menu_rounded),
-                                      onPressed: _toggleSidebar,
-                                      tooltip: 'Показать список чатов',
-                                    ),
-                                  Expanded(
-                                    child: BlocBuilder<ChatBloc, ChatState>(
-                                      builder: (context, state) => ChatAppBarTitle(
-                                        state: state,
-                                        compact: useDrawer,
+                        color: theme.scaffoldBackgroundColor,
+                        child: BlocBuilder<ChatBloc, ChatState>(
+                          builder: (context, state) {
+                            final immersiveEmpty = state.isEmptyChatComposer;
+                            final canDropFile =
+                                state.isConnected && !state.isLoading && (state.hasActiveRunners != false);
+                            final topPad = MediaQuery.paddingOf(context).top;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (!immersiveEmpty)
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.surface,
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: theme.dividerColor.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  BlocBuilder<ChatBloc, ChatState>(
-                                    builder: (context, state) {
-                                      return ChatSessionSettingsButton(state: state);
-                                    },
-                                  ),
-                                  const SizedBox(width: 8),
-                                  BlocBuilder<ChatBloc, ChatState>(
-                                    builder: (context, state) {
-                                      if (state.isLoading && !state.isStreamingInCurrentSession) {
-                                        return const Padding(
-                                          padding: EdgeInsets.only(right: 12),
-                                          child: SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        if (useDrawer)
+                                          IconButton(
+                                            icon: const Icon(Icons.menu_rounded),
+                                            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                                            tooltip: 'Список чатов',
+                                          ),
+                                        if (!useDrawer && !_isSidebarExpanded)
+                                          IconButton(
+                                            icon: const Icon(Icons.menu_rounded),
+                                            onPressed: _toggleSidebar,
+                                            tooltip: 'Показать список чатов',
+                                          ),
+                                        Expanded(
+                                          child: BlocBuilder<ChatBloc, ChatState>(
+                                            builder: (context, state) => ChatAppBarTitle(
+                                              state: state,
+                                              compact: useDrawer,
                                             ),
                                           ),
-                                        );
-                                      }
-                                      return const SizedBox(width: 8);
-                                    },
+                                        ),
+                                        BlocBuilder<ChatBloc, ChatState>(
+                                          builder: (context, state) {
+                                            return ChatSessionSettingsButton(state: state);
+                                          },
+                                        ),
+                                        const SizedBox(width: 8),
+                                        BlocBuilder<ChatBloc, ChatState>(
+                                          builder: (context, state) {
+                                            if (state.isLoading && !state.isStreamingInCurrentSession) {
+                                              return const Padding(
+                                                padding: EdgeInsets.only(right: 12),
+                                                child: SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                            return const SizedBox(width: 8);
+                                          },
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: BlocBuilder<ChatBloc, ChatState>(
-                                builder: (context, state) {
-                                  final canDropFile = state.isConnected && !state.isLoading && (state.hasActiveRunners != false);
-                                  return ChatMessagesPanel(
-                                    state: state,
-                                    scrollController: _scrollController,
-                                    inputBarKey: _inputBarKey,
-                                    isDraggingFile: _isDraggingFile,
-                                    canDropFile: canDropFile,
-                                    onDragEntered: (_) => setState(() => _isDraggingFile = true),
-                                    onDragExited: (_) => setState(() => _isDraggingFile = false),
-                                    onDragDone: _onFilesDropped,
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
+                                Expanded(
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      ChatMessagesPanel(
+                                        state: state,
+                                        scrollController: _scrollController,
+                                        inputBarKey: _inputBarKey,
+                                        immersiveEmptyChat: immersiveEmpty,
+                                        isDraggingFile: _isDraggingFile,
+                                        canDropFile: canDropFile,
+                                        onDragEntered: (_) => setState(() => _isDraggingFile = true),
+                                        onDragExited: (_) => setState(() => _isDraggingFile = false),
+                                        onDragDone: _onFilesDropped,
+                                      ),
+                                      if (immersiveEmpty && useDrawer)
+                                        Positioned(
+                                          top: topPad + 4,
+                                          left: 4,
+                                          child: IconButton(
+                                            icon: const Icon(Icons.menu_rounded),
+                                            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                                            tooltip: 'Список чатов',
+                                          ),
+                                        ),
+                                      if (immersiveEmpty && !useDrawer && !_isSidebarExpanded)
+                                        Positioned(
+                                          top: topPad + 4,
+                                          left: 4,
+                                          child: IconButton(
+                                            icon: const Icon(Icons.menu_rounded),
+                                            onPressed: _toggleSidebar,
+                                            tooltip: 'Показать список чатов',
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ),

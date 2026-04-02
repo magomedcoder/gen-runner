@@ -6,126 +6,115 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/repository/postgres/model"
+	"gorm.io/gorm"
 )
 
 type messageRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewMessageRepository(db *pgxpool.Pool) domain.MessageRepository {
+func NewMessageRepository(db *gorm.DB) domain.MessageRepository {
 	return &messageRepository{db: db}
 }
 
-func nullInt64Ptr(v *int64) interface{} {
-	if v == nil {
-		return nil
-	}
-
-	return *v
+func preloadMessageAttachment(db *gorm.DB) *gorm.DB {
+	return db.Select("id", "filename")
 }
 
-func nullTrimmedString(s string) interface{} {
+func (r *messageRepository) withAttachment(ctx context.Context) *gorm.DB {
+	return r.db.WithContext(ctx).Preload("Attachment", preloadMessageAttachment)
+}
+
+func messageModelToDomain(m *model.Message) *domain.Message {
+	msg := &domain.Message{
+		Id:               m.ID,
+		SessionId:        m.SessionID,
+		Content:          m.Content,
+		Role:             domain.MessageRole(m.Role),
+		AttachmentFileID: m.AttachmentFileID,
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
+		DeletedAt:        gormDeletedAtToPtr(m.DeletedAt),
+	}
+	if m.ToolCallID != nil {
+		msg.ToolCallID = *m.ToolCallID
+	}
+	if m.ToolName != nil {
+		msg.ToolName = *m.ToolName
+	}
+	if m.ToolCallsJSON != nil {
+		msg.ToolCallsJSON = *m.ToolCallsJSON
+	}
+	if m.Attachment != nil {
+		msg.AttachmentName = m.Attachment.Filename
+	}
+	return msg
+}
+
+func ptrTrimmedString(s string) *string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil
 	}
-
-	return s
+	return &s
 }
 
 func (r *messageRepository) Create(ctx context.Context, message *domain.Message) error {
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO messages (session_id, content, role, attachment_file_id, tool_call_id, tool_name, tool_calls_json, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id
-	`,
-		message.SessionId,
-		message.Content,
-		message.Role,
-		nullInt64Ptr(message.AttachmentFileID),
-		nullTrimmedString(message.ToolCallID),
-		nullTrimmedString(message.ToolName),
-		nullTrimmedString(message.ToolCallsJSON),
-		message.CreatedAt,
-		message.UpdatedAt,
-	).Scan(&message.Id)
-
-	return err
+	row := model.Message{
+		SessionID:        message.SessionId,
+		Content:          message.Content,
+		Role:             string(message.Role),
+		AttachmentFileID: message.AttachmentFileID,
+		ToolCallID:       ptrTrimmedString(message.ToolCallID),
+		ToolName:         ptrTrimmedString(message.ToolName),
+		ToolCallsJSON:    ptrTrimmedString(message.ToolCallsJSON),
+		CreatedAt:        message.CreatedAt,
+		UpdatedAt:        message.UpdatedAt,
+	}
+	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+		return err
+	}
+	message.Id = row.ID
+	return nil
 }
 
 func (r *messageRepository) UpdateContent(ctx context.Context, id int64, content string) error {
-	_, err := r.db.Exec(ctx, `
-		UPDATE messages
-		SET content = $2, updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL
-	`, id, content)
-	return err
+	return r.db.WithContext(ctx).Model(&model.Message{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"content":    content,
+			"updated_at": gorm.Expr("NOW()"),
+		}).Error
 }
 
 func (r *messageRepository) GetBySessionId(ctx context.Context, sessionID int64, page, pageSize int32) ([]*domain.Message, int32, error) {
 	_, pageSize, offset := normalizePagination(page, pageSize)
 
-	var total int32
-	err := r.db.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM messages
-		WHERE session_id = $1 AND deleted_at IS NULL
-	`, sessionID).Scan(&total)
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&model.Message{}).
+		Scopes(scopeMessageSession(sessionID)).
+		Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var rows []model.Message
+	err := r.withAttachment(ctx).
+		Scopes(scopeMessageSession(sessionID)).
+		Order("created_at ASC").
+		Limit(int(pageSize)).
+		Offset(int(offset)).
+		Find(&rows).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
-	rows, err := r.db.Query(ctx, `
-		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
-		       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
-		       f.filename, m.created_at, m.updated_at, m.deleted_at
-		FROM messages m
-		LEFT JOIN files f ON m.attachment_file_id = f.id
-		WHERE m.session_id = $1 AND m.deleted_at IS NULL
-		ORDER BY m.created_at ASC
-		LIMIT $2 OFFSET $3
-	`, sessionID, pageSize, offset)
-	if err != nil {
-		return nil, 0, err
+	out := make([]*domain.Message, 0, len(rows))
+	for i := range rows {
+		out = append(out, messageModelToDomain(&rows[i]))
 	}
-	defer rows.Close()
-
-	var messages []*domain.Message
-	for rows.Next() {
-		var message domain.Message
-		var attachmentFileID *int64
-		var fname *string
-		if err := rows.Scan(
-			&message.Id,
-			&message.SessionId,
-			&message.Content,
-			&message.Role,
-			&attachmentFileID,
-			&message.ToolCallID,
-			&message.ToolName,
-			&message.ToolCallsJSON,
-			&fname,
-			&message.CreatedAt,
-			&message.UpdatedAt,
-			&message.DeletedAt,
-		); err != nil {
-			return nil, 0, err
-		}
-		message.AttachmentFileID = attachmentFileID
-		if fname != nil {
-			message.AttachmentName = *fname
-		}
-		messages = append(messages, &message)
-	}
-
-	if rows.Err() != nil {
-		return nil, 0, rows.Err()
-	}
-
-	return messages, total, nil
+	return out, int32(total), nil
 }
 
 func (r *messageRepository) ListBySessionBeforeID(ctx context.Context, sessionID int64, beforeMessageID int64, limit int32) ([]*domain.Message, int32, error) {
@@ -136,87 +125,42 @@ func (r *messageRepository) ListBySessionBeforeID(ctx context.Context, sessionID
 		limit = 200
 	}
 
-	var rows pgx.Rows
-	var err error
-	if beforeMessageID <= 0 {
-		rows, err = r.db.Query(ctx, `
-			SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
-			       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
-			       f.filename, m.created_at, m.updated_at, m.deleted_at
-			FROM messages m
-			LEFT JOIN files f ON m.attachment_file_id = f.id
-			WHERE m.session_id = $1 AND m.deleted_at IS NULL
-			ORDER BY m.id DESC
-			LIMIT $2
-		`, sessionID, limit)
-	} else {
-		rows, err = r.db.Query(ctx, `
-			SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
-			       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
-			       f.filename, m.created_at, m.updated_at, m.deleted_at
-			FROM messages m
-			LEFT JOIN files f ON m.attachment_file_id = f.id
-			WHERE m.session_id = $1 AND m.deleted_at IS NULL AND m.id < $2
-			ORDER BY m.id DESC
-			LIMIT $3
-		`, sessionID, beforeMessageID, limit)
+	q := r.withAttachment(ctx).
+		Scopes(scopeMessageSession(sessionID)).
+		Order("id DESC").
+		Limit(int(limit))
+	if beforeMessageID > 0 {
+		q = q.Where("id < ?", beforeMessageID)
 	}
-	if err != nil {
+
+	var rows []model.Message
+	if err := q.Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 
-	desc := make([]*domain.Message, 0, limit)
-	for rows.Next() {
-		var message domain.Message
-		var attachmentFileID *int64
-		var fname *string
-		if err := rows.Scan(
-			&message.Id,
-			&message.SessionId,
-			&message.Content,
-			&message.Role,
-			&attachmentFileID,
-			&message.ToolCallID,
-			&message.ToolName,
-			&message.ToolCallsJSON,
-			&fname,
-			&message.CreatedAt,
-			&message.UpdatedAt,
-			&message.DeletedAt,
-		); err != nil {
-			return nil, 0, err
-		}
-		message.AttachmentFileID = attachmentFileID
-		if fname != nil {
-			message.AttachmentName = *fname
-		}
-		desc = append(desc, &message)
-	}
-	if rows.Err() != nil {
-		return nil, 0, rows.Err()
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
 	}
 
-	for i, j := 0, len(desc)-1; i < j; i, j = i+1, j-1 {
-		desc[i], desc[j] = desc[j], desc[i]
+	out := make([]*domain.Message, 0, len(rows))
+	for i := range rows {
+		out = append(out, messageModelToDomain(&rows[i]))
 	}
-
-	return desc, 0, nil
+	return out, 0, nil
 }
 
 func (r *messageRepository) SessionHasOlderMessages(ctx context.Context, sessionID int64, olderThanMessageID int64) (bool, error) {
 	if olderThanMessageID <= 0 {
 		return false, nil
 	}
-	var n int
-	err := r.db.QueryRow(ctx, `
-		SELECT 1
-		FROM messages
-		WHERE session_id = $1 AND deleted_at IS NULL AND id < $2
-		LIMIT 1
-	`, sessionID, olderThanMessageID).Scan(&n)
+	var row model.Message
+	err := r.db.WithContext(ctx).Model(&model.Message{}).
+		Scopes(scopeMessageSession(sessionID)).
+		Where("id < ?", olderThanMessageID).
+		Limit(1).
+		First(&row).Error
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, nil
 		}
 		return false, err
@@ -225,256 +169,114 @@ func (r *messageRepository) SessionHasOlderMessages(ctx context.Context, session
 }
 
 func (r *messageRepository) ListBySessionCreatedAtWindowIncludingDeleted(ctx context.Context, sessionID int64, fromInclusive, toExclusive time.Time) ([]*domain.Message, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
-		       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
-		       f.filename, m.created_at, m.updated_at, m.deleted_at
-		FROM messages m
-		LEFT JOIN files f ON m.attachment_file_id = f.id
-		WHERE m.session_id = $1 AND m.created_at >= $2 AND m.created_at < $3
-		ORDER BY m.created_at ASC, m.id ASC
-	`, sessionID, fromInclusive, toExclusive)
+	var rows []model.Message
+	err := r.db.WithContext(ctx).Unscoped().
+		Preload("Attachment", preloadMessageAttachment).
+		Scopes(scopeMessageSession(sessionID)).
+		Where("created_at >= ? AND created_at < ?", fromInclusive, toExclusive).
+		Order("created_at ASC, id ASC").
+		Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var messages []*domain.Message
-	for rows.Next() {
-		var message domain.Message
-		var attachmentFileID *int64
-		var fname *string
-		if err := rows.Scan(
-			&message.Id,
-			&message.SessionId,
-			&message.Content,
-			&message.Role,
-			&attachmentFileID,
-			&message.ToolCallID,
-			&message.ToolName,
-			&message.ToolCallsJSON,
-			&fname,
-			&message.CreatedAt,
-			&message.UpdatedAt,
-			&message.DeletedAt,
-		); err != nil {
-			return nil, err
-		}
-		message.AttachmentFileID = attachmentFileID
-		if fname != nil {
-			message.AttachmentName = *fname
-		}
-		messages = append(messages, &message)
+	out := make([]*domain.Message, 0, len(rows))
+	for i := range rows {
+		out = append(out, messageModelToDomain(&rows[i]))
 	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-	return messages, nil
+	return out, nil
 }
 
 func (r *messageRepository) GetByID(ctx context.Context, id int64) (*domain.Message, error) {
-	row := r.db.QueryRow(ctx, `
-		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
-		       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
-		       f.filename, m.created_at, m.updated_at, m.deleted_at
-		FROM messages m
-		LEFT JOIN files f ON m.attachment_file_id = f.id
-		WHERE m.id = $1 AND m.deleted_at IS NULL
-	`, id)
-
-	var message domain.Message
-	var attachmentFileID *int64
-	var fname *string
-	if err := row.Scan(
-		&message.Id,
-		&message.SessionId,
-		&message.Content,
-		&message.Role,
-		&attachmentFileID,
-		&message.ToolCallID,
-		&message.ToolName,
-		&message.ToolCallsJSON,
-		&fname,
-		&message.CreatedAt,
-		&message.UpdatedAt,
-		&message.DeletedAt,
-	); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+	var m model.Message
+	err := r.withAttachment(ctx).Where("id = ?", id).First(&m).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-
 		return nil, err
 	}
-
-	message.AttachmentFileID = attachmentFileID
-	if fname != nil {
-		message.AttachmentName = *fname
-	}
-
-	return &message, nil
+	return messageModelToDomain(&m), nil
 }
 
 func (r *messageRepository) ListMessagesWithIDLessThan(ctx context.Context, sessionID int64, beforeMessageID int64) ([]*domain.Message, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
-		       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
-		       f.filename, m.created_at, m.updated_at, m.deleted_at
-		FROM messages m
-		LEFT JOIN files f ON m.attachment_file_id = f.id
-		WHERE m.session_id = $1 AND m.deleted_at IS NULL AND m.id < $2
-		ORDER BY m.created_at ASC, m.id ASC
-	`, sessionID, beforeMessageID)
+	var rows []model.Message
+	err := r.withAttachment(ctx).
+		Scopes(scopeMessageSession(sessionID)).
+		Where("id < ?", beforeMessageID).
+		Order("created_at ASC, id ASC").
+		Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var messages []*domain.Message
-	for rows.Next() {
-		var message domain.Message
-		var attachmentFileID *int64
-		var fname *string
-		if err := rows.Scan(
-			&message.Id,
-			&message.SessionId,
-			&message.Content,
-			&message.Role,
-			&attachmentFileID,
-			&message.ToolCallID,
-			&message.ToolName,
-			&message.ToolCallsJSON,
-			&fname,
-			&message.CreatedAt,
-			&message.UpdatedAt,
-			&message.DeletedAt,
-		); err != nil {
-			return nil, err
-		}
-
-		message.AttachmentFileID = attachmentFileID
-		if fname != nil {
-			message.AttachmentName = *fname
-		}
-
-		messages = append(messages, &message)
+	out := make([]*domain.Message, 0, len(rows))
+	for i := range rows {
+		out = append(out, messageModelToDomain(&rows[i]))
 	}
-
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return messages, nil
+	return out, nil
 }
 
 func (r *messageRepository) ListMessagesUpToID(ctx context.Context, sessionID int64, upToMessageID int64) ([]*domain.Message, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
-		       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
-		       f.filename, m.created_at, m.updated_at, m.deleted_at
-		FROM messages m
-		LEFT JOIN files f ON m.attachment_file_id = f.id
-		WHERE m.session_id = $1 AND m.deleted_at IS NULL AND m.id <= $2
-		ORDER BY m.created_at ASC, m.id ASC
-	`, sessionID, upToMessageID)
+	var rows []model.Message
+	err := r.withAttachment(ctx).
+		Scopes(scopeMessageSession(sessionID)).
+		Where("id <= ?", upToMessageID).
+		Order("created_at ASC, id ASC").
+		Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var messages []*domain.Message
-	for rows.Next() {
-		var message domain.Message
-		var attachmentFileID *int64
-		var fname *string
-		if err := rows.Scan(
-			&message.Id,
-			&message.SessionId,
-			&message.Content,
-			&message.Role,
-			&attachmentFileID,
-			&message.ToolCallID,
-			&message.ToolName,
-			&message.ToolCallsJSON,
-			&fname,
-			&message.CreatedAt,
-			&message.UpdatedAt,
-			&message.DeletedAt,
-		); err != nil {
-			return nil, err
-		}
-
-		message.AttachmentFileID = attachmentFileID
-		if fname != nil {
-			message.AttachmentName = *fname
-		}
-
-		messages = append(messages, &message)
+	out := make([]*domain.Message, 0, len(rows))
+	for i := range rows {
+		out = append(out, messageModelToDomain(&rows[i]))
 	}
-
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
-	return messages, nil
+	return out, nil
 }
 
 func (r *messageRepository) SoftDeleteAfterID(ctx context.Context, sessionID int64, afterMessageID int64) error {
-	_, err := r.db.Exec(ctx, `
-		UPDATE messages
-		SET deleted_at = NOW(), updated_at = NOW()
-		WHERE session_id = $1 AND deleted_at IS NULL AND id > $2
-	`, sessionID, afterMessageID)
-	return err
+	return r.db.WithContext(ctx).Scopes(scopeMessageSession(sessionID)).
+		Where("id > ?", afterMessageID).
+		Delete(&model.Message{}).Error
 }
 
 func (r *messageRepository) SoftDeleteRangeAfterID(ctx context.Context, sessionID int64, afterMessageID int64, upToMessageID int64) error {
 	if upToMessageID <= 0 {
 		return r.SoftDeleteAfterID(ctx, sessionID, afterMessageID)
 	}
-
-	_, err := r.db.Exec(ctx, `
-		UPDATE messages
-		SET deleted_at = NOW(), updated_at = NOW()
-		WHERE session_id = $1 AND deleted_at IS NULL AND id > $2 AND id <= $3
-	`, sessionID, afterMessageID, upToMessageID)
-
-	return err
+	return r.db.WithContext(ctx).Scopes(scopeMessageSession(sessionID)).
+		Where("id > ? AND id <= ?", afterMessageID, upToMessageID).
+		Delete(&model.Message{}).Error
 }
 
 func (r *messageRepository) ResetAssistantForRegenerate(ctx context.Context, sessionID int64, messageID int64) error {
-	tag, err := r.db.Exec(ctx, `
-		UPDATE messages
-		SET content = $3,
-		    tool_calls_json = NULL,
-		    tool_call_id = NULL,
-		    tool_name = NULL,
-		    updated_at = NOW()
-		WHERE id = $1 AND session_id = $2 AND role = 'assistant' AND deleted_at IS NULL
-	`, messageID, sessionID, "")
-	if err != nil {
-		return err
+	res := r.db.WithContext(ctx).Model(&model.Message{}).
+		Where("id = ? AND session_id = ? AND role = ?", messageID, sessionID, "assistant").
+		Updates(map[string]interface{}{
+			"content":         "",
+			"tool_calls_json": nil,
+			"tool_call_id":    nil,
+			"tool_name":       nil,
+			"updated_at":      gorm.Expr("NOW()"),
+		})
+	if res.Error != nil {
+		return res.Error
 	}
-
-	if tag.RowsAffected() == 0 {
+	if res.RowsAffected == 0 {
 		return errors.New("сообщение не найдено или не является ответом ассистента")
 	}
-
 	return nil
 }
 
 func (r *messageRepository) MaxMessageIDInSession(ctx context.Context, sessionID int64) (int64, error) {
 	var maxID *int64
-	err := r.db.QueryRow(ctx, `
-		SELECT MAX(id) FROM messages
-		WHERE session_id = $1 AND deleted_at IS NULL
-	`, sessionID).Scan(&maxID)
+	err := r.db.WithContext(ctx).Model(&model.Message{}).
+		Scopes(scopeMessageSession(sessionID)).
+		Select("MAX(id)").
+		Scan(&maxID).Error
 	if err != nil {
 		return 0, err
 	}
-
 	if maxID == nil {
 		return 0, nil
 	}
-
 	return *maxID, nil
 }

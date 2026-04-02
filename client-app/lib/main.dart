@@ -11,6 +11,7 @@ import 'package:gen/presentation/screens/auth/login_screen.dart';
 import 'package:gen/presentation/screens/auth/update_required_screen.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/home/home_shell.dart';
+import 'package:gen/presentation/widgets/app_root_top_chrome.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,26 +26,31 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Gen',
-      theme: AppTheme.dark,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (context) => di.sl<AuthBloc>()..add(const AuthCheckRequested()),
+        ),
+        BlocProvider(
+          create: (context) => di.sl<ChatBloc>(),
+        ),
       ],
-      supportedLocales: const [Locale('ru')],
-      home: MultiBlocProvider(
-        providers: [
-          BlocProvider(
-            create: (context) => di.sl<AuthBloc>()..add(const AuthCheckRequested()),
-          ),
-          BlocProvider(
-            create: (context) => di.sl<ChatBloc>(),
-          ),
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Gen',
+        theme: AppTheme.dark,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
         ],
-        child: BlocBuilder<AuthBloc, AuthState>(
+        supportedLocales: const [Locale('ru')],
+        builder: (context, child) {
+          return AppRootTopChrome(
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
+        home: BlocBuilder<AuthBloc, AuthState>(
           builder: (context, authState) {
             if (authState.needsUpdate) {
               return const UpdateRequiredScreen();

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/magomedcoder/gen/internal/domain"
-	"github.com/magomedcoder/gen/internal/runner"
+	"github.com/magomedcoder/gen/internal/service"
 	"github.com/magomedcoder/gen/pkg/document"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"github.com/magomedcoder/gen/pkg/spreadsheet"
@@ -35,6 +35,7 @@ func chatSessionSystemMessage(sessionID int64, settings *domain.ChatSessionSetti
 }
 
 type ChatUseCase struct {
+	chatTx              domain.ChatTransactionRunner
 	sessionRepo         domain.ChatSessionRepository
 	preferenceRepo      domain.ChatPreferenceRepository
 	sessionSettingsRepo domain.ChatSessionSettingsRepository
@@ -43,12 +44,13 @@ type ChatUseCase struct {
 	assistantRegenRepo  domain.AssistantMessageRegenerationRepository
 	fileRepo            domain.FileRepository
 	llmRepo             domain.LLMRepository
-	runnerPool          *runner.Pool
+	runnerPool          *service.Pool
 	attachmentsSaveDir  string
 	defaultRunnerAddr   string
 }
 
 func NewChatUseCase(
+	chatTx domain.ChatTransactionRunner,
 	sessionRepo domain.ChatSessionRepository,
 	preferenceRepo domain.ChatPreferenceRepository,
 	sessionSettingsRepo domain.ChatSessionSettingsRepository,
@@ -57,11 +59,12 @@ func NewChatUseCase(
 	assistantRegenRepo domain.AssistantMessageRegenerationRepository,
 	fileRepo domain.FileRepository,
 	llmRepo domain.LLMRepository,
-	runnerPool *runner.Pool,
+	runnerPool *service.Pool,
 	attachmentsSaveDir string,
 	defaultRunnerAddr string,
 ) *ChatUseCase {
 	return &ChatUseCase{
+		chatTx:              chatTx,
 		sessionRepo:         sessionRepo,
 		preferenceRepo:      preferenceRepo,
 		sessionSettingsRepo: sessionSettingsRepo,
@@ -546,24 +549,27 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 	}
 
 	oldContent := target.Content
-	if err := c.messageRepo.UpdateContent(ctx, userMessageID, newContent); err != nil {
-		return nil, err
+	edit := &domain.MessageEdit{
+		SessionId:       sessionId,
+		MessageId:       userMessageID,
+		EditorUserId:    userId,
+		OldContent:      oldContent,
+		NewContent:      newContent,
+		SoftDeletedFrom: userMessageID,
+		SoftDeletedTo:   maxID,
+		CreatedAt:       time.Now(),
 	}
-
-	if c.messageEditRepo != nil {
-		_ = c.messageEditRepo.Create(ctx, &domain.MessageEdit{
-			SessionId:       sessionId,
-			MessageId:       userMessageID,
-			EditorUserId:    userId,
-			OldContent:      oldContent,
-			NewContent:      newContent,
-			SoftDeletedFrom: userMessageID,
-			SoftDeletedTo:   maxID,
-			CreatedAt:       time.Now(),
-		})
-	}
-
-	if err := c.messageRepo.SoftDeleteRangeAfterID(ctx, sessionId, userMessageID, maxID); err != nil {
+	if err := c.chatTx.WithinTx(ctx, func(ctx context.Context, r domain.ChatRepos) error {
+		if err := r.Message.UpdateContent(ctx, userMessageID, newContent); err != nil {
+			return err
+		}
+		if c.messageEditRepo != nil {
+			if err := r.MessageEdit.Create(ctx, edit); err != nil {
+				return err
+			}
+		}
+		return r.Message.SoftDeleteRangeAfterID(ctx, sessionId, userMessageID, maxID)
+	}); err != nil {
 		return nil, err
 	}
 

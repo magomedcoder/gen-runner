@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS user_sessions
     deleted_at TIMESTAMP   NULL
 );
 
-CREATE TABLE IF NOT EXISTS chat_sessions
+CREATE TABLE IF NOT EXISTS chats
 (
     id         BIGSERIAL PRIMARY KEY,
     user_id    INTEGER      NOT NULL REFERENCES users (id),
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS files
     mime_type       VARCHAR(100) NULL,
     size            BIGINT       NOT NULL DEFAULT 0,
     storage_path    TEXT         NOT NULL,
-    chat_session_id BIGINT       NULL REFERENCES chat_sessions (id) ON DELETE SET NULL,
+    chat_session_id BIGINT       NULL REFERENCES chats (id) ON DELETE SET NULL,
     user_id         INTEGER      NULL REFERENCES users (id) ON DELETE SET NULL,
     expires_at      TIMESTAMP    NULL,
     kind            VARCHAR(32)  NOT NULL DEFAULT '',
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS files
 CREATE TABLE IF NOT EXISTS messages
 (
     id                 BIGSERIAL PRIMARY KEY,
-    session_id         BIGINT      NOT NULL REFERENCES chat_sessions (id) ON DELETE CASCADE,
+    session_id         BIGINT      NOT NULL REFERENCES chats (id) ON DELETE CASCADE,
     content            TEXT        NOT NULL,
     role               VARCHAR(20) NOT NULL,
     attachment_file_id BIGINT      NULL REFERENCES files (id) ON DELETE SET NULL,
@@ -88,9 +88,9 @@ CREATE TABLE IF NOT EXISTS editor_text_history
     created_at TIMESTAMP    NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS chat_session_settings
+CREATE TABLE IF NOT EXISTS chat_settings
 (
-    session_id      BIGINT PRIMARY KEY REFERENCES chat_sessions (id) ON DELETE CASCADE,
+    session_id      BIGINT PRIMARY KEY REFERENCES chats (id) ON DELETE CASCADE,
     system_prompt   TEXT        NOT NULL DEFAULT '',
     stop_sequences  TEXT[]      NOT NULL DEFAULT '{}',
     timeout_seconds INTEGER     NOT NULL DEFAULT 0,
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS chat_session_settings
 CREATE TABLE IF NOT EXISTS message_edits
 (
     id                   BIGSERIAL PRIMARY KEY,
-    session_id           BIGINT      NOT NULL REFERENCES chat_sessions (id) ON DELETE CASCADE,
+    session_id           BIGINT      NOT NULL REFERENCES chats (id) ON DELETE CASCADE,
     message_id           BIGINT      NOT NULL REFERENCES messages (id) ON DELETE CASCADE,
     editor_user_id       INTEGER     NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     kind                 VARCHAR(32) NOT NULL DEFAULT 'user_edit',
@@ -126,9 +126,9 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions (token);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions (expires_at);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_deleted_at ON user_sessions (deleted_at);
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions (user_id);
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_created_at ON chat_sessions (created_at);
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_deleted_at ON chat_sessions (deleted_at);
+CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats (user_id);
+CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats (created_at);
+CREATE INDEX IF NOT EXISTS idx_chats_deleted_at ON chats (deleted_at);
 CREATE INDEX IF NOT EXISTS idx_files_created_at ON files (created_at);
 CREATE INDEX IF NOT EXISTS idx_files_expires_at ON files (expires_at) WHERE expires_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_files_chat_session_kind ON files (chat_session_id, kind) WHERE chat_session_id IS NOT NULL;
@@ -140,7 +140,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_attachment_file_id ON messages (attachme
 CREATE INDEX IF NOT EXISTS idx_user_runner_models_user_id ON user_runner_models (user_id);
 CREATE INDEX IF NOT EXISTS idx_editor_text_history_user_id ON editor_text_history (user_id);
 CREATE INDEX IF NOT EXISTS idx_editor_text_history_created_at ON editor_text_history (created_at);
-CREATE INDEX IF NOT EXISTS idx_chat_session_settings_updated_at ON chat_session_settings (updated_at);
+CREATE INDEX IF NOT EXISTS idx_chat_settings_updated_at ON chat_settings (updated_at);
 CREATE INDEX IF NOT EXISTS idx_message_edits_message_id_created_at ON message_edits (message_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_message_edits_session_id_created_at ON message_edits (session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_message_edits_kind_created_at ON message_edits (kind, created_at);

@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum ChatStreamChunkKind { text, toolStatus }
+enum ChatStreamChunkKind { text, toolStatus, notice }
 
 class ChatStreamChunk extends Equatable {
   final ChatStreamChunkKind kind;

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/magomedcoder/gen/internal/delivery/handler"
+	"github.com/magomedcoder/gen/internal/provider"
 	"strings"
 
 	"github.com/magomedcoder/gen"
@@ -15,9 +17,7 @@ import (
 	"github.com/magomedcoder/gen/config"
 	"github.com/magomedcoder/gen/internal/bootstrap"
 	"github.com/magomedcoder/gen/internal/domain"
-	"github.com/magomedcoder/gen/internal/handler"
 	"github.com/magomedcoder/gen/internal/repository/postgres"
-	"github.com/magomedcoder/gen/internal/runner"
 	"github.com/magomedcoder/gen/internal/service"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
@@ -54,15 +54,20 @@ func main() {
 		logger.E("Ошибка конфигурации базы данных: %v", err)
 		os.Exit(1)
 	}
-	db, err := postgres.NewDB(ctx, dsn)
+	db, err := provider.NewDB(ctx, dsn)
 	if err != nil {
 		logger.E("Ошибка подключения к базе данных: %v", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	sqlDB, err := db.DB()
+	if err != nil {
+		logger.E("Ошибка получения sql.DB: %v", err)
+		os.Exit(1)
+	}
+	defer sqlDB.Close()
 	logger.I("Подключение к базе данных установлено")
 
-	if err := bootstrap.RunMigrations(ctx, db, gen.Postgres); err != nil {
+	if err := bootstrap.RunMigrations(ctx, sqlDB, gen.Postgres); err != nil {
 		logger.E("Ошибка применения миграций: %v", err)
 		os.Exit(1)
 	}
@@ -87,12 +92,15 @@ func main() {
 	}
 	logger.D("Первый пользователь проверен/создан")
 
-	authUseCase := usecase.NewAuthUseCase(userRepo, tokenRepo, jwtService)
+	authTxRunner := postgres.NewAuthTransactionRunner(db)
+	chatTxRunner := postgres.NewChatTransactionRunner(db)
 
-	var initialRunners []runner.RunnerState
+	authUseCase := usecase.NewAuthUseCase(authTxRunner, userRepo, tokenRepo, jwtService)
+
+	var initialRunners []service.RunnerState
 	for _, e := range cfg.Runners.Entries {
 		if a := strings.TrimSpace(e.Address); a != "" {
-			initialRunners = append(initialRunners, runner.RunnerState{
+			initialRunners = append(initialRunners, service.RunnerState{
 				Address: a,
 				Name:    strings.TrimSpace(e.Name),
 				Enabled: true,
@@ -103,12 +111,12 @@ func main() {
 		logger.I("Раннеры только по саморегистрации (токены из runners)")
 	}
 
-	runnerReg := runner.NewRegistry(initialRunners)
-	runnerPool := runner.NewPool(runnerReg)
+	runnerReg := service.NewRegistry(initialRunners)
+	runnerPool := service.NewPool(runnerReg)
 	defer runnerPool.Close()
 	llmRepo := runnerPool
 
-	chatUseCase := usecase.NewChatUseCase(sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, llmRepo, runnerPool, cfg.UploadDir, cfg.DefaultRunnerAddress())
+	chatUseCase := usecase.NewChatUseCase(chatTxRunner, sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, llmRepo, runnerPool, cfg.UploadDir, cfg.DefaultRunnerAddress())
 	editorUseCase := usecase.NewEditorUseCase(llmRepo, chatPreferenceRepo, editorHistoryRepo, cfg.DefaultRunnerAddress())
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 

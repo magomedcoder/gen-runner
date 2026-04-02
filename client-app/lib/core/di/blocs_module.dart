@@ -52,7 +52,10 @@ void registerBlocsModule(GetIt sl) {
   sl.registerFactory(
     () => EditorBloc(
       authBloc: sl<AuthBloc>(),
+      getRunnersUseCase: sl(),
+      getUserRunnersUseCase: sl(),
       getSelectedRunnerUseCase: sl(),
+      setSelectedRunnerUseCase: sl(),
       transformTextUseCase: sl(),
       editorRepository: sl<EditorRepository>(),
     ),

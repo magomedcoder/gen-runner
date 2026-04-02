@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/injector.dart';
+import 'package:gen/core/ui/app_top_notice.dart';
+import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/core/server_config.dart';
 import 'package:gen/core/util.dart';
-import 'package:gen/domain/entities/runner_info.dart';
 import 'package:gen/domain/usecases/auth/change_password_usecase.dart';
-import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
-import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
-import 'package:gen/domain/usecases/runners/get_runners_usecase.dart';
-import 'package:gen/domain/usecases/runners/get_user_runners_usecase.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_event.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_state.dart';
@@ -31,108 +28,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _obscureNew = true;
   bool _obscureConfirm = true;
   bool _savingPassword = false;
-  bool _loadingRunnerPrefs = true;
-  bool _savingRunnerPref = false;
-  List<String> _availableRunners = const [];
-  Map<String, String> _runnerNames = const {};
-  String? _selectedRunner;
-
-  List<String> _extractAvailableRunners(List<RunnerInfo> runners) {
-    final addresses = <String>{
-      for (final runner in runners)
-        if (runner.enabled && runner.address.isNotEmpty) runner.address,
-    };
-    final sorted = addresses.toList()..sort();
-    return sorted;
-  }
-
-  Map<String, String> _extractRunnerNames(List<RunnerInfo> runners) {
-    final names = <String, String>{};
-    for (final runner in runners) {
-      if (!runner.enabled || runner.address.isEmpty) {
-        continue;
-      }
-
-      final name = runner.name.trim();
-      names[runner.address] = name.isNotEmpty ? name : runner.address;
-    }
-
-    return names;
-  }
-
-  Future<void> _loadRunnerPreferences() async {
-    setState(() => _loadingRunnerPrefs = true);
-    try {
-      final isAdmin = sl<AuthBloc>().state.user?.isAdmin ?? false;
-      final runners = isAdmin
-          ? await sl<GetRunnersUseCase>()()
-          : await sl<GetUserRunnersUseCase>()();
-      final selected = await sl<GetSelectedRunnerUseCase>()();
-      final available = _extractAvailableRunners(runners);
-      final runnerNames = _extractRunnerNames(runners);
-      String? effectiveSelected = selected != null && available.contains(selected) ? selected : null;
-      if (effectiveSelected == null && available.isNotEmpty) {
-        effectiveSelected = available.first;
-        await sl<SetSelectedRunnerUseCase>()(effectiveSelected);
-      }
-
-      setState(() {
-        _availableRunners = available;
-        _runnerNames = runnerNames;
-        _selectedRunner = effectiveSelected;
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Не удалось загрузить раннеры'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _loadingRunnerPrefs = false);
-      }
-    }
-  }
-
-  Future<void> _setSelectedRunner(String runner) async {
-    setState(() => _savingRunnerPref = true);
-    try {
-      await sl<SetSelectedRunnerUseCase>()(runner);
-      if (!mounted) {
-        return;
-      }
-      setState(() => _selectedRunner = runner);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Раннер по умолчанию сохранён'),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Theme.of(context).colorScheme.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _savingRunnerPref = false);
-      }
-    }
-  }
 
   String _serverLabel(ServerConfig c) {
     final s = formatServerAddressForField(c);
@@ -149,12 +44,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadRunnerPreferences();
   }
 
   Future<void> _submitChangePassword() async {
@@ -176,25 +65,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _newPasswordController.clear();
       _confirmPasswordController.clear();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Пароль успешно изменён'),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      showAppTopNotice('Пароль успешно изменён');
     } catch (e) {
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Theme.of(context).colorScheme.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
+      showAppTopNotice(
+        userSafeErrorMessage(e, fallback: 'Не удалось сменить пароль'),
+        error: true,
       );
     } finally {
       if (mounted) {
@@ -295,6 +174,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
           body: SafeArea(
+            top: false,
             child: ListView(
               padding: EdgeInsets.fromLTRB(horizontal, 16, horizontal, 24),
               children: [
@@ -328,52 +208,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _serverLabel(config),
                     style: textTheme.bodyLarge,
                   ),
-                ),
-                const SizedBox(height: 12),
-                _settingsSection(
-                  context,
-                  title: 'Раннер по умолчанию',
-                  child: _loadingRunnerPrefs
-                    ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    )
-                    : _availableRunners.isEmpty
-                      ? Text(
-                        'Нет доступных раннеров',
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      )
-                      : DropdownButtonFormField<String>(
-                        initialValue: _selectedRunner ?? _availableRunners.first,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                          labelText: 'Раннер',
-                        ),
-                        items: [
-                          for (final address in _availableRunners)
-                            DropdownMenuItem<String>(
-                              value: address,
-                              child: Text(_runnerNames[address] ?? address),
-                            ),
-                        ],
-                        onChanged: _savingRunnerPref
-                          ? null
-                          : (value) {
-                            if (value != null) {
-                              _setSelectedRunner(value);
-                            }
-                          },
-                      ),
                 ),
                 const SizedBox(height: 12),
                 _settingsSection(

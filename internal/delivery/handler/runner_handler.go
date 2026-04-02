@@ -2,13 +2,13 @@ package handler
 
 import (
 	"context"
+	"github.com/magomedcoder/gen/internal/service"
 	"strings"
 
 	"github.com/magomedcoder/gen/api/pb/commonpb"
 	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
 	"github.com/magomedcoder/gen/api/pb/runnerpb"
 	"github.com/magomedcoder/gen/config"
-	"github.com/magomedcoder/gen/internal/runner"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"
@@ -21,13 +21,13 @@ const grpcMetadataRunnerAddress = "runner-address"
 type RunnerHandler struct {
 	runnerpb.UnimplementedRunnerServiceServer
 	llmrunnerpb.UnimplementedLLMRunnerServiceServer
-	registry    *runner.Registry
-	pool        *runner.Pool
+	registry    *service.Registry
+	pool        *service.Pool
 	authUseCase *usecase.AuthUseCase
 	cfg         *config.Config
 }
 
-func NewRunnerHandler(registry *runner.Registry, pool *runner.Pool, authUseCase *usecase.AuthUseCase, cfg *config.Config) *RunnerHandler {
+func NewRunnerHandler(registry *service.Registry, pool *service.Pool, authUseCase *usecase.AuthUseCase, cfg *config.Config) *RunnerHandler {
 	return &RunnerHandler{
 		registry:    registry,
 		pool:        pool,

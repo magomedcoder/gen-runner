@@ -2,9 +2,18 @@ package postgres
 
 import (
 	"errors"
+	"time"
 
-	"github.com/jackc/pgx/v5"
+	"gorm.io/gorm"
 )
+
+func gormDeletedAtToPtr(d gorm.DeletedAt) *time.Time {
+	if d.Valid {
+		t := d.Time
+		return &t
+	}
+	return nil
+}
 
 func normalizePagination(page, pageSize int32) (int32, int32, int32) {
 	if page <= 0 {
@@ -24,7 +33,7 @@ func normalizePagination(page, pageSize int32) (int32, int32, int32) {
 }
 
 func handleNotFound(err error, message string) error {
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errors.New(message)
 	}
 

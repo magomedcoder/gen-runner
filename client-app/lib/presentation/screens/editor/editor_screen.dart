@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/layout/responsive.dart';
+import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/generated/grpc_pb/editor.pb.dart' as grpc;
 import 'package:gen/presentation/screens/editor/bloc/editor_bloc.dart';
 import 'package:gen/presentation/screens/editor/bloc/editor_event.dart';
@@ -128,12 +129,7 @@ class _EditorScreenState extends State<EditorScreen> {
         }
 
         if (state.error != null && state.error!.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.error!),
-              backgroundColor: colorScheme.error,
-            ),
-          );
+          showAppTopNotice(state.error!, error: true);
           context.read<EditorBloc>().add(const EditorClearError());
         }
       },
@@ -142,6 +138,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
         return Scaffold(
           body: SafeArea(
+            top: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -330,6 +327,8 @@ class _EditorScreenState extends State<EditorScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
+                    _buildRunnerSelector(context, state, embedded: true),
+                    const SizedBox(height: 10),
                     LayoutBuilder(
                       builder: (context, constraints) {
                         return Wrap(
@@ -370,6 +369,15 @@ class _EditorScreenState extends State<EditorScreen> {
                         SizedBox(
                           width: 200,
                           child: _buildModeSelector(
+                            context,
+                            state,
+                            embedded: true,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 220,
+                          child: _buildRunnerSelector(
                             context,
                             state,
                             embedded: true,
@@ -485,21 +493,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     }
 
                     Clipboard.setData(ClipboardData(text: text));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.check, size: 18),
-                            const SizedBox(width: 8),
-                            const Text('Скопировано'),
-                          ],
-                        ),
-                        backgroundColor: colorScheme.primary,
-                        behavior: SnackBarBehavior.floating,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
+                    showAppTopNotice('Скопировано', duration: const Duration(seconds: 2));
                   },
                 ),
             ],
@@ -543,6 +537,95 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildRunnerSelector(
+    BuildContext context,
+    EditorState state, {
+    bool embedded = false,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    if (state.runnersLoading) {
+      return Container(
+        decoration: _editorControlDecoration(colorScheme, embedded: embedded),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Раннеры…',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.runners.isEmpty) {
+      return Container(
+        decoration: _editorControlDecoration(colorScheme, embedded: embedded),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(
+          'Нет доступных раннеров',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    final effective = state.selectedRunner ?? state.runners.first;
+
+    return Container(
+      decoration: _editorControlDecoration(colorScheme, embedded: embedded),
+      child: DropdownButtonFormField<String>(
+        key: ValueKey('editor_runner_$effective'),
+        initialValue: effective,
+        isExpanded: true,
+        isDense: true,
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          isDense: true,
+          labelText: 'Раннер',
+        ),
+        items: [
+          for (final address in state.runners)
+            DropdownMenuItem<String>(
+              value: address,
+              child: Text(
+                state.runnerNames[address] ?? address,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+        onChanged: state.isLoading || state.savingRunner
+          ? null
+          : (value) {
+            if (value != null) {
+              context.read<EditorBloc>().add(EditorSelectRunner(value));
+            }
+          },
+        dropdownColor: colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        iconSize: 20,
       ),
     );
   }

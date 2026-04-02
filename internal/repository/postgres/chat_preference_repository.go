@@ -2,80 +2,86 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/repository/postgres/model"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type chatPreferenceRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewChatPreferenceRepository(db *pgxpool.Pool) domain.ChatPreferenceRepository {
+func NewChatPreferenceRepository(db *gorm.DB) domain.ChatPreferenceRepository {
 	return &chatPreferenceRepository{db: db}
 }
 
 func (r *chatPreferenceRepository) GetSelectedRunner(ctx context.Context, userID int) (string, error) {
-	var selected string
-	err := r.db.QueryRow(ctx, `
-		SELECT selected_runner
-		FROM user_chat_preferences
-		WHERE user_id = $1
-	`, userID).Scan(&selected)
+	var row model.UserChatPreference
+	err := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		First(&row).Error
 	if err != nil {
-		return "", nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil
+		}
+		return "", err
 	}
-	return strings.TrimSpace(selected), nil
+	return strings.TrimSpace(row.SelectedRunner), nil
 }
 
 func (r *chatPreferenceRepository) SetSelectedRunner(ctx context.Context, userID int, runner string) error {
-	_, err := r.db.Exec(ctx, `
-		INSERT INTO user_chat_preferences (user_id, selected_runner, updated_at)
-		VALUES ($1, $2, NOW())
-		ON CONFLICT (user_id) DO UPDATE
-		SET selected_runner = EXCLUDED.selected_runner,
-		    updated_at = NOW()
-	`, userID, strings.TrimSpace(runner))
-
-	return err
+	row := model.UserChatPreference{
+		UserID:         userID,
+		SelectedRunner: strings.TrimSpace(runner),
+	}
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_id"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"selected_runner": strings.TrimSpace(runner),
+			"updated_at":      gorm.Expr("NOW()"),
+		}),
+	}).Create(&row).Error
 }
 
 func (r *chatPreferenceRepository) GetDefaultRunnerModel(ctx context.Context, userID int, runner string) (string, error) {
-	var model string
-	err := r.db.QueryRow(ctx, `
-		SELECT model
-		FROM user_runner_models
-		WHERE user_id = $1 AND runner_address = $2
-	`, userID, strings.TrimSpace(runner)).Scan(&model)
+	var row model.UserRunnerModel
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND runner_address = ?", userID, strings.TrimSpace(runner)).
+		First(&row).Error
 	if err != nil {
-		return "", nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil
+		}
+		return "", err
 	}
-
-	return strings.TrimSpace(model), nil
+	return strings.TrimSpace(row.Model), nil
 }
 
-func (r *chatPreferenceRepository) SetDefaultRunnerModel(ctx context.Context, userID int, runner string, model string) error {
+func (r *chatPreferenceRepository) SetDefaultRunnerModel(ctx context.Context, userID int, runner string, modelName string) error {
 	runner = strings.TrimSpace(runner)
-	model = strings.TrimSpace(model)
+	modelName = strings.TrimSpace(modelName)
 	if runner == "" {
 		return nil
 	}
-	if model == "" {
-		_, err := r.db.Exec(ctx, `
-			DELETE FROM user_runner_models
-			WHERE user_id = $1 AND runner_address = $2
-		`, userID, runner)
-		return err
+	if modelName == "" {
+		return r.db.WithContext(ctx).
+			Where("user_id = ? AND runner_address = ?", userID, runner).
+			Delete(&model.UserRunnerModel{}).Error
 	}
-
-	_, err := r.db.Exec(ctx, `
-		INSERT INTO user_runner_models (user_id, runner_address, model, updated_at)
-		VALUES ($1, $2, $3, NOW())
-		ON CONFLICT (user_id, runner_address) DO UPDATE
-		SET model = EXCLUDED.model,
-		    updated_at = NOW()
-	`, userID, runner, model)
-
-	return err
+	row := model.UserRunnerModel{
+		UserID:        userID,
+		RunnerAddress: runner,
+		Model:         modelName,
+	}
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_id"}, {Name: "runner_address"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"model":      modelName,
+			"updated_at": gorm.Expr("NOW()"),
+		}),
+	}).Create(&row).Error
 }

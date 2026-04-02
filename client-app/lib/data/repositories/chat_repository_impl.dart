@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:gen/core/failures.dart';
+import 'package:gen/core/log/logs.dart';
+import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/data/data_sources/remote/chat_remote_datasource.dart';
 import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/chat_stream_chunk.dart';
@@ -23,8 +25,12 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<bool> checkConnection() async {
     try {
       return await dataSource.checkConnection();
-    } catch (e) {
-      throw NetworkFailure('Ошибка проверки подключения: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: checkConnection', exception: e, stackTrace: st);
+      throw NetworkFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка проверки подключения'),
+      );
     }
   }
 
@@ -35,8 +41,12 @@ class ChatRepositoryImpl implements ChatRepository {
   ) {
     try {
       return dataSource.sendChatMessage(sessionId, message);
-    } catch (e) {
-      throw ApiFailure('Ошибка создания потока сообщений: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: sendMessage stream', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка создания потока сообщений'),
+      );
     }
   }
 
@@ -50,8 +60,10 @@ class ChatRepositoryImpl implements ChatRepository {
         sessionId,
         assistantMessageId,
       );
-    } catch (e) {
-      throw ApiFailure('Ошибка перегенерации: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: regenerate', exception: e, stackTrace: st);
+      throw ApiFailure(userSafeErrorMessage(e, fallback: 'Ошибка перегенерации'));
     }
   }
 
@@ -65,8 +77,12 @@ class ChatRepositoryImpl implements ChatRepository {
         sessionId,
         assistantMessageId,
       );
-    } catch (e) {
-      throw ApiFailure('Ошибка продолжения ответа: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: continueAssistant', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка продолжения ответа'),
+      );
     }
   }
 
@@ -82,8 +98,12 @@ class ChatRepositoryImpl implements ChatRepository {
         userMessageId,
         newContent,
       );
-    } catch (e) {
-      throw ApiFailure('Ошибка редактирования сообщения: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: editUserMessage', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка редактирования сообщения'),
+      );
     }
   }
 
@@ -97,8 +117,12 @@ class ChatRepositoryImpl implements ChatRepository {
         sessionId: sessionId,
         userMessageId: userMessageId,
       );
-    } catch (e) {
-      throw ApiFailure('Ошибка загрузки истории правок: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getUserMessageEdits', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка загрузки истории правок'),
+      );
     }
   }
 
@@ -114,8 +138,12 @@ class ChatRepositoryImpl implements ChatRepository {
         userMessageId: userMessageId,
         versionIndex: versionIndex,
       );
-    } catch (e) {
-      throw ApiFailure('Ошибка загрузки ветки сообщений: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getSessionMessagesForUserMessageVersion', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка загрузки ветки сообщений'),
+      );
     }
   }
 
@@ -129,8 +157,12 @@ class ChatRepositoryImpl implements ChatRepository {
         sessionId: sessionId,
         assistantMessageId: assistantMessageId,
       );
-    } catch (e) {
-      throw ApiFailure('Ошибка загрузки истории перегенераций: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getAssistantMessageRegenerations', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка загрузки истории перегенераций'),
+      );
     }
   }
 
@@ -146,8 +178,12 @@ class ChatRepositoryImpl implements ChatRepository {
         assistantMessageId: assistantMessageId,
         versionIndex: versionIndex,
       );
-    } catch (e) {
-      throw ApiFailure('Ошибка загрузки версии ответа: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getSessionMessagesForAssistantMessageVersion', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка загрузки версии ответа'),
+      );
     }
   }
 
@@ -155,8 +191,10 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatSession> createSession(String title) async {
     try {
       return await dataSource.createSession(title);
-    } catch (e) {
-      throw ApiFailure('Ошибка создания сессии: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: createSession', exception: e, stackTrace: st);
+      throw ApiFailure(userSafeErrorMessage(e, fallback: 'Ошибка создания сессии'));
     }
   }
 
@@ -164,8 +202,10 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatSession> getSession(int sessionId) async {
     try {
       return await dataSource.getSession(sessionId);
-    } catch (e) {
-      throw ApiFailure('Ошибка получения сессии: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getSession', exception: e, stackTrace: st);
+      throw ApiFailure(userSafeErrorMessage(e, fallback: 'Ошибка получения сессии'));
     }
   }
 
@@ -173,8 +213,12 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<List<ChatSession>> listSessions(int page, int pageSize) async {
     try {
       return await dataSource.getSessions(page, pageSize);
-    } catch (e) {
-      throw ApiFailure('Ошибка получения списка сессий: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: listSessions', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка получения списка сессий'),
+      );
     }
   }
 
@@ -190,8 +234,12 @@ class ChatRepositoryImpl implements ChatRepository {
         beforeMessageId: beforeMessageId,
         pageSize: pageSize,
       );
-    } catch (e) {
-      throw ApiFailure('Ошибка получения сообщений сессии: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getSessionMessagesPage', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка получения сообщений сессии'),
+      );
     }
   }
 
@@ -199,8 +247,10 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<void> deleteSession(int sessionId) async {
     try {
       await dataSource.deleteSession(sessionId);
-    } catch (e) {
-      throw ApiFailure('Ошибка удаления сессии: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: deleteSession', exception: e, stackTrace: st);
+      throw ApiFailure(userSafeErrorMessage(e, fallback: 'Ошибка удаления сессии'));
     }
   }
 
@@ -208,8 +258,12 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatSession> updateSessionTitle(int sessionId, String title) async {
     try {
       return await dataSource.updateSessionTitle(sessionId, title);
-    } catch (e) {
-      throw ApiFailure('Ошибка обновления заголовка сессии: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: updateSessionTitle', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка обновления заголовка сессии'),
+      );
     }
   }
 
@@ -217,8 +271,12 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<ChatSessionSettings> getSessionSettings(int sessionId) async {
     try {
       return await dataSource.getSessionSettings(sessionId);
-    } catch (e) {
-      throw ApiFailure('Ошибка загрузки настроек чата: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getSessionSettings', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка загрузки настроек чата'),
+      );
     }
   }
 
@@ -250,8 +308,12 @@ class ChatRepositoryImpl implements ChatRepository {
         toolsJson: toolsJson,
         profile: profile,
       );
-    } catch (e) {
-      throw ApiFailure('Ошибка сохранения настроек чата: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: updateSessionSettings', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка сохранения настроек чата'),
+      );
     }
   }
 
@@ -259,8 +321,12 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<String?> getSelectedRunner() async {
     try {
       return await dataSource.getSelectedRunner();
-    } catch (e) {
-      throw ApiFailure('Ошибка получения выбранного раннера: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getSelectedRunner', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка получения выбранного раннера'),
+      );
     }
   }
 
@@ -268,8 +334,12 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<void> setSelectedRunner(String? runner) async {
     try {
       await dataSource.setSelectedRunner(runner);
-    } catch (e) {
-      throw ApiFailure('Ошибка сохранения выбранного раннера: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: setSelectedRunner', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка сохранения выбранного раннера'),
+      );
     }
   }
 
@@ -277,8 +347,12 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<String?> getDefaultRunnerModel(String runner) async {
     try {
       return await dataSource.getDefaultRunnerModel(runner);
-    } catch (e) {
-      throw ApiFailure('Ошибка получения модели по умолчанию: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getDefaultRunnerModel', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка получения модели по умолчанию'),
+      );
     }
   }
 
@@ -286,8 +360,12 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<void> setDefaultRunnerModel(String runner, String? model) async {
     try {
       await dataSource.setDefaultRunnerModel(runner, model);
-    } catch (e) {
-      throw ApiFailure('Ошибка сохранения модели по умолчанию: $e');
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: setDefaultRunnerModel', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка сохранения модели по умолчанию'),
+      );
     }
   }
 
@@ -305,9 +383,12 @@ class ChatRepositoryImpl implements ChatRepository {
         content: content,
         ttlSeconds: ttlSeconds,
       );
-    } catch (e) {
+    } catch (e, st) {
       if (e is Failure) rethrow;
-      throw ApiFailure('Ошибка загрузки файла сессии: $e');
+      Logs().e('ChatRepository: putSessionFile', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка загрузки файла сессии'),
+      );
     }
   }
 
@@ -321,9 +402,12 @@ class ChatRepositoryImpl implements ChatRepository {
         sessionId: sessionId,
         fileId: fileId,
       );
-    } catch (e) {
+    } catch (e, st) {
       if (e is Failure) rethrow;
-      throw ApiFailure('Ошибка получения файла сессии: $e');
+      Logs().e('ChatRepository: getSessionFile', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка получения файла сессии'),
+      );
     }
   }
 
@@ -341,9 +425,10 @@ class ChatRepositoryImpl implements ChatRepository {
         previewSheet: previewSheet,
         previewRange: previewRange,
       );
-    } catch (e) {
+    } catch (e, st) {
       if (e is Failure) rethrow;
-      throw ApiFailure('Ошибка таблицы: $e');
+      Logs().e('ChatRepository: applySpreadsheet', exception: e, stackTrace: st);
+      throw ApiFailure(userSafeErrorMessage(e, fallback: 'Ошибка таблицы'));
     }
   }
 
@@ -351,9 +436,10 @@ class ChatRepositoryImpl implements ChatRepository {
   Future<Uint8List> buildDocx({required String specJson}) async {
     try {
       return await dataSource.buildDocx(specJson: specJson);
-    } catch (e) {
+    } catch (e, st) {
       if (e is Failure) rethrow;
-      throw ApiFailure('Ошибка документа Word: $e');
+      Logs().e('ChatRepository: buildDocx', exception: e, stackTrace: st);
+      throw ApiFailure(userSafeErrorMessage(e, fallback: 'Ошибка документа Word'));
     }
   }
 
@@ -367,9 +453,10 @@ class ChatRepositoryImpl implements ChatRepository {
         baseText: baseText,
         patchJson: patchJson,
       );
-    } catch (e) {
+    } catch (e, st) {
       if (e is Failure) rethrow;
-      throw ApiFailure('Ошибка патча текста: $e');
+      Logs().e('ChatRepository: applyMarkdownPatch', exception: e, stackTrace: st);
+      throw ApiFailure(userSafeErrorMessage(e, fallback: 'Ошибка патча текста'));
     }
   }
 }

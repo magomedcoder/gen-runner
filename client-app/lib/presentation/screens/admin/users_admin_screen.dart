@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/injector.dart' as di;
+import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/domain/entities/user.dart';
 import 'package:gen/presentation/screens/admin/bloc/users_admin_bloc.dart';
 import 'package:gen/presentation/screens/admin/bloc/users_admin_event.dart';
@@ -31,13 +32,9 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
   }
 
   void _showAccessDenied() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Доступ разрешён только администратору'),
-        backgroundColor: Theme.of(context).colorScheme.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
+    showAppTopNotice(
+      'Доступ разрешён только администратору',
+      error: true,
     );
   }
 
@@ -326,16 +323,7 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
           return BlocListener<UsersAdminBloc, UsersAdminState>(
             listener: (context, state) {
               if (state.error != null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(state.error!),
-                    backgroundColor: Theme.of(context).colorScheme.error,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                );
+                showAppTopNotice(state.error!, error: true);
                 context.read<UsersAdminBloc>().add(
                   const UsersAdminClearError(),
                 );

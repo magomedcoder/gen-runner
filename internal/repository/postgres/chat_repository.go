@@ -4,128 +4,97 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/repository/postgres/model"
+	"gorm.io/gorm"
 )
 
 type chatSessionRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewChatSessionRepository(db *pgxpool.Pool) domain.ChatSessionRepository {
+func NewChatSessionRepository(db *gorm.DB) domain.ChatSessionRepository {
 	return &chatSessionRepository{db: db}
 }
 
 func (r *chatSessionRepository) Create(ctx context.Context, session *domain.ChatSession) error {
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO chat_sessions (user_id, title, model, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id
-	`,
-		session.UserId,
-		session.Title,
-		session.Model,
-		session.CreatedAt,
-		session.UpdatedAt,
-	).Scan(&session.Id)
-
-	return err
+	row := model.Chat{
+		UserID:    session.UserId,
+		Title:     session.Title,
+		Model:     session.Model,
+		CreatedAt: session.CreatedAt,
+		UpdatedAt: session.UpdatedAt,
+	}
+	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+		return err
+	}
+	session.Id = row.ID
+	return nil
 }
 
 func (r *chatSessionRepository) GetById(ctx context.Context, id int64) (*domain.ChatSession, error) {
-	var session domain.ChatSession
-	err := r.db.QueryRow(ctx, `
-		SELECT id, user_id, title, model, created_at, updated_at, deleted_at
-		FROM chat_sessions
-		WHERE id = $1 AND deleted_at IS NULL
-	`, id).Scan(
-		&session.Id,
-		&session.UserId,
-		&session.Title,
-		&session.Model,
-		&session.CreatedAt,
-		&session.UpdatedAt,
-		&session.DeletedAt,
-	)
-
+	var row model.Chat
+	err := r.db.WithContext(ctx).
+		Where("id = ?", id).
+		First(&row).Error
 	if err != nil {
 		return nil, handleNotFound(err, "сессия не найдена")
 	}
-
-	return &session, nil
+	return chatToDomain(&row), nil
 }
 
 func (r *chatSessionRepository) GetByUserId(ctx context.Context, userID int, page, pageSize int32) ([]*domain.ChatSession, int32, error) {
 	_, pageSize, offset := normalizePagination(page, pageSize)
 
-	var total int32
-	err := r.db.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM chat_sessions
-		WHERE user_id = $1 AND deleted_at IS NULL
-	`, userID).Scan(&total)
-	if err != nil {
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&model.Chat{}).
+		Scopes(scopeChatUser(userID)).
+		Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	rows, err := r.db.Query(ctx, `
-		SELECT id, user_id, title, model, created_at, updated_at, deleted_at
-		FROM chat_sessions
-		WHERE user_id = $1 AND deleted_at IS NULL
-		ORDER BY created_at DESC
-		LIMIT $2 OFFSET $3
-	`, userID, pageSize, offset)
-	if err != nil {
+	var rows []model.Chat
+	if err := r.db.WithContext(ctx).Model(&model.Chat{}).
+		Scopes(scopeChatUser(userID)).
+		Order("created_at DESC").
+		Limit(int(pageSize)).
+		Offset(int(offset)).
+		Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 
-	var sessions []*domain.ChatSession
-	for rows.Next() {
-		var session domain.ChatSession
-		if err := rows.Scan(
-			&session.Id,
-			&session.UserId,
-			&session.Title,
-			&session.Model,
-			&session.CreatedAt,
-			&session.UpdatedAt,
-			&session.DeletedAt,
-		); err != nil {
-			return nil, 0, err
-		}
-		sessions = append(sessions, &session)
+	out := make([]*domain.ChatSession, 0, len(rows))
+	for i := range rows {
+		out = append(out, chatToDomain(&rows[i]))
 	}
-
-	if rows.Err() != nil {
-		return nil, 0, rows.Err()
-	}
-
-	return sessions, total, nil
+	return out, int32(total), nil
 }
 
 func (r *chatSessionRepository) Update(ctx context.Context, session *domain.ChatSession) error {
 	session.UpdatedAt = time.Now()
-	_, err := r.db.Exec(ctx, `
-		UPDATE chat_sessions
-		SET title = $2, model = $3, updated_at = $4
-		WHERE id = $1 AND deleted_at IS NULL
-	`,
-		session.Id,
-		session.Title,
-		session.Model,
-		session.UpdatedAt,
-	)
-
-	return err
+	return r.db.WithContext(ctx).Model(&model.Chat{}).
+		Where("id = ?", session.Id).
+		Updates(map[string]interface{}{
+			"title":      session.Title,
+			"model":      session.Model,
+			"updated_at": session.UpdatedAt,
+		}).Error
 }
 
 func (r *chatSessionRepository) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.Exec(ctx, `
-		UPDATE chat_sessions
-		SET deleted_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL
-	`, id)
+	return r.db.WithContext(ctx).
+		Where("id = ?", id).
+		Delete(&model.Chat{}).Error
+}
 
-	return err
+func chatToDomain(m *model.Chat) *domain.ChatSession {
+	return &domain.ChatSession{
+		Id:        m.ID,
+		UserId:    m.UserID,
+		Title:     m.Title,
+		Model:     m.Model,
+		CreatedAt: m.CreatedAt,
+		UpdatedAt: m.UpdatedAt,
+		DeletedAt: gormDeletedAtToPtr(m.DeletedAt),
+	}
 }

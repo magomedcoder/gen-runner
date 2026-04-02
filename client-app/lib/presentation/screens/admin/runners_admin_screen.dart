@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/injector.dart' as di;
+import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_bloc.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_event.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_state.dart';
@@ -111,13 +112,7 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
   }
 
   void _showAccessDenied() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Недостаточно прав'),
-        backgroundColor: Theme.of(context).colorScheme.error,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    showAppTopNotice('Недостаточно прав', error: true);
   }
 
   @override
@@ -130,13 +125,7 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
           return BlocConsumer<RunnersAdminBloc, RunnersAdminState>(
             listener: (context, state) {
               if (state.error != null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(state.error!),
-                    backgroundColor: Theme.of(context).colorScheme.error,
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
+                showAppTopNotice(state.error!, error: true);
                 _bloc.add(const RunnersAdminClearError());
               }
             },

@@ -419,7 +419,6 @@ func (c *ChatUseCase) runChatToolLoop(
 	}
 
 	sendFinal := func(msgID int64, text string) {
-		_ = c.messageRepo.UpdateContent(context.Background(), msgID, text)
 		_ = send(ChatStreamChunk{Kind: StreamChunkKindText, Text: text, MessageID: msgID})
 	}
 
@@ -512,21 +511,17 @@ func (c *ChatUseCase) runChatToolLoop(
 			return
 		}
 
-		assist := domain.NewMessage(sessionID, full, domain.MessageRoleAssistant)
-		assist.ToolCallsJSON = toolCallsJSON
-		if err := c.messageRepo.Create(ctx, assist); err != nil {
-			sendErr(err)
-			return
-		}
-		history = append(history, assist)
-
-		for i, row := range execRows {
+		for _, row := range execRows {
 			name := normalizeToolName(row.ToolName)
 			if _, ok := allowed[name]; !ok {
 				sendErr(fmt.Errorf("инструмент %q не объявлен в настройках сессии", row.ToolName))
 				return
 			}
+		}
 
+		toolResults := make([]string, len(execRows))
+		for i, row := range execRows {
+			name := normalizeToolName(row.ToolName)
 			st := strings.TrimSpace(row.ToolName)
 			if st == "" {
 				st = name
@@ -549,16 +544,34 @@ func (c *ChatUseCase) runChatToolLoop(
 				return
 			}
 
-			tm := domain.NewMessage(sessionID, truncateToolResult(res), domain.MessageRoleTool)
-			tm.ToolName = row.ToolName
-			tm.ToolCallID = fmt.Sprintf("call_%d", i+1)
-			if err := c.messageRepo.Create(ctx, tm); err != nil {
-				sendErr(err)
-				return
-			}
-
-			history = append(history, tm)
+			toolResults[i] = truncateToolResult(res)
 		}
+
+		assist := domain.NewMessage(sessionID, full, domain.MessageRoleAssistant)
+		assist.ToolCallsJSON = toolCallsJSON
+
+		toolMsgs := make([]*domain.Message, len(execRows))
+		if err := c.chatTx.WithinTx(ctx, func(ctx context.Context, r domain.ChatRepos) error {
+			if err := r.Message.Create(ctx, assist); err != nil {
+				return err
+			}
+			for i, row := range execRows {
+				tm := domain.NewMessage(sessionID, toolResults[i], domain.MessageRoleTool)
+				tm.ToolName = row.ToolName
+				tm.ToolCallID = fmt.Sprintf("call_%d", i+1)
+				if err := r.Message.Create(ctx, tm); err != nil {
+					return err
+				}
+				toolMsgs[i] = tm
+			}
+			return nil
+		}); err != nil {
+			sendErr(err)
+			return
+		}
+
+		history = append(history, assist)
+		history = append(history, toolMsgs...)
 	}
 
 	sendErr(fmt.Errorf("превышено число итераций tool-calling (%d)", maxToolInvocationRounds))

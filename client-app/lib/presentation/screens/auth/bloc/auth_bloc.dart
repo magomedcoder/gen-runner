@@ -7,6 +7,7 @@ import 'package:gen/core/failures.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/jwt_util.dart';
 import 'package:gen/core/log/logs.dart';
+import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/data/data_sources/local/user_local_data_source.dart';
 import 'package:gen/domain/usecases/auth/login_usecase.dart';
 import 'package:gen/domain/usecases/auth/logout_usecase.dart';
@@ -180,7 +181,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           isLoading: false,
           isAuthenticated: true,
           user: user,
-          error: lastError?.toString().replaceAll('Exception: ', ''),
+          error: lastError != null
+            ? userSafeErrorMessage(
+                lastError,
+                fallback: 'Не удалось восстановить сессию',
+              )
+            : null,
         ),
       );
     }
@@ -233,7 +239,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             isLoading: false,
             isAuthenticated: false,
             user: null,
-            error: e.toString().replaceAll('Exception: ', ''),
+            error: userSafeErrorMessage(
+              e,
+              fallback: 'Неверное имя пользователя или пароль',
+            ),
           ),
         );
       } else {
@@ -241,7 +250,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         emit(
           state.copyWith(
             isLoading: false,
-            error: e.toString().replaceAll('Exception: ', ''),
+            error: userSafeErrorMessage(e, fallback: 'Не удалось войти'),
           ),
         );
       }
@@ -269,7 +278,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           isLoading: false,
           isAuthenticated: false,
           user: null,
-          error: e.toString().replaceAll('Exception: ', ''),
+          error: userSafeErrorMessage(
+            e,
+            fallback: 'Не удалось обновить сессию',
+          ),
         ),
       );
     }

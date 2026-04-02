@@ -7,7 +7,10 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:gen/core/docx_file_export.dart';
 import 'package:gen/core/injector.dart';
 import 'package:gen/core/layout/responsive.dart';
+import 'package:gen/core/log/logs.dart';
 import 'package:gen/core/session_file_id_scan.dart';
+import 'package:gen/core/user_safe_error.dart';
+import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/core/spreadsheet_file_export.dart';
 import 'package:gen/core/user_file_save.dart';
 import 'package:gen/domain/entities/message.dart';
@@ -103,18 +106,16 @@ class _ChatBubbleState extends State<ChatBubble> {
         return;
       }
       if (ok) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text('Сохранено: $name')),
-        );
+        showAppTopNotice('Сохранено: $name');
       }
     } on Object catch (e) {
       if (!mounted) {
         return;
       }
-      final msg = e.toString();
-      final short = msg.length > 160 ? '${msg.substring(0, 160)}...' : msg;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text('Не удалось скачать файл: $short')),
+      Logs().e('ChatBubble: скачивание файла', exception: e);
+      showAppTopNotice(
+        'Не удалось скачать файл (${userSafeErrorMessage(e, fallback: 'ошибка')})',
+        error: true,
       );
     } finally {
       if (mounted) {
@@ -272,8 +273,9 @@ class _ChatBubbleState extends State<ChatBubble> {
                                 return;
                               }
 
-                              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                                const SnackBar(content: Text('Текст не может быть пустым')),
+                              showAppTopNotice(
+                                'Текст не может быть пустым',
+                                error: true,
                               );
                               return;
                             }

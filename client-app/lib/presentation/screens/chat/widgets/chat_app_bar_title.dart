@@ -11,7 +11,6 @@ class ChatAppBarTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final currentSession = state.sessions.firstWhere(
       (session) => session.id == state.currentSessionId,
       orElse: () => ChatSession(
@@ -37,26 +36,6 @@ class ChatAppBarTitle extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
           ),
-          if (!state.isConnected)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.wifi_off,
-                    size: 12,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Нет подключения',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );

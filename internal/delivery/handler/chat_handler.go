@@ -3,20 +3,20 @@ package handler
 import (
 	"context"
 	"errors"
+	"github.com/magomedcoder/gen/internal/delivery/mappers"
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/magomedcoder/gen/api/pb/chatpb"
 	"github.com/magomedcoder/gen/api/pb/commonpb"
 	"github.com/magomedcoder/gen/internal/domain"
-	"github.com/magomedcoder/gen/internal/mappers"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/document"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"github.com/magomedcoder/gen/pkg/spreadsheet"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"gorm.io/gorm"
 )
 
 const maxChatEmbedBatchSize = 256
@@ -916,7 +916,7 @@ func (c *ChatHandler) GetSessionFile(ctx context.Context, req *chatpb.GetSession
 			return nil, status.Error(codes.PermissionDenied, "нет доступа к сессии")
 		}
 
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, status.Error(codes.NotFound, "файл не найден")
 		}
 

@@ -1,4 +1,4 @@
-package runner
+package service
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
 	"github.com/magomedcoder/gen/api/pb/runnerpb"
 	"github.com/magomedcoder/gen/internal/domain"
-	"github.com/magomedcoder/gen/internal/service"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"slices"
 	"sync"
@@ -19,14 +18,14 @@ import (
 type Pool struct {
 	reg      *Registry
 	mu       sync.Mutex
-	clients  map[string]*service.LLMRunnerService
+	clients  map[string]*LLMRunnerService
 	inflight sync.Map
 }
 
 func NewPool(reg *Registry) *Pool {
 	return &Pool{
 		reg:     reg,
-		clients: make(map[string]*service.LLMRunnerService),
+		clients: make(map[string]*LLMRunnerService),
 	}
 }
 
@@ -35,14 +34,14 @@ func (p *Pool) getOrCreateInflight(addr string) *atomic.Int32 {
 	return v.(*atomic.Int32)
 }
 
-func (p *Pool) getClient(addr string) (*service.LLMRunnerService, error) {
+func (p *Pool) getClient(addr string) (*LLMRunnerService, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if c, ok := p.clients[addr]; ok {
 		return c, nil
 	}
 
-	c, err := service.NewLLMRunnerService(addr, "")
+	c, err := NewLLMRunnerService(addr, "")
 	if err != nil {
 		return nil, err
 	}
@@ -243,11 +242,11 @@ func (p *Pool) WarmModelOnRunner(ctx context.Context, address string, model stri
 
 type candidate struct {
 	addr   string
-	client *service.LLMRunnerService
+	client *LLMRunnerService
 	score  float64
 }
 
-func (p *Pool) pickRunner(ctx context.Context, model string) (*service.LLMRunnerService, string, error) {
+func (p *Pool) pickRunner(ctx context.Context, model string) (*LLMRunnerService, string, error) {
 	addrs := p.reg.GetEnabledAddresses()
 	if len(addrs) == 0 {
 		return nil, "", fmt.Errorf("нет включённых llm-runner в реестре")

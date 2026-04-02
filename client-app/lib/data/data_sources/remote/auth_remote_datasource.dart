@@ -38,7 +38,9 @@ class AuthRemoteDataSource implements IAuthRemoteDataSource {
       Logs().i('AuthRemote: login успешен');
       return AuthMapper.loginResponseFromProto(response);
     } on GrpcError catch (e) {
-      throwGrpcError(e, 'Ошибка gRPC при входе',
+      throwGrpcError(
+        e,
+        'вход',
         unauthenticatedMessage: 'Неверное имя пользователя или пароль',
       );
     } catch (e) {
@@ -59,7 +61,9 @@ class AuthRemoteDataSource implements IAuthRemoteDataSource {
       Logs().i('AuthRemote: refreshToken успешен');
       return AuthMapper.refreshTokenResponseFromProto(response);
     } on GrpcError catch (e) {
-      throwGrpcError(e, 'Ошибка gRPC при обновлении токена',
+      throwGrpcError(
+        e,
+        'обновление токена',
         unauthenticatedMessage: 'Недействительный refresh token',
       );
     } catch (e) {
@@ -76,8 +80,11 @@ class AuthRemoteDataSource implements IAuthRemoteDataSource {
 
       await _client.logout(request);
     } on GrpcError catch (e) {
-      Logs().w('AuthRemote: logout gRPC', exception: e);
-      throw NetworkFailure('Ошибка выхода');
+      Logs().w(
+        'AuthRemote: logout gRPC code=${e.code} message=${e.message}',
+        exception: e,
+      );
+      throw NetworkFailure('Ошибка выхода (код ${e.code})');
     } catch (e) {
       Logs().e('AuthRemote: logout', exception: e);
       throw ApiFailure('Ошибка выхода');
@@ -97,10 +104,11 @@ class AuthRemoteDataSource implements IAuthRemoteDataSource {
       Logs().i('AuthRemote: changePassword успешен');
     } on GrpcError catch (e) {
       if (e.code == StatusCode.invalidArgument) {
-        throw NetworkFailure(e.message ?? 'Неверные данные');
+        Logs().w('AuthRemote: changePassword invalidArgument: ${e.message}');
+        throw NetworkFailure('Неверные данные (код ${e.code})');
       }
 
-      throwGrpcError(e, 'Ошибка gRPC при смене пароля');
+      throwGrpcError(e, 'смена пароля');
     } catch (e) {
       Logs().e('AuthRemote: changePassword', exception: e);
       throw ApiFailure('Ошибка смены пароля');

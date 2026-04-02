@@ -6,14 +6,18 @@ const String kSessionExpiredMessage = 'Сессия истекла, войдит
 
 Never throwGrpcError(
   GrpcError e,
-  String networkMessage, {
+  String logContext, {
   String? unauthenticatedMessage,
 }) {
   if (e.code == StatusCode.unauthenticated) {
-    Logs().w('gRPC: не авторизован - ${unauthenticatedMessage ?? kSessionExpiredMessage}');
+    Logs().w(
+      'gRPC не авторизован [$logContext]: ${e.message}',
+    );
     throw UnauthorizedFailure(unauthenticatedMessage ?? kSessionExpiredMessage);
   }
 
-  Logs().e('gRPC: ошибка ${e.code}: $networkMessage');
-  throw NetworkFailure(networkMessage);
+  Logs().e(
+    'gRPC [$logContext] code=${e.code} serverMessage=${e.message}',
+  );
+  throw NetworkFailure('Ошибка сервера (код ${e.code})');
 }

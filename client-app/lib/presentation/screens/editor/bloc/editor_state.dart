@@ -7,6 +7,10 @@ class EditorState extends Equatable {
   final List<String> undoStack;
   final List<String> redoStack;
   final String? selectedRunner;
+  final List<String> runners;
+  final Map<String, String> runnerNames;
+  final bool runnersLoading;
+  final bool savingRunner;
   final grpc.TransformType type;
   final bool preserveMarkdown;
   final String? error;
@@ -18,6 +22,10 @@ class EditorState extends Equatable {
     this.undoStack = const [],
     this.redoStack = const [],
     this.selectedRunner,
+    this.runners = const [],
+    this.runnerNames = const {},
+    this.runnersLoading = false,
+    this.savingRunner = false,
     this.type = grpc.TransformType.TRANSFORM_TYPE_FIX,
     this.preserveMarkdown = false,
     this.error,
@@ -35,6 +43,10 @@ class EditorState extends Equatable {
     List<String>? redoStack,
     String? selectedRunner,
     bool clearSelectedRunner = false,
+    List<String>? runners,
+    Map<String, String>? runnerNames,
+    bool? runnersLoading,
+    bool? savingRunner,
     grpc.TransformType? type,
     bool? preserveMarkdown,
     String? error,
@@ -49,6 +61,10 @@ class EditorState extends Equatable {
       selectedRunner: clearSelectedRunner
         ? null
         : (selectedRunner ?? this.selectedRunner),
+      runners: runners ?? this.runners,
+      runnerNames: runnerNames ?? this.runnerNames,
+      runnersLoading: runnersLoading ?? this.runnersLoading,
+      savingRunner: savingRunner ?? this.savingRunner,
       type: type ?? this.type,
       preserveMarkdown: preserveMarkdown ?? this.preserveMarkdown,
       error: clearError ? null : (error ?? this.error),
@@ -63,6 +79,10 @@ class EditorState extends Equatable {
     undoStack,
     redoStack,
     selectedRunner,
+    runners,
+    runnerNames,
+    runnersLoading,
+    savingRunner,
     type,
     preserveMarkdown,
     error,

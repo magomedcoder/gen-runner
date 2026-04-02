@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/log/logs.dart';
+import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/domain/usecases/chat/get_default_runner_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/chat/set_default_runner_model_usecase.dart';
@@ -81,7 +82,10 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
       Logs().e('RunnersAdminBloc: ошибка загрузки', exception: e);
       emit(state.copyWith(
         isLoading: false,
-        error: e.toString().replaceAll('Exception: ', ''),
+        error: userSafeErrorMessage(
+          e,
+          fallback: 'Ошибка загрузки раннеров',
+        ),
       ));
     }
   }
@@ -100,7 +104,10 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
       Logs().e('RunnersAdminBloc: setEnabled', exception: e);
       emit(state.copyWith(
         isLoading: false,
-        error: e.toString().replaceAll('Exception: ', ''),
+        error: userSafeErrorMessage(
+          e,
+          fallback: 'Ошибка изменения раннера',
+        ),
       ));
     }
   }
@@ -120,8 +127,12 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
       await setSelectedRunnerUseCase(event.address);
       emit(state.copyWith(defaultRunner: event.address));
     } catch (e) {
+      Logs().e('RunnersAdminBloc: defaultRunner', exception: e);
       emit(state.copyWith(
-        error: e.toString().replaceAll('Exception: ', ''),
+        error: userSafeErrorMessage(
+          e,
+          fallback: 'Ошибка выбора раннера по умолчанию',
+        ),
       ));
     }
   }
@@ -136,8 +147,12 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
       updated[event.runnerAddress] = event.model;
       emit(state.copyWith(defaultModelsByRunner: updated));
     } catch (e) {
+      Logs().e('RunnersAdminBloc: defaultModel', exception: e);
       emit(state.copyWith(
-        error: e.toString().replaceAll('Exception: ', ''),
+        error: userSafeErrorMessage(
+          e,
+          fallback: 'Ошибка выбора модели',
+        ),
       ));
     }
   }

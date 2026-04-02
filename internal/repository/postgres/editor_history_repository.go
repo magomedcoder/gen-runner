@@ -4,15 +4,16 @@ import (
 	"context"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/repository/postgres/model"
+	"gorm.io/gorm"
 )
 
 type editorHistoryRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewEditorHistoryRepository(db *pgxpool.Pool) domain.EditorHistoryRepository {
+func NewEditorHistoryRepository(db *gorm.DB) domain.EditorHistoryRepository {
 	return &editorHistoryRepository{db: db}
 }
 
@@ -20,11 +21,10 @@ func (r *editorHistoryRepository) Save(ctx context.Context, userID int, runner s
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
-
-	_, err := r.db.Exec(ctx, `
-		INSERT INTO editor_text_history (user_id, runner, text, created_at)
-		VALUES ($1, $2, $3, NOW())
-	`, userID, strings.TrimSpace(runner), text)
-
-	return err
+	row := model.EditorTextHistory{
+		UserID: userID,
+		Runner: strings.TrimSpace(runner),
+		Text:   text,
+	}
+	return r.db.WithContext(ctx).Omit("ID", "CreatedAt").Create(&row).Error
 }

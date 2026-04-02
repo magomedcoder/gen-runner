@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/log/logs.dart';
+import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/domain/usecases/users/create_user_usecase.dart';
 import 'package:gen/domain/usecases/users/edit_user_usecase.dart';
 import 'package:gen/domain/usecases/users/get_users_usecase.dart';
@@ -51,7 +52,10 @@ class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
       emit(
         state.copyWith(
           isLoading: false,
-          error: e.toString().replaceAll('Exception: ', ''),
+          error: userSafeErrorMessage(
+            e,
+            fallback: 'Ошибка загрузки пользователей',
+          ),
         ),
       );
     }
@@ -83,7 +87,10 @@ class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
       emit(
         state.copyWith(
           isLoading: false,
-          error: e.toString().replaceAll('Exception: ', ''),
+          error: userSafeErrorMessage(
+            e,
+            fallback: 'Ошибка создания пользователя',
+          ),
         ),
       );
     }
@@ -115,7 +122,10 @@ class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
       emit(
         state.copyWith(
           isLoading: false,
-          error: e.toString().replaceAll('Exception: ', ''),
+          error: userSafeErrorMessage(
+            e,
+            fallback: 'Ошибка обновления пользователя',
+          ),
         ),
       );
     }

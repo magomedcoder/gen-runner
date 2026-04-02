@@ -2,10 +2,10 @@ package handler
 
 import (
 	"context"
+	"github.com/magomedcoder/gen/internal/delivery/mappers"
 
 	"github.com/magomedcoder/gen/api/pb/authpb"
 	"github.com/magomedcoder/gen/config"
-	"github.com/magomedcoder/gen/internal/mappers"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"

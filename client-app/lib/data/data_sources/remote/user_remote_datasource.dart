@@ -53,7 +53,7 @@ class UserRemoteDataSource implements IUserRemoteDataSource {
         throw NetworkFailure('Доступ разрешён только администратору');
       }
 
-      throwGrpcError(e, 'Ошибка gRPC');
+      throwGrpcError(e, 'список пользователей');
     } catch (e) {
       Logs().e('UserRemote: getUsers', exception: e);
       throw ApiFailure('Ошибка получения пользователей');
@@ -82,14 +82,15 @@ class UserRemoteDataSource implements IUserRemoteDataSource {
       return UserMapper.fromProto(resp.user);
     } on GrpcError catch (e) {
       if (e.code == StatusCode.invalidArgument) {
-        throw NetworkFailure(e.message ?? 'Неверные данные');
+        Logs().w('UserRemote: createUser invalidArgument: ${e.message}');
+        throw NetworkFailure('Неверные данные (код ${e.code})');
       }
 
       if (e.code == StatusCode.permissionDenied) {
         throw NetworkFailure('Доступ разрешён только администратору');
       }
 
-      throwGrpcError(e, 'Ошибка gRPC');
+      throwGrpcError(e, 'создание пользователя');
     } catch (e) {
       Logs().e('UserRemote: createUser', exception: e);
       throw ApiFailure('Ошибка создания пользователя');
@@ -120,14 +121,15 @@ class UserRemoteDataSource implements IUserRemoteDataSource {
       return UserMapper.fromProto(resp.user);
     } on GrpcError catch (e) {
       if (e.code == StatusCode.invalidArgument) {
-        throw NetworkFailure(e.message ?? 'Неверные данные');
+        Logs().w('UserRemote: editUser invalidArgument: ${e.message}');
+        throw NetworkFailure('Неверные данные (код ${e.code})');
       }
 
       if (e.code == StatusCode.permissionDenied) {
         throw NetworkFailure('Доступ разрешён только администратору');
       }
 
-      throwGrpcError(e, 'Ошибка gRPC');
+      throwGrpcError(e, 'обновление пользователя');
     } catch (e) {
       Logs().e('UserRemote: editUser', exception: e);
       throw ApiFailure('Ошибка обновления пользователя');

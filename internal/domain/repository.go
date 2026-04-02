@@ -151,3 +151,26 @@ type LLMRepository interface {
 
 	EmbedBatch(ctx context.Context, model string, texts []string) ([][]float32, error)
 }
+
+type ChatRepos struct {
+	Session         ChatSessionRepository
+	Preference      ChatPreferenceRepository
+	SessionSettings ChatSessionSettingsRepository
+	Message         MessageRepository
+	MessageEdit     MessageEditRepository
+	AssistantRegen  AssistantMessageRegenerationRepository
+	File            FileRepository
+}
+
+type ChatTransactionRunner interface {
+	WithinTx(ctx context.Context, fn func(ctx context.Context, r ChatRepos) error) error
+}
+
+type AuthRepos struct {
+	User  UserRepository
+	Token TokenRepository
+}
+
+type AuthTransactionRunner interface {
+	WithinTx(ctx context.Context, fn func(ctx context.Context, r AuthRepos) error) error
+}

@@ -2,26 +2,37 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/failures.dart';
 import 'package:gen/core/log/logs.dart';
 import 'package:gen/core/request_logout_on_unauthorized.dart';
+import 'package:gen/domain/entities/runner_info.dart';
 import 'package:gen/domain/repositories/editor_repository.dart';
 import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
+import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/editor/transform_text_usecase.dart';
+import 'package:gen/domain/usecases/runners/get_runners_usecase.dart';
+import 'package:gen/domain/usecases/runners/get_user_runners_usecase.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/editor/bloc/editor_event.dart';
 import 'package:gen/presentation/screens/editor/bloc/editor_state.dart';
 
 class EditorBloc extends Bloc<EditorEvent, EditorState> {
   final AuthBloc authBloc;
+  final GetRunnersUseCase getRunnersUseCase;
+  final GetUserRunnersUseCase getUserRunnersUseCase;
   final GetSelectedRunnerUseCase getSelectedRunnerUseCase;
+  final SetSelectedRunnerUseCase setSelectedRunnerUseCase;
   final TransformTextUseCase transformTextUseCase;
   final EditorRepository editorRepository;
 
   EditorBloc({
     required this.authBloc,
+    required this.getRunnersUseCase,
+    required this.getUserRunnersUseCase,
     required this.getSelectedRunnerUseCase,
+    required this.setSelectedRunnerUseCase,
     required this.transformTextUseCase,
     required this.editorRepository,
   }) : super(const EditorState()) {
     on<EditorStarted>(_onStarted);
+    on<EditorSelectRunner>(_onSelectRunner);
     on<EditorDocumentChanged>(_onDocumentChanged);
     on<EditorTypeChanged>(_onTypeChanged);
     on<EditorPreserveMarkdownChanged>(_onPreserveChanged);
@@ -32,27 +43,105 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
     on<EditorClearError>(_onClearError);
   }
 
+  List<String> _extractAvailableRunners(List<RunnerInfo> runners) {
+    final addresses = <String>{
+      for (final runner in runners)
+        if (runner.enabled && runner.address.isNotEmpty) runner.address,
+    };
+    final sorted = addresses.toList()..sort();
+    return sorted;
+  }
+
+  Map<String, String> _extractRunnerNames(List<RunnerInfo> runners) {
+    final names = <String, String>{};
+    for (final runner in runners) {
+      if (!runner.enabled || runner.address.isEmpty) {
+        continue;
+      }
+
+      final name = runner.name.trim();
+      names[runner.address] = name.isNotEmpty ? name : runner.address;
+    }
+
+    return names;
+  }
+
   Future<void> _onStarted(
     EditorStarted event,
     Emitter<EditorState> emit,
   ) async {
     Logs().d('EditorBloc: старт');
-    String? selectedRunner;
+    emit(state.copyWith(runnersLoading: true));
     try {
-      selectedRunner = await getSelectedRunnerUseCase();
+      final isAdmin = authBloc.state.user?.isAdmin ?? false;
+      final runnerInfos = isAdmin
+        ? await getRunnersUseCase()
+        : await getUserRunnersUseCase();
+      final runners = _extractAvailableRunners(runnerInfos);
+      final runnerNames = _extractRunnerNames(runnerInfos);
+
+      String? saved;
+      try {
+        saved = await getSelectedRunnerUseCase();
+      } catch (e) {
+        Logs().w('EditorBloc: не удалось загрузить раннер по умолчанию', exception: e);
+      }
+
+      String? effective = saved != null && runners.contains(saved) ? saved : null;
+      if (effective == null && runners.isNotEmpty) {
+        effective = runners.first;
+        try {
+          await setSelectedRunnerUseCase(effective);
+        } catch (e) {
+          Logs().w('EditorBloc: не удалось сохранить раннер по умолчанию', exception: e);
+        }
+      }
+
+      emit(
+        state.copyWith(
+          runners: runners,
+          runnerNames: runnerNames,
+          selectedRunner: effective,
+          clearSelectedRunner: effective == null,
+          runnersLoading: false,
+          documentVersion: state.documentVersion == 0 ? 1 : state.documentVersion,
+        ),
+      );
     } catch (e) {
-      Logs().w('EditorBloc: не удалось загрузить раннер по умолчанию', exception: e);
+      Logs().e('EditorBloc: не удалось загрузить раннеры', exception: e);
+      emit(
+        state.copyWith(
+          runnersLoading: false,
+          error: 'Не удалось загрузить раннеры',
+          clearError: false,
+        ),
+      );
+    }
+  }
+
+  Future<void> _onSelectRunner(
+    EditorSelectRunner event,
+    Emitter<EditorState> emit,
+  ) async {
+    if (state.savingRunner || !state.runners.contains(event.runner)) {
+      return;
     }
 
-    final resolved = state.selectedRunner ?? selectedRunner;
-
-    emit(
-      state.copyWith(
-        selectedRunner: resolved,
-        clearSelectedRunner: resolved == null,
-        documentVersion: state.documentVersion == 0 ? 1 : state.documentVersion,
-      ),
-    );
+    emit(state.copyWith(savingRunner: true));
+    try {
+      await setSelectedRunnerUseCase(event.runner);
+      emit(state.copyWith(selectedRunner: event.runner, savingRunner: false));
+    } catch (e) {
+      Logs().e('EditorBloc: не удалось сохранить раннер', exception: e);
+      requestLogoutIfUnauthorized(e, authBloc);
+      emit(
+        state.copyWith(
+          savingRunner: false,
+          error: 'Не удалось сменить раннер',
+          clearError: false,
+        ),
+      );
+    }
   }
 
   Future<void> _onDocumentChanged(

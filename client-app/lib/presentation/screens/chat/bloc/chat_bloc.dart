@@ -169,6 +169,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatLoadOlderMessages>(_onLoadOlderMessages, transformer: droppable());
     on<ChatSendMessage>(_onChatSendMessage, transformer: droppable());
     on<ChatClearError>(_onChatClearError);
+    on<ChatDismissStreamNotice>(_onDismissStreamNotice);
     on<ChatStopGeneration>(_onChatStopGeneration);
     on<ChatRetryLastMessage>(_onRetryLastMessage);
     on<ChatRegenerateAssistant>(_onRegenerateAssistant, transformer: droppable());
@@ -472,6 +473,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             }
             return;
           }
+          if (chunk.kind == ChatStreamChunkKind.notice) {
+            final t = chunk.text.trim();
+            if (t.isNotEmpty && state.currentSessionId == sessionId) {
+              emit(state.copyWith(streamNotice: t));
+            }
+            return;
+          }
 
           if (chunk.messageId > 0) {
             _streamingAssistantMessageId = chunk.messageId;
@@ -657,38 +665,21 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             }
           } catch (_) {}
 
-          int? currentSessionId;
-          List<Message> messages = const [];
-
-          if (sessions.isNotEmpty) {
-            currentSessionId = sessions.first.id;
-            final page = await getSessionMessagesUseCase(
-              currentSessionId,
-              beforeMessageId: 0,
-              pageSize: _kMessagePageSize,
-            );
-            messages = page.messages;
-            emit(state.copyWith(
-              hasMoreOlderMessages: page.hasMoreOlder,
-            ));
-            await _prefetchEditsForMessages(currentSessionId, messages, emit);
-            try {
-              final s = await getSessionSettingsUseCase(currentSessionId);
-              emit(state.copyWith(sessionSettings: s));
-            } catch (_) {}
-
-            if (selectedRunner == null && runners.isNotEmpty) {
-              selectedRunner = runners.first;
-            }
+          const List<Message> messages = <Message>[];
+          if (selectedRunner == null && runners.isNotEmpty) {
+            selectedRunner = runners.first;
           }
 
           Logs().i('ChatBloc: чат загружен, сессий: ${sessions.length}');
           emit(state.copyWith(
               isConnected: isConnected,
+              hasCompletedInitialConnection: true,
               isLoading: false,
               sessions: sessions,
-              currentSessionId: currentSessionId,
+              currentSessionId: null,
               messages: messages,
+              hasMoreOlderMessages: false,
+              clearPartialAssistant: true,
               runners: runners,
               runnerNames: runnerNames,
               selectedRunner: selectedRunner ?? state.selectedRunner,
@@ -700,6 +691,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           requestLogoutIfUnauthorized(e, authBloc);
           emit(state.copyWith(
             isConnected: isConnected,
+            hasCompletedInitialConnection: true,
             isLoading: false,
             hasActiveRunners: hasActiveRunners,
             error: 'Ошибка загрузки сессий',
@@ -710,6 +702,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         emit(
           state.copyWith(
             isConnected: isConnected,
+            hasCompletedInitialConnection: true,
             isLoading: false,
             error: isConnected ? null : 'Не удалось подключиться к серверу',
           ),
@@ -720,6 +713,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       requestLogoutIfUnauthorized(e, authBloc);
       emit(state.copyWith(
         isConnected: false,
+        hasCompletedInitialConnection: true,
         isLoading: false,
         error: 'Ошибка подключения',
       ));
@@ -1070,6 +1064,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             }
             return;
           }
+          if (chunk.kind == ChatStreamChunkKind.notice) {
+            final t = chunk.text.trim();
+            if (t.isNotEmpty && state.currentSessionId == sessionId) {
+              emit(state.copyWith(streamNotice: t));
+            }
+            return;
+          }
           if (chunk.messageId > 0) {
             _streamingAssistantMessageId = chunk.messageId;
           }
@@ -1235,6 +1236,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
                 : (chunk.toolName ?? 'инструмент');
             if (state.currentSessionId == sessionId) {
               emit(state.copyWith(toolProgressLabel: line));
+            }
+            return;
+          }
+          if (chunk.kind == ChatStreamChunkKind.notice) {
+            final t = chunk.text.trim();
+            if (t.isNotEmpty && state.currentSessionId == sessionId) {
+              emit(state.copyWith(streamNotice: t));
             }
             return;
           }
@@ -1408,6 +1416,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
                 : (chunk.toolName ?? 'инструмент');
             if (state.currentSessionId == sessionId) {
               emit(state.copyWith(toolProgressLabel: line));
+            }
+            return;
+          }
+          if (chunk.kind == ChatStreamChunkKind.notice) {
+            final t = chunk.text.trim();
+            if (t.isNotEmpty && state.currentSessionId == sessionId) {
+              emit(state.copyWith(streamNotice: t));
             }
             return;
           }
@@ -1752,6 +1767,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
   void _onChatClearError(ChatClearError event, Emitter<ChatState> emit) {
     emit(state.copyWith(error: null));
+  }
+
+  void _onDismissStreamNotice(ChatDismissStreamNotice event, Emitter<ChatState> emit) {
+    emit(state.copyWith(clearStreamNotice: true));
   }
 
   Future<void> _onChatStopGeneration(

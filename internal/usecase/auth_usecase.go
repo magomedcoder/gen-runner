@@ -11,17 +11,20 @@ import (
 )
 
 type AuthUseCase struct {
+	authTx     domain.AuthTransactionRunner
 	userRepo   domain.UserRepository
 	tokenRepo  domain.TokenRepository
 	jwtService *service.JWTService
 }
 
 func NewAuthUseCase(
+	authTx domain.AuthTransactionRunner,
 	userRepo domain.UserRepository,
 	tokenRepo domain.TokenRepository,
 	jwtService *service.JWTService,
 ) *AuthUseCase {
 	return &AuthUseCase{
+		authTx:     authTx,
 		userRepo:   userRepo,
 		tokenRepo:  tokenRepo,
 		jwtService: jwtService,
@@ -52,17 +55,17 @@ func (a *AuthUseCase) Login(ctx context.Context, username, password string) (*do
 		return nil, "", "", err
 	}
 
-	_ = a.tokenRepo.DeleteByUserId(ctx, user.Id, domain.TokenTypeAccess)
-	_ = a.tokenRepo.DeleteByUserId(ctx, user.Id, domain.TokenTypeRefresh)
-
 	accessTokenEntity := domain.NewToken(user.Id, accessToken, domain.TokenTypeAccess, accessExpires)
 	refreshTokenEntity := domain.NewToken(user.Id, refreshToken, domain.TokenTypeRefresh, refreshExpires)
 
-	if err := a.tokenRepo.Create(ctx, accessTokenEntity); err != nil {
-		return nil, "", "", err
-	}
-
-	if err := a.tokenRepo.Create(ctx, refreshTokenEntity); err != nil {
+	if err := a.authTx.WithinTx(ctx, func(ctx context.Context, r domain.AuthRepos) error {
+		_ = r.Token.DeleteByUserId(ctx, user.Id, domain.TokenTypeAccess)
+		_ = r.Token.DeleteByUserId(ctx, user.Id, domain.TokenTypeRefresh)
+		if err := r.Token.Create(ctx, accessTokenEntity); err != nil {
+			return err
+		}
+		return r.Token.Create(ctx, refreshTokenEntity)
+	}); err != nil {
 		return nil, "", "", err
 	}
 
@@ -97,17 +100,17 @@ func (a *AuthUseCase) RefreshToken(ctx context.Context, refreshToken string) (st
 		return "", "", err
 	}
 
-	_ = a.tokenRepo.DeleteByUserId(ctx, user.Id, domain.TokenTypeAccess)
-	_ = a.tokenRepo.DeleteByToken(ctx, refreshToken)
-
 	accessTokenEntity := domain.NewToken(user.Id, accessToken, domain.TokenTypeAccess, accessExpires)
 	refreshTokenEntity := domain.NewToken(user.Id, newRefreshToken, domain.TokenTypeRefresh, refreshExpires)
 
-	if err := a.tokenRepo.Create(ctx, accessTokenEntity); err != nil {
-		return "", "", err
-	}
-
-	if err := a.tokenRepo.Create(ctx, refreshTokenEntity); err != nil {
+	if err := a.authTx.WithinTx(ctx, func(ctx context.Context, r domain.AuthRepos) error {
+		_ = r.Token.DeleteByUserId(ctx, user.Id, domain.TokenTypeAccess)
+		_ = r.Token.DeleteByToken(ctx, refreshToken)
+		if err := r.Token.Create(ctx, accessTokenEntity); err != nil {
+			return err
+		}
+		return r.Token.Create(ctx, refreshTokenEntity)
+	}); err != nil {
 		return "", "", err
 	}
 
@@ -138,15 +141,12 @@ func (a *AuthUseCase) ValidateToken(ctx context.Context, token string) (*domain.
 }
 
 func (a *AuthUseCase) Logout(ctx context.Context, userId int) error {
-	if err := a.tokenRepo.DeleteByUserId(ctx, userId, domain.TokenTypeAccess); err != nil {
-		return err
-	}
-
-	if err := a.tokenRepo.DeleteByUserId(ctx, userId, domain.TokenTypeRefresh); err != nil {
-		return err
-	}
-
-	return nil
+	return a.authTx.WithinTx(ctx, func(ctx context.Context, r domain.AuthRepos) error {
+		if err := r.Token.DeleteByUserId(ctx, userId, domain.TokenTypeAccess); err != nil {
+			return err
+		}
+		return r.Token.DeleteByUserId(ctx, userId, domain.TokenTypeRefresh)
+	})
 }
 
 func (a *AuthUseCase) ChangePassword(ctx context.Context, userId int, oldPassword, newPassword string) error {
@@ -172,12 +172,12 @@ func (a *AuthUseCase) ChangePassword(ctx context.Context, userId int, oldPasswor
 	}
 
 	user.Password = hashed
-	if err := a.userRepo.Update(ctx, user); err != nil {
-		return err
-	}
-
-	_ = a.tokenRepo.DeleteByUserId(ctx, userId, domain.TokenTypeAccess)
-	_ = a.tokenRepo.DeleteByUserId(ctx, userId, domain.TokenTypeRefresh)
-
-	return nil
+	return a.authTx.WithinTx(ctx, func(ctx context.Context, r domain.AuthRepos) error {
+		if err := r.User.Update(ctx, user); err != nil {
+			return err
+		}
+		_ = r.Token.DeleteByUserId(ctx, userId, domain.TokenTypeAccess)
+		_ = r.Token.DeleteByUserId(ctx, userId, domain.TokenTypeRefresh)
+		return nil
+	})
 }

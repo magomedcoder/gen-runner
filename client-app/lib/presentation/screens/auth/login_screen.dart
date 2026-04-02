@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/injector.dart';
+import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/core/server_config.dart';
 import 'package:gen/core/util.dart';
@@ -55,20 +56,12 @@ class _LoginScreenState extends State<LoginScreen> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state.error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.error!),
-              backgroundColor: Theme.of(context).colorScheme.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          );
+          showAppTopNotice(state.error!, error: true);
         }
       },
       child: Scaffold(
         body: SafeArea(
+          top: false,
           child: Center(
             child: SingleChildScrollView(
               padding: EdgeInsets.symmetric(

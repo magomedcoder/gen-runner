@@ -3,87 +3,83 @@ package postgres
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lib/pq"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/repository/postgres/model"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type chatSessionSettingsRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewChatSessionSettingsRepository(db *pgxpool.Pool) domain.ChatSessionSettingsRepository {
+func NewChatSessionSettingsRepository(db *gorm.DB) domain.ChatSessionSettingsRepository {
 	return &chatSessionSettingsRepository{db: db}
 }
 
 func (r *chatSessionSettingsRepository) GetBySessionID(ctx context.Context, sessionID int64) (*domain.ChatSessionSettings, error) {
-	settings := &domain.ChatSessionSettings{
-		SessionID: sessionID,
-	}
-	err := r.db.QueryRow(ctx, `
-		SELECT system_prompt, stop_sequences, timeout_seconds, temperature, top_k, top_p, json_mode, json_schema, tools_json, profile
-		FROM chat_session_settings
-		WHERE session_id = $1
-	`, sessionID).Scan(
-		&settings.SystemPrompt,
-		&settings.StopSequences,
-		&settings.TimeoutSeconds,
-		&settings.Temperature,
-		&settings.TopK,
-		&settings.TopP,
-		&settings.JSONMode,
-		&settings.JSONSchema,
-		&settings.ToolsJSON,
-		&settings.Profile,
-	)
+	settings := &domain.ChatSessionSettings{SessionID: sessionID}
+	var row model.ChatSetting
+	err := r.db.WithContext(ctx).Where("session_id = ?", sessionID).First(&row).Error
 	if err != nil {
 		return settings, nil
 	}
-
-	return settings, nil
+	return chatSettingRowToDomain(&row), nil
 }
 
 func (r *chatSessionSettingsRepository) Upsert(ctx context.Context, settings *domain.ChatSessionSettings) error {
-	_, err := r.db.Exec(ctx, `
-		INSERT INTO chat_session_settings (
-		    session_id,
-		    system_prompt,
-		    stop_sequences,
-		    timeout_seconds,
-		    temperature,
-		    top_k,
-		    top_p,
-		    json_mode,
-		    json_schema,
-		    tools_json,
-		    profile,
-		    updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-		ON CONFLICT (session_id) DO UPDATE SET
-		    system_prompt = EXCLUDED.system_prompt,
-		    stop_sequences = EXCLUDED.stop_sequences,
-		    timeout_seconds = EXCLUDED.timeout_seconds,
-		    temperature = EXCLUDED.temperature,
-		    top_k = EXCLUDED.top_k,
-		    top_p = EXCLUDED.top_p,
-		    json_mode = EXCLUDED.json_mode,
-		    json_schema = EXCLUDED.json_schema,
-		    tools_json = EXCLUDED.tools_json,
-		    profile = EXCLUDED.profile,
-		    updated_at = NOW()
-	`,
-		settings.SessionID,
-		settings.SystemPrompt,
-		settings.StopSequences,
-		settings.TimeoutSeconds,
-		settings.Temperature,
-		settings.TopK,
-		settings.TopP,
-		settings.JSONMode,
-		settings.JSONSchema,
-		settings.ToolsJSON,
-		settings.Profile,
-	)
+	seq := pq.StringArray(settings.StopSequences)
+	if seq == nil {
+		seq = pq.StringArray{}
+	}
+	row := model.ChatSetting{
+		SessionID:      settings.SessionID,
+		SystemPrompt:   settings.SystemPrompt,
+		StopSequences:  seq,
+		TimeoutSeconds: settings.TimeoutSeconds,
+		Temperature:    settings.Temperature,
+		TopK:           settings.TopK,
+		TopP:           settings.TopP,
+		JSONMode:       settings.JSONMode,
+		JSONSchema:     settings.JSONSchema,
+		ToolsJSON:      settings.ToolsJSON,
+		Profile:        settings.Profile,
+	}
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "session_id"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"system_prompt":   gorm.Expr("EXCLUDED.system_prompt"),
+			"stop_sequences":  gorm.Expr("EXCLUDED.stop_sequences"),
+			"timeout_seconds": gorm.Expr("EXCLUDED.timeout_seconds"),
+			"temperature":     gorm.Expr("EXCLUDED.temperature"),
+			"top_k":           gorm.Expr("EXCLUDED.top_k"),
+			"top_p":           gorm.Expr("EXCLUDED.top_p"),
+			"json_mode":       gorm.Expr("EXCLUDED.json_mode"),
+			"json_schema":     gorm.Expr("EXCLUDED.json_schema"),
+			"tools_json":      gorm.Expr("EXCLUDED.tools_json"),
+			"profile":         gorm.Expr("EXCLUDED.profile"),
+			"updated_at":      gorm.Expr("NOW()"),
+		}),
+	}).Create(&row).Error
+}
 
-	return err
+func chatSettingRowToDomain(m *model.ChatSetting) *domain.ChatSessionSettings {
+	var seq []string
+	if m.StopSequences != nil {
+		seq = []string(m.StopSequences)
+	}
+	return &domain.ChatSessionSettings{
+		SessionID:      m.SessionID,
+		SystemPrompt:   m.SystemPrompt,
+		StopSequences:  seq,
+		TimeoutSeconds: m.TimeoutSeconds,
+		Temperature:    m.Temperature,
+		TopK:           m.TopK,
+		TopP:           m.TopP,
+		JSONMode:       m.JSONMode,
+		JSONSchema:     m.JSONSchema,
+		ToolsJSON:      m.ToolsJSON,
+		Profile:        m.Profile,
+	}
 }

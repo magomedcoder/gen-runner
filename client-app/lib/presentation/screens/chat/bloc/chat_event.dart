@@ -67,6 +67,10 @@ class ChatClearError extends ChatEvent {
   const ChatClearError();
 }
 
+class ChatDismissStreamNotice extends ChatEvent {
+  const ChatDismissStreamNotice();
+}
+
 class ChatStopGeneration extends ChatEvent {
   const ChatStopGeneration();
 }

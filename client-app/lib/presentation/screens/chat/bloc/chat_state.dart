@@ -7,9 +7,11 @@ import 'package:gen/domain/entities/user_message_edit.dart';
 
 const _kKeepCurrentSessionId = Symbol('_kKeepCurrentSessionId');
 const _kKeepToolProgress = Object();
+const _kKeepStreamNotice = Object();
 
 class ChatState extends Equatable {
   final bool isConnected;
+  final bool hasCompletedInitialConnection;
   final bool isLoading;
   final bool isStreaming;
   final int? streamingSessionId;
@@ -20,6 +22,7 @@ class ChatState extends Equatable {
   final String? currentStreamingText;
   final String? toolProgressLabel;
   final String? error;
+  final String? streamNotice;
   final List<String> runners;
   final Map<String, String> runnerNames;
   final String? selectedRunner;
@@ -47,8 +50,11 @@ class ChatState extends Equatable {
       streamingSessionId != null &&
       currentSessionId == streamingSessionId;
 
+  bool get isEmptyChatComposer => messages.isEmpty && !isStreamingInCurrentSession;
+
   const ChatState({
     this.isConnected = false,
+    this.hasCompletedInitialConnection = false,
     this.isLoading = false,
     this.isStreaming = false,
     this.streamingSessionId,
@@ -59,6 +65,7 @@ class ChatState extends Equatable {
     this.currentStreamingText,
     this.toolProgressLabel,
     this.error,
+    this.streamNotice,
     this.runners = const [],
     this.runnerNames = const {},
     this.selectedRunner,
@@ -84,6 +91,7 @@ class ChatState extends Equatable {
 
   ChatState copyWith({
     bool? isConnected,
+    bool? hasCompletedInitialConnection,
     bool? isLoading,
     bool? isStreaming,
     int? streamingSessionId,
@@ -96,6 +104,8 @@ class ChatState extends Equatable {
     String? currentStreamingText,
     Object? toolProgressLabel = _kKeepToolProgress,
     String? error,
+    Object? streamNotice = _kKeepStreamNotice,
+    bool clearStreamNotice = false,
     List<String>? runners,
     Map<String, String>? runnerNames,
     String? selectedRunner,
@@ -123,6 +133,7 @@ class ChatState extends Equatable {
   }) {
     return ChatState(
       isConnected: isConnected ?? this.isConnected,
+      hasCompletedInitialConnection: hasCompletedInitialConnection ?? this.hasCompletedInitialConnection,
       isLoading: isLoading ?? this.isLoading,
       isStreaming: isStreaming ?? this.isStreaming,
       streamingSessionId: clearStreamingSessionId
@@ -143,6 +154,11 @@ class ChatState extends Equatable {
               ? this.toolProgressLabel
               : toolProgressLabel as String?),
       error: error,
+      streamNotice: clearStreamNotice
+          ? null
+          : (identical(streamNotice, _kKeepStreamNotice)
+              ? this.streamNotice
+              : streamNotice as String?),
       runners: runners ?? this.runners,
       runnerNames: runnerNames ?? this.runnerNames,
       selectedRunner: selectedRunner ?? this.selectedRunner,
@@ -178,6 +194,7 @@ class ChatState extends Equatable {
   @override
   List<Object?> get props => [
     isConnected,
+    hasCompletedInitialConnection,
     isLoading,
     isStreaming,
     streamingSessionId,
@@ -188,6 +205,7 @@ class ChatState extends Equatable {
     currentStreamingText,
     toolProgressLabel,
     error,
+    streamNotice,
     runners,
     runnerNames,
     selectedRunner,

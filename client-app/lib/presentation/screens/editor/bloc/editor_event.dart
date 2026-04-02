@@ -12,6 +12,15 @@ final class EditorStarted extends EditorEvent {
   const EditorStarted();
 }
 
+final class EditorSelectRunner extends EditorEvent {
+  final String runner;
+
+  const EditorSelectRunner(this.runner);
+
+  @override
+  List<Object?> get props => [runner];
+}
+
 final class EditorDocumentChanged extends EditorEvent {
   final String text;
 

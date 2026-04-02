@@ -2,15 +2,17 @@ package postgres
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/repository/postgres/model"
+	"gorm.io/gorm"
 )
 
 type assistantMessageRegenerationRepository struct {
-	db *pgxpool.Pool
+	db *gorm.DB
 }
 
-func NewAssistantMessageRegenerationRepository(db *pgxpool.Pool) domain.AssistantMessageRegenerationRepository {
+func NewAssistantMessageRegenerationRepository(db *gorm.DB) domain.AssistantMessageRegenerationRepository {
 	return &assistantMessageRegenerationRepository{db: db}
 }
 
@@ -18,56 +20,48 @@ func (r *assistantMessageRegenerationRepository) Create(ctx context.Context, reg
 	if regen == nil {
 		return nil
 	}
-	return r.db.QueryRow(ctx, `
-		INSERT INTO message_edits
-			(session_id, message_id, editor_user_id, kind, old_content, new_content, soft_deleted_from_id, soft_deleted_to_id, created_at)
-		VALUES ($1, $2, $3, 'assistant_regen', $4, $5, NULL, NULL, $6)
-		RETURNING id
-	`,
-		regen.SessionId,
-		regen.MessageId,
-		regen.RegenUserId,
-		regen.OldContent,
-		regen.NewContent,
-		regen.CreatedAt,
-	).Scan(&regen.Id)
+	row := model.MessageEdit{
+		SessionID:    regen.SessionId,
+		MessageID:    regen.MessageId,
+		EditorUserID: regen.RegenUserId,
+		Kind:         "assistant_regen",
+		OldContent:   regen.OldContent,
+		NewContent:   regen.NewContent,
+		CreatedAt:    regen.CreatedAt,
+	}
+	if err := r.db.WithContext(ctx).
+		Omit("SoftDeletedFromID", "SoftDeletedToID", "RevertedAt").
+		Create(&row).Error; err != nil {
+		return err
+	}
+	regen.Id = row.ID
+	return nil
 }
 
 func (r *assistantMessageRegenerationRepository) ListByMessageID(ctx context.Context, messageID int64, limit int32) ([]*domain.AssistantMessageRegeneration, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := r.db.Query(ctx, `
-		SELECT id, session_id, message_id, editor_user_id, old_content, new_content, created_at
-		FROM message_edits
-		WHERE message_id = $1 AND kind = 'assistant_regen'
-		ORDER BY created_at DESC, id DESC
-		LIMIT $2
-	`, messageID, limit)
-	if err != nil {
+	var rows []model.MessageEdit
+	if err := r.db.WithContext(ctx).
+		Select("id", "session_id", "message_id", "editor_user_id", "old_content", "new_content", "created_at").
+		Where("message_id = ? AND kind = ?", messageID, "assistant_regen").
+		Order("created_at DESC, id DESC").
+		Limit(int(limit)).
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	out := make([]*domain.AssistantMessageRegeneration, 0, limit)
-	for rows.Next() {
-		var row domain.AssistantMessageRegeneration
-		if err := rows.Scan(
-			&row.Id,
-			&row.SessionId,
-			&row.MessageId,
-			&row.RegenUserId,
-			&row.OldContent,
-			&row.NewContent,
-			&row.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		out = append(out, &row)
+	out := make([]*domain.AssistantMessageRegeneration, 0, len(rows))
+	for i := range rows {
+		out = append(out, &domain.AssistantMessageRegeneration{
+			Id:          rows[i].ID,
+			SessionId:   rows[i].SessionID,
+			MessageId:   rows[i].MessageID,
+			RegenUserId: rows[i].EditorUserID,
+			OldContent:  rows[i].OldContent,
+			NewContent:  rows[i].NewContent,
+			CreatedAt:   rows[i].CreatedAt,
+		})
 	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
-	}
-
 	return out, nil
 }
