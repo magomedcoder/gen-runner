@@ -7,7 +7,7 @@ extension RunnerStatusExtension on RunnerStatus {
   String get label {
     switch (this) {
       case RunnerStatus.connected:
-        return 'Подключён';
+        return 'Подключен';
       case RunnerStatus.waiting:
         return 'Ожидание подключения';
       case RunnerStatus.disabled:
@@ -29,12 +29,15 @@ RunnerStatus runnerStatusFromRunner(RunnerInfo runner) {
 }
 
 Color runnerStatusColor(BuildContext context, RunnerStatus status) {
+  final scheme = Theme.of(context).colorScheme;
   switch (status) {
     case RunnerStatus.connected:
-      return Theme.of(context).colorScheme.primary;
+      return Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF81C784)
+          : const Color(0xFF2E7D32);
     case RunnerStatus.waiting:
-      return Theme.of(context).colorScheme.tertiary;
+      return scheme.tertiary;
     case RunnerStatus.disabled:
-      return Theme.of(context).colorScheme.outline;
+      return scheme.outline;
   }
 }

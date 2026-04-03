@@ -91,7 +91,7 @@ func looksLikeUTF16String(b []byte) bool {
 	}
 
 	n := 0
-	for i := 0; i < len(b); i++ {
+	for i := range b {
 		if b[i] == 0 {
 			n++
 		}

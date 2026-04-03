@@ -80,16 +80,16 @@ func TestFilterExecutableToolRows(t *testing.T) {
 
 func TestToolExecutionDuration(t *testing.T) {
 	if d := toolExecutionDuration(0); d != defaultToolExecSeconds*time.Second {
-		t.Fatalf("0 → %v, ожидалось %v", d, defaultToolExecSeconds*time.Second)
+		t.Fatalf("0 -> %v, ожидалось %v", d, defaultToolExecSeconds*time.Second)
 	}
 	if d := toolExecutionDuration(10); d != minToolExecSeconds*time.Second {
-		t.Fatalf("10 → %v, ожидалось %v", d, minToolExecSeconds*time.Second)
+		t.Fatalf("10 -> %v, ожидалось %v", d, minToolExecSeconds*time.Second)
 	}
 	if d := toolExecutionDuration(600); d != maxToolExecSeconds*time.Second {
-		t.Fatalf("600 → %v, ожидалось %v", d, maxToolExecSeconds*time.Second)
+		t.Fatalf("600 -> %v, ожидалось %v", d, maxToolExecSeconds*time.Second)
 	}
 	if d := toolExecutionDuration(90); d != 90*time.Second {
-		t.Fatalf("90 → %v", d)
+		t.Fatalf("90 -> %v", d)
 	}
 }
 
@@ -102,6 +102,51 @@ func TestRunFnWithContextNoDeadline(t *testing.T) {
 	}
 }
 
+func TestDrainLLMStringChannelForward(t *testing.T) {
+	ch := make(chan string, 2)
+	go func() {
+		ch <- "a"
+		ch <- "b"
+		close(ch)
+	}()
+
+	var got []string
+	raw, streamed := drainLLMStringChannelForward(ch, func(s string) bool {
+		got = append(got, s)
+		return true
+	})
+
+	if raw != "ab" || !streamed || len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("raw=%q streamed=%v got=%v", raw, streamed, got)
+	}
+}
+
+func TestStreamToolRoundComplete(t *testing.T) {
+	var chunks []ChatStreamChunk
+	send := func(c ChatStreamChunk) bool {
+		chunks = append(chunks, c)
+		return true
+	}
+
+	streamToolRoundComplete(send, 7, false, "x", "x")
+
+	if len(chunks) != 1 || chunks[0].MessageID != 7 || chunks[0].Text != "x" {
+		t.Fatalf("no stream: %+v", chunks)
+	}
+
+	chunks = nil
+	streamToolRoundComplete(send, 8, true, "same", "same")
+	if len(chunks) != 1 || chunks[0].MessageID != 8 || chunks[0].Text != "" {
+		t.Fatalf("stream same: %+v", chunks)
+	}
+
+	chunks = nil
+	streamToolRoundComplete(send, 9, true, "raw", "short")
+	if len(chunks) != 1 || chunks[0].MessageID != 9 || chunks[0].Text != "short" {
+		t.Fatalf("stream diff: %+v", chunks)
+	}
+}
+
 func TestRunFnWithContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 	defer cancel()
@@ -109,6 +154,7 @@ func TestRunFnWithContextTimeout(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		return 1, nil
 	})
+
 	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("ожидался DeadlineExceeded, err=%v", err)
 	}

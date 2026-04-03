@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,10 +17,23 @@ import (
 	"github.com/magomedcoder/gen/pkg/document"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"github.com/magomedcoder/gen/pkg/spreadsheet"
+	"golang.org/x/sync/errgroup"
 )
 
-const defaultResponseLanguagePrompt = "Язык ответа: отвечай на том же языке, что и последнее сообщение пользователя в этом запросе. " +
-	"Если язык нельзя определить (например, только код, числа или нейтральные символы), отвечай по-русски."
+const defaultResponseLanguagePrompt = "Язык ответа: отвечай на том же языке, что и последнее сообщение пользователя в этом запросе. Если язык нельзя определить (например, только код, числа или нейтральные символы), отвечай по-русски."
+const maxFileExtractedTextCacheBytes = 2 << 20
+
+func normalizeAttachmentHydrateParallelism(n int) int {
+	if n <= 0 {
+		return 8
+	}
+
+	if n > 64 {
+		return 64
+	}
+
+	return n
+}
 
 func chatSessionSystemMessage(sessionID int64, settings *domain.ChatSessionSettings) *domain.Message {
 	var extra string
@@ -35,18 +50,21 @@ func chatSessionSystemMessage(sessionID int64, settings *domain.ChatSessionSetti
 }
 
 type ChatUseCase struct {
-	chatTx              domain.ChatTransactionRunner
-	sessionRepo         domain.ChatSessionRepository
-	preferenceRepo      domain.ChatPreferenceRepository
-	sessionSettingsRepo domain.ChatSessionSettingsRepository
-	messageRepo         domain.MessageRepository
-	messageEditRepo     domain.MessageEditRepository
-	assistantRegenRepo  domain.AssistantMessageRegenerationRepository
-	fileRepo            domain.FileRepository
-	llmRepo             domain.LLMRepository
-	runnerPool          *service.Pool
-	attachmentsSaveDir  string
-	defaultRunnerAddr   string
+	chatTx                       domain.ChatTransactionRunner
+	sessionRepo                  domain.ChatSessionRepository
+	preferenceRepo               domain.ChatPreferenceRepository
+	sessionSettingsRepo          domain.ChatSessionSettingsRepository
+	messageRepo                  domain.MessageRepository
+	messageEditRepo              domain.MessageEditRepository
+	assistantRegenRepo           domain.AssistantMessageRegenerationRepository
+	fileRepo                     domain.FileRepository
+	llmRepo                      domain.LLMRepository
+	runnerPool                   *service.Pool
+	runnerReg                    *service.Registry
+	attachmentsSaveDir           string
+	defaultRunnerAddr            string
+	historySummaryCache          *historySummaryCache
+	attachmentHydrateParallelism int
 }
 
 func NewChatUseCase(
@@ -60,22 +78,27 @@ func NewChatUseCase(
 	fileRepo domain.FileRepository,
 	llmRepo domain.LLMRepository,
 	runnerPool *service.Pool,
+	runnerReg *service.Registry,
 	attachmentsSaveDir string,
 	defaultRunnerAddr string,
+	attachmentHydrateParallelism int,
 ) *ChatUseCase {
 	return &ChatUseCase{
-		chatTx:              chatTx,
-		sessionRepo:         sessionRepo,
-		preferenceRepo:      preferenceRepo,
-		sessionSettingsRepo: sessionSettingsRepo,
-		messageRepo:         messageRepo,
-		messageEditRepo:     messageEditRepo,
-		assistantRegenRepo:  assistantRegenRepo,
-		fileRepo:            fileRepo,
-		llmRepo:             llmRepo,
-		runnerPool:          runnerPool,
-		attachmentsSaveDir:  attachmentsSaveDir,
-		defaultRunnerAddr:   strings.TrimSpace(defaultRunnerAddr),
+		chatTx:                       chatTx,
+		sessionRepo:                  sessionRepo,
+		preferenceRepo:               preferenceRepo,
+		sessionSettingsRepo:          sessionSettingsRepo,
+		messageRepo:                  messageRepo,
+		messageEditRepo:              messageEditRepo,
+		assistantRegenRepo:           assistantRegenRepo,
+		fileRepo:                     fileRepo,
+		llmRepo:                      llmRepo,
+		runnerPool:                   runnerPool,
+		runnerReg:                    runnerReg,
+		attachmentsSaveDir:           attachmentsSaveDir,
+		defaultRunnerAddr:            strings.TrimSpace(defaultRunnerAddr),
+		historySummaryCache:          newHistorySummaryCache(512),
+		attachmentHydrateParallelism: normalizeAttachmentHydrateParallelism(attachmentHydrateParallelism),
 	}
 }
 
@@ -273,9 +296,11 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 		logger.E("SendMessage: подгрузка вложений для раннера: %v", err)
 		return nil, err
 	}
+	var historyNotice bool
+	messagesForLLM, historyNotice = c.capLLMHistoryTokens(ctx, messagesForLLM, 1, sessionId, resolvedModel, true)
 
 	if genParams != nil && len(genParams.Tools) > 0 {
-		return c.sendMessageWithToolLoop(ctx, userId, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
+		return c.sendMessageWithToolLoop(ctx, userId, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyNotice)
 	}
 
 	assistantMsg := domain.NewMessage(sessionId, "", domain.MessageRoleAssistant)
@@ -299,6 +324,14 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 			_ = c.messageRepo.UpdateContent(context.Background(), messageID, fullResponse.String())
 		}()
 		defer close(clientChan)
+
+		if historyNotice {
+			select {
+			case <-ctx.Done():
+				return
+			case clientChan <- ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice}:
+			}
+		}
 
 		for chunk := range responseChan {
 			fullResponse.WriteString(chunk)
@@ -373,6 +406,8 @@ func (c *ChatUseCase) RegenerateAssistantResponse(ctx context.Context, userId in
 		logger.E("RegenerateAssistantResponse: вложения: %v", err)
 		return nil, err
 	}
+	var regenHistoryNotice bool
+	messagesForLLM, regenHistoryNotice = c.capLLMHistoryTokens(ctx, messagesForLLM, 1, sessionId, resolvedModel, true)
 
 	if err := c.messageRepo.ResetAssistantForRegenerate(ctx, sessionId, assistantMessageID); err != nil {
 		logger.E("RegenerateAssistantResponse: сброс черновика: %v", err)
@@ -405,6 +440,14 @@ func (c *ChatUseCase) RegenerateAssistantResponse(ctx context.Context, userId in
 			}
 		}()
 		defer close(clientChan)
+
+		if regenHistoryNotice {
+			select {
+			case <-ctx.Done():
+				return
+			case clientChan <- ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice}:
+			}
+		}
 
 		for chunk := range responseChan {
 			fullResponse.WriteString(chunk)
@@ -487,6 +530,8 @@ func (c *ChatUseCase) ContinueAssistantResponse(ctx context.Context, userId int,
 		logger.E("ContinueAssistantResponse: вложения: %v", err)
 		return nil, err
 	}
+	var contHistoryNotice bool
+	messagesForLLM, contHistoryNotice = c.capLLMHistoryTokens(ctx, messagesForLLM, 2, sessionId, resolvedModel, true)
 
 	messageID := assistantMessageID
 
@@ -503,6 +548,14 @@ func (c *ChatUseCase) ContinueAssistantResponse(ctx context.Context, userId int,
 			_ = c.messageRepo.UpdateContent(context.Background(), messageID, existingContent+newPart.String())
 		}()
 		defer close(clientChan)
+
+		if contHistoryNotice {
+			select {
+			case <-ctx.Done():
+				return
+			case clientChan <- ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice}:
+			}
+		}
 
 		for chunk := range responseChan {
 			newPart.WriteString(chunk)
@@ -594,9 +647,11 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 	if err := c.hydrateAttachmentsForRunner(ctx, messagesForLLM); err != nil {
 		return nil, err
 	}
+	var editHistoryNotice bool
+	messagesForLLM, editHistoryNotice = c.capLLMHistoryTokens(ctx, messagesForLLM, 1, sessionId, resolvedModel, true)
 
 	if genParams != nil && len(genParams.Tools) > 0 {
-		return c.sendMessageWithToolLoop(ctx, userId, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
+		return c.sendMessageWithToolLoop(ctx, userId, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, editHistoryNotice)
 	}
 
 	assistantMsg := domain.NewMessage(sessionId, "", domain.MessageRoleAssistant)
@@ -617,6 +672,14 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 			_ = c.messageRepo.UpdateContent(context.Background(), messageID, fullResponse.String())
 		}()
 		defer close(clientChan)
+
+		if editHistoryNotice {
+			select {
+			case <-ctx.Done():
+				return
+			case clientChan <- ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice}:
+			}
+		}
 
 		for chunk := range responseChan {
 			fullResponse.WriteString(chunk)
@@ -987,77 +1050,150 @@ func (c *ChatUseCase) hydrateAttachmentsForRunner(ctx context.Context, messages 
 		return nil
 	}
 
-	for _, m := range messages {
-		if m == nil {
-			continue
-		}
-
-		if m.AttachmentFileID == nil || len(m.AttachmentContent) > 0 {
-			continue
-		}
-
-		if strings.TrimSpace(c.attachmentsSaveDir) == "" {
-			return fmt.Errorf("вложение в истории чата (file_id=%d): не задан каталог вложений", *m.AttachmentFileID)
-		}
-
-		f, err := c.fileRepo.GetById(ctx, *m.AttachmentFileID)
-		if err != nil {
-			return fmt.Errorf("файл вложения id=%d: %w", *m.AttachmentFileID, err)
-		}
-
-		if f == nil {
-			return fmt.Errorf("файл вложения id=%d не найден", *m.AttachmentFileID)
-		}
-
-		if f.ExpiresAt != nil && time.Now().After(*f.ExpiresAt) {
-			return fmt.Errorf("файл вложения id=%d: истёк срок хранения", *m.AttachmentFileID)
-		}
-
-		path := strings.TrimSpace(f.StoragePath)
-		if path == "" {
-			return fmt.Errorf("файл вложения id=%d: пустой storage_path", *m.AttachmentFileID)
-		}
-
-		expectedDir := filepath.Clean(filepath.Join(c.attachmentsSaveDir, strconv.FormatInt(m.SessionId, 10)))
-		cleanPath := filepath.Clean(path)
-		if !strings.HasPrefix(cleanPath, expectedDir+string(filepath.Separator)) && cleanPath != expectedDir {
-			return fmt.Errorf("файл вложения id=%d: путь вне каталога сессии", *m.AttachmentFileID)
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("чтение вложения %q: %w", path, err)
-		}
-
-		if len(data) > document.MaxRecommendedAttachmentSizeBytes {
-			return fmt.Errorf("вложение %q превышает лимит %d байт", path, document.MaxRecommendedAttachmentSizeBytes)
-		}
-
-		name := strings.TrimSpace(m.AttachmentName)
-		if name == "" {
-			name = filepath.Base(f.Filename)
-		}
-
-		if document.IsImageAttachment(name) {
-			if err := document.ValidateImageAttachment(name, data); err != nil {
-				return err
+	if strings.TrimSpace(c.attachmentsSaveDir) == "" {
+		for _, m := range messages {
+			if m != nil && m.AttachmentFileID != nil && len(m.AttachmentContent) == 0 {
+				return fmt.Errorf("вложение в истории чата (file_id=%d): не задан каталог вложений", *m.AttachmentFileID)
 			}
-			m.AttachmentContent = data
-			continue
 		}
-
-		if err := document.ValidateAttachment(name, data); err != nil {
-			return err
-		}
-
-		built, err := buildMessageWithFile(name, data, m.Content)
-		if err != nil {
-			return err
-		}
-
-		m.Content = built
+		return nil
 	}
 
+	needIDs := make(map[int64]struct{})
+	for _, m := range messages {
+		if m == nil || m.AttachmentFileID == nil || len(m.AttachmentContent) > 0 {
+			continue
+		}
+		needIDs[*m.AttachmentFileID] = struct{}{}
+	}
+
+	if len(needIDs) == 0 {
+		return nil
+	}
+
+	ids := make([]int64, 0, len(needIDs))
+	for id := range needIDs {
+		ids = append(ids, id)
+	}
+
+	files, err := c.fileRepo.ListByIds(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("пакетная загрузка файлов вложений: %w", err)
+	}
+
+	byID := make(map[int64]*domain.File, len(files))
+	for _, f := range files {
+		if f != nil {
+			byID[f.Id] = f
+		}
+	}
+
+	for id := range needIDs {
+		if _, ok := byID[id]; !ok {
+			return fmt.Errorf("файл вложения id=%d не найден", id)
+		}
+	}
+
+	var toHydrate []*domain.Message
+	for _, m := range messages {
+		if m == nil || m.AttachmentFileID == nil || len(m.AttachmentContent) > 0 {
+			continue
+		}
+		toHydrate = append(toHydrate, m)
+	}
+	if len(toHydrate) == 0 {
+		return nil
+	}
+
+	sem := make(chan struct{}, normalizeAttachmentHydrateParallelism(c.attachmentHydrateParallelism))
+	g, gctx := errgroup.WithContext(ctx)
+	for _, m := range toHydrate {
+		f := byID[*m.AttachmentFileID]
+		g.Go(func() error {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			return c.hydrateOneAttachmentForRunner(gctx, m, f)
+		})
+	}
+	return g.Wait()
+}
+
+func (c *ChatUseCase) hydrateOneAttachmentForRunner(ctx context.Context, m *domain.Message, f *domain.File) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	if f.ExpiresAt != nil && time.Now().After(*f.ExpiresAt) {
+		return fmt.Errorf("файл вложения id=%d: истёк срок хранения", *m.AttachmentFileID)
+	}
+
+	path := strings.TrimSpace(f.StoragePath)
+	if path == "" {
+		return fmt.Errorf("файл вложения id=%d: пустой storage_path", *m.AttachmentFileID)
+	}
+
+	expectedDir := filepath.Clean(filepath.Join(c.attachmentsSaveDir, strconv.FormatInt(m.SessionId, 10)))
+	cleanPath := filepath.Clean(path)
+	if !strings.HasPrefix(cleanPath, expectedDir+string(filepath.Separator)) && cleanPath != expectedDir {
+		return fmt.Errorf("файл вложения id=%d: путь вне каталога сессии", *m.AttachmentFileID)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("чтение вложения %q: %w", path, err)
+	}
+
+	if len(data) > document.MaxRecommendedAttachmentSizeBytes {
+		return fmt.Errorf("вложение %q превышает лимит %d байт", path, document.MaxRecommendedAttachmentSizeBytes)
+	}
+
+	name := strings.TrimSpace(m.AttachmentName)
+	if name == "" {
+		name = filepath.Base(f.Filename)
+	}
+
+	if document.IsImageAttachment(name) {
+		if err := document.ValidateImageAttachment(name, data); err != nil {
+			return err
+		}
+		m.AttachmentContent = data
+		return nil
+	}
+
+	if err := document.ValidateAttachment(name, data); err != nil {
+		return err
+	}
+
+	sum := sha256.Sum256(data)
+	shaHex := hex.EncodeToString(sum[:])
+
+	var built string
+	if strings.EqualFold(f.ExtractedTextContentSha256, shaHex) && strings.TrimSpace(f.ExtractedText) != "" {
+		var err error
+		built, err = buildExpandedAttachmentMessage(name, f.ExtractedText, m.Content)
+		if err != nil {
+			return err
+		}
+	} else {
+		extracted, err := document.ExtractText(name, data)
+		if err != nil {
+			logger.W("ChatUseCase: извлечение текста из вложения %q: %v", name, err)
+			return fmt.Errorf("%w: %v", document.ErrTextExtractionFailed, err)
+		}
+
+		built, err = buildExpandedAttachmentMessage(name, extracted, m.Content)
+		if err != nil {
+			return err
+		}
+
+		if len(extracted) <= maxFileExtractedTextCacheBytes {
+			if err := c.fileRepo.SaveExtractedTextCache(ctx, f.Id, shaHex, extracted); err != nil {
+				logger.W("ChatUseCase: кэш извлечённого текста file_id=%d: %v", f.Id, err)
+			}
+		}
+	}
+
+	m.Content = built
 	return nil
 }
 
@@ -1124,11 +1260,50 @@ func (c *ChatUseCase) loadSessionAttachmentForSend(ctx context.Context, userID i
 }
 
 func (c *ChatUseCase) historyMessagesForLLM(ctx context.Context, sessionId int64) ([]*domain.Message, error) {
-	raw, _, err := c.messageRepo.GetBySessionId(ctx, sessionId, 1, 500)
+	limit := int32(0)
+	if c.runnerReg != nil {
+		limit = int32(c.runnerReg.AggregateChatHints().LLMHistoryMaxMessages)
+	}
+	raw, err := c.messageRepo.ListLatestMessagesForSession(ctx, sessionId, limit)
 	if err != nil {
 		return nil, err
 	}
 	return filterHistoryForLLM(raw), nil
+}
+
+func (c *ChatUseCase) capLLMHistoryTokens(ctx context.Context, msgs []*domain.Message, tailPreserve int, sessionID int64, resolvedModel string, allowSummarize bool) ([]*domain.Message, bool) {
+	maxTok := 0
+	if c.runnerReg != nil {
+		maxTok = c.runnerReg.AggregateChatHints().MaxContextTokens
+	}
+	if maxTok <= 0 {
+		return msgs, false
+	}
+
+	out, trimmed, dropped := trimLLMMessagesByApproxTokensWithDropped(msgs, maxTok, tailPreserve)
+	if !trimmed {
+		return out, false
+	}
+
+	summarizeDropped := false
+	if c.runnerReg != nil {
+		summarizeDropped = c.runnerReg.AggregateChatHints().LLMHistorySummarizeDropped
+	}
+
+	logger.I("ChatUseCase: session=%d промпт усечён по оценке токенов (~лимит %d): сообщений %d -> %d", sessionID, maxTok, len(msgs), len(out))
+	if allowSummarize && summarizeDropped && len(dropped) > 0 {
+		if sum := strings.TrimSpace(c.summarizeDroppedMessages(ctx, sessionID, resolvedModel, dropped)); sum != "" {
+			out = injectSummaryAfterSystem(out, sum)
+			out2, trimmedAgain, _ := trimLLMMessagesByApproxTokensWithDropped(out, maxTok, tailPreserve)
+			if trimmedAgain {
+				logger.W("ChatUseCase: session=%d после вставки резюме снова усечено: %d -> %d сообщений",
+					sessionID, len(out), len(out2))
+			}
+			out = out2
+		}
+	}
+
+	return out, true
 }
 
 func filterHistoryForLLM(messages []*domain.Message) []*domain.Message {
@@ -1156,12 +1331,17 @@ const documentAttachmentInstruction = "Ниже - текст вложенног�
 const documentTruncatedNotice = "Внимание: из-за ограничения длины контекста показана только начальная часть файла."
 
 func buildMessageWithFile(attachmentName string, attachmentContent []byte, userMessage string) (string, error) {
-	fileContent, err := document.ExtractText(attachmentName, attachmentContent)
+	extracted, err := document.ExtractText(attachmentName, attachmentContent)
 	if err != nil {
 		logger.W("ChatUseCase: извлечение текста из вложения %q: %v", attachmentName, err)
 		return "", fmt.Errorf("%w: %v", document.ErrTextExtractionFailed, err)
 	}
-	fileContent, truncated := document.TruncateExtractedText(fileContent, document.MaxEmbeddedAttachmentTextRunes)
+
+	return buildExpandedAttachmentMessage(attachmentName, extracted, userMessage)
+}
+
+func buildExpandedAttachmentMessage(attachmentName, extractedText, userMessage string) (string, error) {
+	fileContent, truncated := document.TruncateExtractedText(extractedText, document.MaxEmbeddedAttachmentTextRunes)
 
 	var b strings.Builder
 	b.WriteString(documentAttachmentInstruction)

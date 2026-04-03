@@ -11,17 +11,49 @@ class RunnersAdminLoadRequested extends RunnersAdminEvent {
   const RunnersAdminLoadRequested();
 }
 
-class RunnersAdminSetEnabledRequested extends RunnersAdminEvent {
-  final String address;
+class RunnersAdminCreateRequested extends RunnersAdminEvent {
+  final String name;
+  final String host;
+  final int port;
   final bool enabled;
 
-  const RunnersAdminSetEnabledRequested({
-    required this.address,
+  const RunnersAdminCreateRequested({
+    required this.name,
+    required this.host,
+    required this.port,
     required this.enabled,
   });
 
   @override
-  List<Object?> get props => [address, enabled];
+  List<Object?> get props => [name, host, port, enabled];
+}
+
+class RunnersAdminUpdateRequested extends RunnersAdminEvent {
+  final int id;
+  final String name;
+  final String host;
+  final int port;
+  final bool enabled;
+
+  const RunnersAdminUpdateRequested({
+    required this.id,
+    required this.name,
+    required this.host,
+    required this.port,
+    required this.enabled,
+  });
+
+  @override
+  List<Object?> get props => [id, name, host, port, enabled];
+}
+
+class RunnersAdminDeleteRequested extends RunnersAdminEvent {
+  final int id;
+
+  const RunnersAdminDeleteRequested(this.id);
+
+  @override
+  List<Object?> get props => [id];
 }
 
 class RunnersAdminClearError extends RunnersAdminEvent {
@@ -35,17 +67,4 @@ class RunnersAdminDefaultRunnerChanged extends RunnersAdminEvent {
 
   @override
   List<Object?> get props => [address];
-}
-
-class RunnersAdminDefaultModelChanged extends RunnersAdminEvent {
-  final String runnerAddress;
-  final String model;
-
-  const RunnersAdminDefaultModelChanged({
-    required this.runnerAddress,
-    required this.model,
-  });
-
-  @override
-  List<Object?> get props => [runnerAddress, model];
 }

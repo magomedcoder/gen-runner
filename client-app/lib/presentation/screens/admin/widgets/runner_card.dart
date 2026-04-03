@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:gen/domain/entities/runner_info.dart';
+import 'package:gen/presentation/screens/admin/widgets/runner_card_controls_section.dart';
 import 'package:gen/presentation/screens/admin/widgets/runner_card_header.dart';
 import 'package:gen/presentation/screens/admin/widgets/runner_gpu_section.dart';
 import 'package:gen/presentation/screens/admin/widgets/runner_loaded_model_section.dart';
@@ -8,16 +9,24 @@ import 'package:gen/presentation/screens/admin/widgets/runner_status.dart';
 
 class RunnerCard extends StatelessWidget {
   final RunnerInfo runner;
-  final VoidCallback onToggleEnabled;
-  final String? defaultModel;
-  final ValueChanged<String>? onDefaultModelChanged;
+  final VoidCallback? onRefresh;
+  final VoidCallback? onSetAsDefault;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  final bool showAdminControls;
+  final void Function(bool enabled)? onRunnerEnabledChanged;
+  final VoidCallback? onAdminOperationDone;
 
   const RunnerCard({
     super.key,
     required this.runner,
-    required this.onToggleEnabled,
-    this.defaultModel,
-    this.onDefaultModelChanged,
+    this.onRefresh,
+    this.onSetAsDefault,
+    this.onEdit,
+    this.onDelete,
+    this.showAdminControls = false,
+    this.onRunnerEnabledChanged,
+    this.onAdminOperationDone,
   });
 
   @override
@@ -29,6 +38,9 @@ class RunnerCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -38,8 +50,21 @@ class RunnerCard extends StatelessWidget {
             RunnerCardHeader(
               runner: runner,
               status: status,
-              onToggleEnabled: onToggleEnabled,
+              onRefresh: onRefresh,
+              onSetAsDefault: onSetAsDefault,
+              onEdit: onEdit,
+              onDelete: onDelete,
             ),
+            if (showAdminControls &&
+                onRunnerEnabledChanged != null &&
+                onAdminOperationDone != null) ...[
+              RunnerCardControlsSection(
+                key: ValueKey('runner_controls_${runner.id}'),
+                runner: runner,
+                onRunnerEnabledChanged: onRunnerEnabledChanged!,
+                onAfterOperation: onAdminOperationDone!,
+              ),
+            ],
             if (hasLoadedModel) ...[
               const SizedBox(height: 12),
               const Divider(height: 1),
@@ -50,11 +75,7 @@ class RunnerCard extends StatelessWidget {
               const SizedBox(height: 12),
               const Divider(height: 1),
               const SizedBox(height: 8),
-              RunnerServerInfoSection(
-                serverInfo: runner.serverInfo!,
-                defaultModel: defaultModel,
-                onDefaultModelChanged: onDefaultModelChanged,
-              ),
+              RunnerServerInfoSection(serverInfo: runner.serverInfo!),
             ],
             if (hasGpus) ...[
               const SizedBox(height: 12),

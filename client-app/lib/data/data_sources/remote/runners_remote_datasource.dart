@@ -1,3 +1,4 @@
+import 'package:fixnum/fixnum.dart';
 import 'package:gen/core/auth_guard.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/log/logs.dart';
@@ -13,9 +14,32 @@ abstract class IRunnersRemoteDataSource {
 
   Future<List<domain.RunnerInfo>> getUserRunners();
 
-  Future<void> setRunnerEnabled(String address, bool enabled);
+  Future<void> createRunner({
+    required String name,
+    required String host,
+    required int port,
+    required bool enabled,
+  });
+
+  Future<void> updateRunner({
+    required int id,
+    required String name,
+    required String host,
+    required int port,
+    required bool enabled,
+  });
+
+  Future<void> deleteRunner(int id);
 
   Future<bool> getRunnersStatus();
+
+  Future<List<String>> getRunnerModels(int runnerId);
+
+  Future<void> runnerLoadModel(int runnerId, String model);
+
+  Future<void> runnerUnloadModel(int runnerId);
+
+  Future<void> runnerResetMemory(int runnerId);
 }
 
 class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
@@ -23,6 +47,53 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
   final AuthGuard _authGuard;
 
   RunnersRemoteDataSource(this._channelManager, this._authGuard);
+
+  domain.RunnerInfo _mapRunner(pb.RunnerInfo r) {
+    final gpus = r.gpus
+        .map(
+          (g) => gpu_ent.GpuInfo(
+            name: g.name,
+            temperatureC: g.temperatureC,
+            memoryTotalMb: g.memoryTotalMb.toInt(),
+            memoryUsedMb: g.memoryUsedMb.toInt(),
+            utilizationPercent: g.utilizationPercent,
+          ),
+        )
+        .toList();
+    srv_ent.ServerInfo? server;
+    if (r.hasServerInfo()) {
+      final s = r.serverInfo;
+      server = srv_ent.ServerInfo(
+        hostname: s.hostname,
+        os: s.os,
+        arch: s.arch,
+        cpuCores: s.cpuCores,
+        memoryTotalMb: s.memoryTotalMb.toInt(),
+        models: List<String>.from(s.models),
+      );
+    }
+    lm_ent.LoadedModelStatus? loaded;
+    if (r.hasLoadedModel()) {
+      final lm = r.loadedModel;
+      loaded = lm_ent.LoadedModelStatus(
+        loaded: lm.loaded,
+        displayName: lm.displayName,
+        ggufBasename: lm.ggufBasename,
+      );
+    }
+    return domain.RunnerInfo(
+      id: r.id.toInt(),
+      address: r.address,
+      name: r.name,
+      host: r.host,
+      port: r.port,
+      enabled: r.enabled,
+      connected: r.connected,
+      gpus: gpus,
+      serverInfo: server,
+      loadedModel: loaded,
+    );
+  }
 
   @override
   Future<List<domain.RunnerInfo>> getRunners() async {
@@ -32,49 +103,7 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
         () => _channelManager.runnerClient.getRunners(common.Empty()),
       );
       Logs().i('RunnersRemote: getRunners получено ${resp.runners.length}');
-      return resp.runners.map((r) {
-        final gpus = r.gpus
-            .map(
-              (g) => gpu_ent.GpuInfo(
-                name: g.name,
-                temperatureC: g.temperatureC,
-                memoryTotalMb: g.memoryTotalMb.toInt(),
-                memoryUsedMb: g.memoryUsedMb.toInt(),
-                utilizationPercent: g.utilizationPercent,
-              ),
-            )
-            .toList();
-        srv_ent.ServerInfo? server;
-        if (r.hasServerInfo()) {
-          final s = r.serverInfo;
-          server = srv_ent.ServerInfo(
-            hostname: s.hostname,
-            os: s.os,
-            arch: s.arch,
-            cpuCores: s.cpuCores,
-            memoryTotalMb: s.memoryTotalMb.toInt(),
-            models: List<String>.from(s.models),
-          );
-        }
-        lm_ent.LoadedModelStatus? loaded;
-        if (r.hasLoadedModel()) {
-          final lm = r.loadedModel;
-          loaded = lm_ent.LoadedModelStatus(
-            loaded: lm.loaded,
-            displayName: lm.displayName,
-            ggufBasename: lm.ggufBasename,
-          );
-        }
-        return domain.RunnerInfo(
-          address: r.address,
-          name: r.name,
-          enabled: r.enabled,
-          connected: r.connected,
-          gpus: gpus,
-          serverInfo: server,
-          loadedModel: loaded,
-        );
-      }).toList();
+      return resp.runners.map(_mapRunner).toList();
     } catch (e) {
       Logs().e('RunnersRemote: getRunners', exception: e);
       rethrow;
@@ -109,15 +138,62 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
   }
 
   @override
-  Future<void> setRunnerEnabled(String address, bool enabled) async {
-    Logs().d('RunnersRemote: setRunnerEnabled address=$address enabled=$enabled');
+  Future<void> createRunner({
+    required String name,
+    required String host,
+    required int port,
+    required bool enabled,
+  }) async {
+    Logs().d('RunnersRemote: createRunner $host:$port');
     try {
-      await _authGuard.execute(() => _channelManager.runnerClient.setRunnerEnabled(
-        pb.SetRunnerEnabledRequest(address: address, enabled: enabled),
+      await _authGuard.execute(() => _channelManager.runnerClient.createRunner(
+        pb.CreateRunnerRequest(
+          name: name,
+          host: host,
+          port: port,
+          enabled: enabled,
+        ),
       ));
-      Logs().i('RunnersRemote: setRunnerEnabled успешен');
     } catch (e) {
-      Logs().e('RunnersRemote: setRunnerEnabled', exception: e);
+      Logs().e('RunnersRemote: createRunner', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateRunner({
+    required int id,
+    required String name,
+    required String host,
+    required int port,
+    required bool enabled,
+  }) async {
+    Logs().d('RunnersRemote: updateRunner id=$id');
+    try {
+      await _authGuard.execute(() => _channelManager.runnerClient.updateRunner(
+        pb.UpdateRunnerRequest(
+          id: Int64(id),
+          name: name,
+          host: host,
+          port: port,
+          enabled: enabled,
+        ),
+      ));
+    } catch (e) {
+      Logs().e('RunnersRemote: updateRunner', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> deleteRunner(int id) async {
+    Logs().d('RunnersRemote: deleteRunner id=$id');
+    try {
+      await _authGuard.execute(() => _channelManager.runnerClient.deleteRunner(
+        pb.DeleteRunnerRequest(id: Int64(id)),
+      ));
+    } catch (e) {
+      Logs().e('RunnersRemote: deleteRunner', exception: e);
       rethrow;
     }
   }
@@ -133,6 +209,67 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
       return resp.hasActiveRunners;
     } catch (e) {
       Logs().e('RunnersRemote: getRunnersStatus', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<String>> getRunnerModels(int runnerId) async {
+    Logs().d('RunnersRemote: getRunnerModels id=$runnerId');
+    try {
+      final resp = await _authGuard.execute(
+        () => _channelManager.runnerClient.getRunnerModels(
+          pb.GetRunnerModelsRequest(runnerId: Int64(runnerId)),
+        ),
+      );
+      return List<String>.from(resp.models);
+    } catch (e) {
+      Logs().e('RunnersRemote: getRunnerModels', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> runnerLoadModel(int runnerId, String model) async {
+    Logs().d('RunnersRemote: runnerLoadModel id=$runnerId');
+    try {
+      await _authGuard.execute(
+        () => _channelManager.runnerClient.runnerLoadModel(
+          pb.RunnerLoadModelRequest(runnerId: Int64(runnerId), model: model),
+        ),
+      );
+    } catch (e) {
+      Logs().e('RunnersRemote: runnerLoadModel', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> runnerUnloadModel(int runnerId) async {
+    Logs().d('RunnersRemote: runnerUnloadModel id=$runnerId');
+    try {
+      await _authGuard.execute(
+        () => _channelManager.runnerClient.runnerUnloadModel(
+          pb.RunnerUnloadModelRequest(runnerId: Int64(runnerId)),
+        ),
+      );
+    } catch (e) {
+      Logs().e('RunnersRemote: runnerUnloadModel', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> runnerResetMemory(int runnerId) async {
+    Logs().d('RunnersRemote: runnerResetMemory id=$runnerId');
+    try {
+      await _authGuard.execute(
+        () => _channelManager.runnerClient.runnerResetMemory(
+          pb.RunnerResetMemoryRequest(runnerId: Int64(runnerId)),
+        ),
+      );
+    } catch (e) {
+      Logs().e('RunnersRemote: runnerResetMemory', exception: e);
       rethrow;
     }
   }

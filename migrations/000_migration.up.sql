@@ -36,16 +36,18 @@ CREATE TABLE IF NOT EXISTS chats
 
 CREATE TABLE IF NOT EXISTS files
 (
-    id              BIGSERIAL PRIMARY KEY,
-    filename        VARCHAR(255) NOT NULL,
-    mime_type       VARCHAR(100) NULL,
-    size            BIGINT       NOT NULL DEFAULT 0,
-    storage_path    TEXT         NOT NULL,
-    chat_session_id BIGINT       NULL REFERENCES chats (id) ON DELETE SET NULL,
-    user_id         INTEGER      NULL REFERENCES users (id) ON DELETE SET NULL,
-    expires_at      TIMESTAMP    NULL,
-    kind            VARCHAR(32)  NOT NULL DEFAULT '',
-    created_at      TIMESTAMP    NOT NULL DEFAULT NOW()
+    id                            BIGSERIAL PRIMARY KEY,
+    filename                      VARCHAR(255) NOT NULL,
+    mime_type                     VARCHAR(100) NULL,
+    size                          BIGINT       NOT NULL DEFAULT 0,
+    storage_path                  TEXT         NOT NULL,
+    chat_session_id               BIGINT       NULL REFERENCES chats (id) ON DELETE SET NULL,
+    user_id                       INTEGER      NULL REFERENCES users (id) ON DELETE SET NULL,
+    expires_at                    TIMESTAMP    NULL,
+    kind                          VARCHAR(32)  NOT NULL DEFAULT '',
+    created_at                    TIMESTAMP    NOT NULL DEFAULT NOW(),
+    extracted_text                TEXT         NULL,
+    extracted_text_content_sha256 VARCHAR(64)  NULL
 );
 
 CREATE TABLE IF NOT EXISTS messages
@@ -137,6 +139,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_role ON messages (role);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages (created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_deleted_at ON messages (deleted_at);
 CREATE INDEX IF NOT EXISTS idx_messages_attachment_file_id ON messages (attachment_file_id);
+CREATE INDEX IF NOT EXISTS idx_messages_session_created_active ON messages (session_id, created_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_messages_session_id_active ON messages (session_id, id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_user_runner_models_user_id ON user_runner_models (user_id);
 CREATE INDEX IF NOT EXISTS idx_editor_text_history_user_id ON editor_text_history (user_id);
 CREATE INDEX IF NOT EXISTS idx_editor_text_history_created_at ON editor_text_history (created_at);

@@ -337,10 +337,7 @@ func execOp(f *excelize.File, o op) error {
 			return err
 		}
 
-		startRow := len(existing) + 1
-		if startRow < 1 {
-			startRow = 1
-		}
+		startRow := max(len(existing)+1, 1)
 
 		for ri, row := range t.Rows {
 			for ci, val := range row {
@@ -430,8 +427,8 @@ func parseCSVRecords(text string, comma rune) ([][]string, error) {
 
 func detectCSVComma(s string) rune {
 	firstLine := s
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		firstLine = s[:i]
+	if before, _, ok := strings.Cut(s, "\n"); ok {
+		firstLine = before
 	}
 
 	if strings.Contains(firstLine, ";") && !strings.Contains(firstLine, ",") {

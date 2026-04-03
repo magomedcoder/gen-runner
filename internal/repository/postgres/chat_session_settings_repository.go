@@ -48,7 +48,7 @@ func (r *chatSessionSettingsRepository) Upsert(ctx context.Context, settings *do
 	}
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "session_id"}},
-		DoUpdates: clause.Assignments(map[string]interface{}{
+		DoUpdates: clause.Assignments(map[string]any{
 			"system_prompt":   gorm.Expr("EXCLUDED.system_prompt"),
 			"stop_sequences":  gorm.Expr("EXCLUDED.stop_sequences"),
 			"timeout_seconds": gorm.Expr("EXCLUDED.timeout_seconds"),

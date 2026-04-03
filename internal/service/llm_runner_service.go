@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/rpcmeta"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -28,18 +30,27 @@ func mapGenerationParamsToProto(in *domain.GenerationParams) *llmrunnerpb.Genera
 	if in == nil {
 		return nil
 	}
+
 	out := &llmrunnerpb.GenerationParams{
 		ResponseFormat: mapResponseFormatToProto(in.ResponseFormat),
 	}
+
 	if in.Temperature != nil {
 		out.Temperature = in.Temperature
 	}
+
+	if in.MaxTokens != nil {
+		out.MaxTokens = in.MaxTokens
+	}
+
 	if in.TopK != nil {
 		out.TopK = in.TopK
 	}
+
 	if in.TopP != nil {
 		out.TopP = in.TopP
 	}
+
 	if len(in.Tools) > 0 {
 		out.Tools = make([]*llmrunnerpb.Tool, 0, len(in.Tools))
 		for _, t := range in.Tools {
@@ -63,10 +74,12 @@ func NewLLMRunnerService(address, model string) (*LLMRunnerService, error) {
 	if address == "" {
 		address = "localhost:50052"
 	}
+
 	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("подключение к llm-runner: %w", err)
 	}
+
 	return &LLMRunnerService{
 		client: llmrunnerpb.NewLLMRunnerServiceClient(conn),
 		conn:   conn,
@@ -78,16 +91,30 @@ func (s *LLMRunnerService) Close() error {
 	return s.conn.Close()
 }
 
+func (s *LLMRunnerService) rpcCtx(ctx context.Context) context.Context {
+	return rpcmeta.OutgoingContext(ctx)
+}
+
 func (s *LLMRunnerService) CheckConnection(ctx context.Context) (bool, error) {
-	resp, err := s.client.CheckConnection(ctx, &llmrunnerpb.Empty{})
+	resp, err := s.client.CheckConnection(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
 		return false, fmt.Errorf("llm-runner CheckConnection: %w", err)
 	}
+
 	return resp.IsConnected, nil
 }
 
+func (s *LLMRunnerService) RunnerProbe(ctx context.Context) (*llmrunnerpb.RunnerProbeResponse, error) {
+	resp, err := s.client.RunnerProbe(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner RunnerProbe: %w", err)
+	}
+
+	return resp, nil
+}
+
 func (s *LLMRunnerService) GetModels(ctx context.Context) ([]string, error) {
-	resp, err := s.client.GetModels(ctx, &llmrunnerpb.Empty{})
+	resp, err := s.client.GetModels(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
 		return nil, fmt.Errorf("llm-runner GetModels: %w", err)
 	}
@@ -100,7 +127,7 @@ func (s *LLMRunnerService) GetModels(ctx context.Context) ([]string, error) {
 }
 
 func (s *LLMRunnerService) GetGpuInfo(ctx context.Context) (*llmrunnerpb.GetGpuInfoResponse, error) {
-	resp, err := s.client.GetGpuInfo(ctx, &llmrunnerpb.Empty{})
+	resp, err := s.client.GetGpuInfo(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
 		return nil, fmt.Errorf("llm-runner GetGpuInfo: %w", err)
 	}
@@ -109,7 +136,7 @@ func (s *LLMRunnerService) GetGpuInfo(ctx context.Context) (*llmrunnerpb.GetGpuI
 }
 
 func (s *LLMRunnerService) GetServerInfo(ctx context.Context) (*llmrunnerpb.ServerInfo, error) {
-	resp, err := s.client.GetServerInfo(ctx, &llmrunnerpb.Empty{})
+	resp, err := s.client.GetServerInfo(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
 		return nil, fmt.Errorf("llm-runner GetServerInfo: %w", err)
 	}
@@ -118,7 +145,7 @@ func (s *LLMRunnerService) GetServerInfo(ctx context.Context) (*llmrunnerpb.Serv
 }
 
 func (s *LLMRunnerService) GetLoadedModel(ctx context.Context) (*llmrunnerpb.GetLoadedModelResponse, error) {
-	resp, err := s.client.GetLoadedModel(ctx, &llmrunnerpb.Empty{})
+	resp, err := s.client.GetLoadedModel(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
 		return nil, fmt.Errorf("llm-runner GetLoadedModel: %w", err)
 	}
@@ -127,7 +154,7 @@ func (s *LLMRunnerService) GetLoadedModel(ctx context.Context) (*llmrunnerpb.Get
 }
 
 func (s *LLMRunnerService) UnloadModel(ctx context.Context) error {
-	_, err := s.client.UnloadModel(ctx, &llmrunnerpb.Empty{})
+	_, err := s.client.UnloadModel(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
 		return fmt.Errorf("llm-runner UnloadModel: %w", err)
 	}
@@ -136,7 +163,7 @@ func (s *LLMRunnerService) UnloadModel(ctx context.Context) error {
 }
 
 func (s *LLMRunnerService) SendMessageStream(ctx context.Context, req *llmrunnerpb.SendMessageRequest) (llmrunnerpb.LLMRunnerService_SendMessageClient, error) {
-	stream, err := s.client.SendMessage(ctx, req)
+	stream, err := s.client.SendMessage(s.rpcCtx(ctx), req)
 	if err != nil {
 		return nil, fmt.Errorf("llm-runner SendMessage: %w", err)
 	}
@@ -158,7 +185,7 @@ func (s *LLMRunnerService) resolveRunnerModel(model string) string {
 }
 
 func (s *LLMRunnerService) Embed(ctx context.Context, model, text string) ([]float32, error) {
-	resp, err := s.client.Embed(ctx, &llmrunnerpb.EmbedRequest{
+	resp, err := s.client.Embed(s.rpcCtx(ctx), &llmrunnerpb.EmbedRequest{
 		Model: s.resolveRunnerModel(model),
 		Text:  text,
 	})
@@ -174,7 +201,7 @@ func (s *LLMRunnerService) Embed(ctx context.Context, model, text string) ([]flo
 }
 
 func (s *LLMRunnerService) EmbedBatch(ctx context.Context, model string, texts []string) ([][]float32, error) {
-	resp, err := s.client.EmbedBatch(ctx, &llmrunnerpb.EmbedBatchRequest{
+	resp, err := s.client.EmbedBatch(s.rpcCtx(ctx), &llmrunnerpb.EmbedBatchRequest{
 		Model: s.resolveRunnerModel(model),
 		Texts: texts,
 	})
@@ -208,6 +235,31 @@ func (s *LLMRunnerService) SendMessage(
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
 ) (chan string, error) {
+	ch, _, err := s.sendMessageStream(ctx, sessionID, model, messages, stopSequences, timeoutSeconds, genParams)
+	return ch, err
+}
+
+func (s *LLMRunnerService) SendMessageWithRunnerToolAction(
+	ctx context.Context,
+	sessionID int64,
+	model string,
+	messages []*domain.Message,
+	stopSequences []string,
+	timeoutSeconds int32,
+	genParams *domain.GenerationParams,
+) (chan string, func() string, error) {
+	return s.sendMessageStream(ctx, sessionID, model, messages, stopSequences, timeoutSeconds, genParams)
+}
+
+func (s *LLMRunnerService) sendMessageStream(
+	ctx context.Context,
+	sessionID int64,
+	model string,
+	messages []*domain.Message,
+	stopSequences []string,
+	timeoutSeconds int32,
+	genParams *domain.GenerationParams,
+) (chan string, func() string, error) {
 	modelName := s.resolveRunnerModel(model)
 	req := &llmrunnerpb.SendMessageRequest{
 		SessionId:        sessionID,
@@ -220,22 +272,27 @@ func (s *LLMRunnerService) SendMessage(
 		req.TimeoutSeconds = &timeoutSeconds
 	}
 
-	stream, err := s.client.SendMessage(ctx, req)
+	stream, err := s.client.SendMessage(s.rpcCtx(ctx), req)
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner SendMessage: %w", err)
+		return nil, nil, fmt.Errorf("llm-runner SendMessage: %w", err)
 	}
 
 	firstMsg, err := stream.Recv()
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner SendMessage: ошибка чтения чанка из потока ответа: %w", err)
+		return nil, nil, fmt.Errorf("llm-runner SendMessage: ошибка чтения чанка из потока ответа: %w", err)
 	}
 
 	output := make(chan string, 100)
+	var toolBlob atomic.Value
 
 	go func() {
 		defer close(output)
 		current := firstMsg
 		for {
+			if ta := strings.TrimSpace(current.GetToolActionJson()); ta != "" {
+				toolBlob.Store(ta)
+			}
+
 			if current.Content != "" {
 				select {
 				case <-ctx.Done():
@@ -243,6 +300,7 @@ func (s *LLMRunnerService) SendMessage(
 				case output <- current.Content:
 				}
 			}
+
 			if current.Done {
 				return
 			}
@@ -251,11 +309,22 @@ func (s *LLMRunnerService) SendMessage(
 			if err != nil {
 				return
 			}
+
 			current = msg
 		}
 	}()
 
-	return output, nil
+	toolFn := func() string {
+		v := toolBlob.Load()
+		if v == nil {
+			return ""
+		}
+
+		s, _ := v.(string)
+		return s
+	}
+
+	return output, toolFn, nil
 }
 
 func domainMessagesToProto(messages []*domain.Message) []*llmrunnerpb.ChatMessage {

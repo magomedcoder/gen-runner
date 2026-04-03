@@ -11,6 +11,11 @@ database:
   password: "postgres"
   name: "gen_db"
   ssl_mode: "disable"
+  # max_open_conns: 50
+  # max_idle_conns: 12
+  # conn_max_lifetime: "30m"
+  # conn_max_idle_time: "5m"
+  # connect_timeout_sec: 15
 
 jwt:
   access_secret: "gen"
@@ -19,6 +24,8 @@ jwt:
   refresh_ttl: "168h"
 
 upload_dir: "./uploads"
+
+# attachment_hydrate_parallelism: 16 # Параллельная подготовка вложений в истории для LLM (1...64). 0 = 8
 
 runners:
   - name: "runner-a"

@@ -18,9 +18,7 @@ import (
 )
 
 const (
-	maxToolInvocationRounds = 5
-	maxToolResultRunes      = 8000
-
+	maxToolResultRunes     = 8000
 	minToolExecSeconds     = 30
 	maxToolExecSeconds     = 300
 	defaultToolExecSeconds = 120
@@ -103,12 +101,51 @@ func normalizeToolName(s string) string {
 	return s
 }
 
-func drainLLMStringChannel(ch chan string) string {
+func drainLLMStringChannelForward(ch chan string, forward func(s string) bool) (raw string, streamedNonEmpty bool) {
 	var b strings.Builder
 	for s := range ch {
 		b.WriteString(s)
+		if s == "" {
+			continue
+		}
+
+		if !forward(s) {
+			for s2 := range ch {
+				b.WriteString(s2)
+			}
+
+			return b.String(), true
+		}
+
+		streamedNonEmpty = true
 	}
-	return b.String()
+
+	return b.String(), streamedNonEmpty
+}
+
+func streamToolRoundComplete(send func(ChatStreamChunk) bool, messageID int64, streamed bool, modelFullTrimmed, canonical string) {
+	if !streamed {
+		_ = send(ChatStreamChunk{
+			Kind:      StreamChunkKindText,
+			Text:      canonical,
+			MessageID: messageID,
+		})
+		return
+	}
+
+	if canonical == modelFullTrimmed {
+		_ = send(ChatStreamChunk{
+			Kind: StreamChunkKindText,
+			Text: "", MessageID: messageID,
+		})
+		return
+	}
+
+	_ = send(ChatStreamChunk{
+		Kind:      StreamChunkKindText,
+		Text:      canonical,
+		MessageID: messageID,
+	})
 }
 
 var reActionJSON = regexp.MustCompile("(?is)(?:Action|Действие):\\s*" + "```" + `json\s*([\s\S]*?)` + "```")
@@ -140,12 +177,12 @@ func extractFirstFencedToolArray(text string) string {
 		}
 
 		rest := afterOpen[bodyStart:]
-		end := strings.Index(rest, "```")
-		if end < 0 {
+		before, _, ok := strings.Cut(rest, "```")
+		if !ok {
 			return ""
 		}
 
-		raw := strings.TrimSpace(rest[:end])
+		raw := strings.TrimSpace(before)
 		if strings.HasPrefix(strings.TrimSpace(raw), "[") {
 			if rows, err := parseCohereActionList(raw); err == nil && len(rows) > 0 && toolActionRowsHaveNames(rows) {
 				return raw
@@ -159,18 +196,18 @@ func extractFirstFencedToolArray(text string) string {
 }
 
 func extractFirstJSONArray(text string) string {
-	idx := strings.Index(text, "```json")
-	if idx < 0 {
+	_, after, ok := strings.Cut(text, "```json")
+	if !ok {
 		return ""
 	}
 
-	rest := text[idx+len("```json"):]
-	end := strings.Index(rest, "```")
-	if end < 0 {
+	rest := after
+	before, _, ok := strings.Cut(rest, "```")
+	if !ok {
 		return ""
 	}
 
-	raw := strings.TrimSpace(rest[:end])
+	raw := strings.TrimSpace(before)
 	if !strings.HasPrefix(strings.TrimSpace(raw), "[") {
 		return ""
 	}
@@ -362,7 +399,7 @@ func truncateToolResult(s string) string {
 	}
 	r := []rune(s)
 
-	return string(r[:maxToolResultRunes]) + "\n…(обрезано)"
+	return string(r[:maxToolResultRunes]) + "\n...(обрезано)"
 }
 
 func (c *ChatUseCase) sendMessageWithToolLoop(
@@ -374,13 +411,14 @@ func (c *ChatUseCase) sendMessageWithToolLoop(
 	stopSequences []string,
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
+	historyInitiallyTrimmed bool,
 ) (chan ChatStreamChunk, error) {
 	if genParams == nil || len(genParams.Tools) == 0 {
 		return nil, fmt.Errorf("внутренняя ошибка: tool loop без tools")
 	}
 
 	out := make(chan ChatStreamChunk, 64)
-	go c.runChatToolLoop(ctx, userID, sessionID, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, out)
+	go c.runChatToolLoop(ctx, userID, sessionID, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyInitiallyTrimmed, out)
 
 	return out, nil
 }
@@ -394,6 +432,7 @@ func (c *ChatUseCase) runChatToolLoop(
 	stopSequences []string,
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
+	historyInitiallyTrimmed bool,
 	out chan<- ChatStreamChunk,
 ) {
 	defer close(out)
@@ -418,29 +457,41 @@ func (c *ChatUseCase) runChatToolLoop(
 		_ = send(ChatStreamChunk{Kind: StreamChunkKindText, Text: s, MessageID: 0})
 	}
 
-	sendFinal := func(msgID int64, text string) {
-		_ = send(ChatStreamChunk{Kind: StreamChunkKindText, Text: text, MessageID: msgID})
-	}
-
 	allowed := allowedToolNameSet(genParams.Tools)
 	gp := cloneGenParamsForToolCalls(genParams)
 	history := append([]*domain.Message(nil), messagesForLLM...)
 
-	for round := 0; round < maxToolInvocationRounds; round++ {
-		ch, err := c.llmRepo.SendMessage(ctx, sessionID, resolvedModel, history, stopSequences, timeoutSeconds, gp)
+	if historyInitiallyTrimmed {
+		_ = send(ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice})
+	}
+
+	maxToolRounds := int(^uint(0) >> 1)
+	if c.runnerReg != nil {
+		if n := c.runnerReg.AggregateChatHints().MaxToolInvocationRounds; n > 0 {
+			maxToolRounds = n
+		}
+	}
+
+	for round := 0; round < maxToolRounds; round++ {
+		ch, runnerToolFn, err := c.llmRepo.SendMessageWithRunnerToolAction(ctx, sessionID, resolvedModel, history, stopSequences, timeoutSeconds, gp)
 		if err != nil {
 			sendErr(err)
 			return
 		}
 
-		full := drainLLMStringChannel(ch)
-		full = strings.TrimSpace(full)
+		raw, streamed := drainLLMStringChannelForward(ch, func(s string) bool {
+			return send(ChatStreamChunk{Kind: StreamChunkKindText, Text: s, MessageID: 0})
+		})
+		full := strings.TrimSpace(raw)
 		if full == "" {
 			sendErr(fmt.Errorf("модель вернула пустой ответ (tool loop)"))
 			return
 		}
 
-		blob := extractToolActionBlob(full)
+		blob := strings.TrimSpace(runnerToolFn())
+		if blob == "" {
+			blob = extractToolActionBlob(full)
+		}
 
 		if blob == "" {
 			am := domain.NewMessage(sessionID, full, domain.MessageRoleAssistant)
@@ -449,7 +500,7 @@ func (c *ChatUseCase) runChatToolLoop(
 				return
 			}
 
-			sendFinal(am.Id, full)
+			streamToolRoundComplete(send, am.Id, streamed, full, full)
 			return
 		}
 
@@ -462,7 +513,7 @@ func (c *ChatUseCase) runChatToolLoop(
 				return
 			}
 
-			sendFinal(am.Id, full)
+			streamToolRoundComplete(send, am.Id, streamed, full, full)
 			return
 		}
 
@@ -473,7 +524,7 @@ func (c *ChatUseCase) runChatToolLoop(
 				return
 			}
 
-			sendFinal(am.Id, full)
+			streamToolRoundComplete(send, am.Id, streamed, full, full)
 			return
 		}
 
@@ -489,7 +540,7 @@ func (c *ChatUseCase) runChatToolLoop(
 				return
 			}
 
-			sendFinal(am.Id, ans)
+			streamToolRoundComplete(send, am.Id, streamed, full, ans)
 			return
 		}
 
@@ -501,7 +552,7 @@ func (c *ChatUseCase) runChatToolLoop(
 				return
 			}
 
-			sendFinal(am.Id, full)
+			streamToolRoundComplete(send, am.Id, streamed, full, full)
 			return
 		}
 
@@ -572,9 +623,15 @@ func (c *ChatUseCase) runChatToolLoop(
 
 		history = append(history, assist)
 		history = append(history, toolMsgs...)
+		var loopTrimmed bool
+		history, loopTrimmed = c.capLLMHistoryTokens(ctx, history, 1+len(toolMsgs), sessionID, resolvedModel, false)
+		if loopTrimmed {
+			_ = send(ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice})
+		}
 	}
 
-	sendErr(fmt.Errorf("превышено число итераций tool-calling (%d)", maxToolInvocationRounds))
+	logger.W("ChatUseCase: session=%d превышен лимит итераций tool-calling (%d)", sessionID, maxToolRounds)
+	sendErr(fmt.Errorf("превышено число итераций tool-calling (%d)", maxToolRounds))
 }
 
 func (c *ChatUseCase) executeDeclaredTool(ctx context.Context, userID int, sessionID int64, nameNorm string, params json.RawMessage) (string, error) {

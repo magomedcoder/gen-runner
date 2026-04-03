@@ -43,12 +43,7 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	}
 	logger.D("База данных доступна")
 
-	dsn, err := cfg.Database.PostgresDSN()
-	if err != nil {
-		return nil, fmt.Errorf("конфигурация postgres: %w", err)
-	}
-
-	gormDB, err := provider.NewDB(ctx, dsn)
+	gormDB, err := provider.NewDB(ctx, &cfg.Database, cfg.LogLevel)
 	if err != nil {
 		return nil, fmt.Errorf("подключение к базе данных: %w", err)
 	}
@@ -98,7 +93,7 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	runnerPool := service.NewPool(runnerReg)
 	llmRepo := runnerPool
 
-	chatUseCase := usecase.NewChatUseCase(chatTxRunner, sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, llmRepo, runnerPool, cfg.UploadDir, cfg.DefaultRunnerAddress())
+	chatUseCase := usecase.NewChatUseCase(chatTxRunner, sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, llmRepo, runnerPool, runnerReg, cfg.UploadDir, cfg.DefaultRunnerAddress(), cfg.AttachmentHydrateParallelism)
 	editorUseCase := usecase.NewEditorUseCase(llmRepo, chatPreferenceRepo, editorHistoryRepo, cfg.DefaultRunnerAddress())
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 

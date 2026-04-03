@@ -45,10 +45,38 @@ func (r *fileRepository) UpdateStoragePath(ctx context.Context, id int64, storag
 
 func (r *fileRepository) GetById(ctx context.Context, id int64) (*domain.File, error) {
 	var row model.File
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+	q := r.db.WithContext(ctx).Where("id = ?", id).Omit("ExtractedText", "ExtractedTextContentSha256")
+	if err := q.First(&row).Error; err != nil {
 		return nil, err
 	}
 	return fileToDomain(&row), nil
+}
+
+func (r *fileRepository) ListByIds(ctx context.Context, ids []int64) ([]*domain.File, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	var rows []model.File
+	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	out := make([]*domain.File, 0, len(rows))
+	for i := range rows {
+		out = append(out, fileToDomain(&rows[i]))
+	}
+
+	return out, nil
+}
+
+func (r *fileRepository) SaveExtractedTextCache(ctx context.Context, fileID int64, contentSHA256Hex string, extractedText string) error {
+	return r.db.WithContext(ctx).Model(&model.File{}).
+		Where("id = ?", fileID).
+		Updates(map[string]any{
+			"extracted_text":                extractedText,
+			"extracted_text_content_sha256": contentSHA256Hex,
+		}).Error
 }
 
 func (r *fileRepository) CountSessionTTLArtifacts(ctx context.Context, sessionID int64, userID int) (count int32, totalSize int64, err error) {
@@ -77,9 +105,18 @@ func fileToDomain(m *model.File) *domain.File {
 		ExpiresAt:     m.ExpiresAt,
 		Kind:          m.Kind,
 	}
+
 	if m.MimeType != nil {
 		f.MimeType = *m.MimeType
 	}
+	if m.ExtractedText != nil {
+		f.ExtractedText = *m.ExtractedText
+	}
+
+	if m.ExtractedTextContentSha256 != nil {
+		f.ExtractedTextContentSha256 = *m.ExtractedTextContentSha256
+	}
+
 	return f
 }
 

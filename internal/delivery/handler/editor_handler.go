@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/magomedcoder/gen/api/pb/commonpb"
 	"github.com/magomedcoder/gen/api/pb/editorpb"
+	"github.com/magomedcoder/gen/internal/rpcmeta"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"
@@ -51,7 +52,8 @@ func (e *EditorHandler) Transform(ctx context.Context, req *editorpb.TransformRe
 		return nil, status.Error(codes.InvalidArgument, "текст не предоставлен")
 	}
 
-	logger.D("EditorHandler: transform type=%v", req.GetType())
+	ctx = rpcmeta.EnsureTraceInContext(ctx)
+	logger.D("EditorHandler: transform type=%v trace_id=%s", req.GetType(), rpcmeta.TraceIDFromContext(ctx))
 
 	out, err := e.editorUseCase.Transform(
 		ctx,

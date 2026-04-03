@@ -73,11 +73,11 @@ void registerBlocsModule(GetIt sl) {
   sl.registerFactory(
     () => RunnersAdminBloc(
       getRunnersUseCase: sl(),
-      setRunnerEnabledUseCase: sl(),
+      createRunnerUseCase: sl(),
+      updateRunnerUseCase: sl(),
+      deleteRunnerUseCase: sl(),
       getSelectedRunnerUseCase: sl(),
       setSelectedRunnerUseCase: sl(),
-      getDefaultRunnerModelUseCase: sl(),
-      setDefaultRunnerModelUseCase: sl(),
     ),
   );
 }

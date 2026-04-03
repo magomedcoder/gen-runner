@@ -7,14 +7,12 @@ class RunnersAdminState extends Equatable {
   final bool isLoading;
   final List<RunnerInfo> runners;
   final String? defaultRunner;
-  final Map<String, String?> defaultModelsByRunner;
   final String? error;
 
   const RunnersAdminState({
     this.isLoading = false,
     this.runners = const [],
     this.defaultRunner,
-    this.defaultModelsByRunner = const {},
     this.error,
   });
 
@@ -22,7 +20,6 @@ class RunnersAdminState extends Equatable {
     bool? isLoading,
     List<RunnerInfo>? runners,
     Object? defaultRunner = _noChange,
-    Map<String, String?>? defaultModelsByRunner,
     Object? error = _noChange,
   }) {
     return RunnersAdminState(
@@ -31,8 +28,6 @@ class RunnersAdminState extends Equatable {
       defaultRunner: identical(defaultRunner, _noChange)
           ? this.defaultRunner
           : defaultRunner as String?,
-      defaultModelsByRunner:
-          defaultModelsByRunner ?? this.defaultModelsByRunner,
       error: identical(error, _noChange) ? this.error : error as String?,
     );
   }
@@ -42,7 +37,6 @@ class RunnersAdminState extends Equatable {
     isLoading,
     runners,
     defaultRunner,
-    defaultModelsByRunner,
     error,
   ];
 }

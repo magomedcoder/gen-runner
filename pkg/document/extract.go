@@ -286,8 +286,8 @@ func TruncateExtractedText(s string, maxRunes int) (string, bool) {
 
 func detectCSVSeparator(content []byte) rune {
 	firstLine := string(content)
-	if idx := bytes.IndexByte(content, '\n'); idx >= 0 {
-		firstLine = string(content[:idx])
+	if before, _, ok := bytes.Cut(content, []byte{'\n'}); ok {
+		firstLine = string(before)
 	}
 
 	if strings.Contains(firstLine, ";") && !strings.Contains(firstLine, ",") {

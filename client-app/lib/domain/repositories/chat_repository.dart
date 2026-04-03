@@ -90,8 +90,6 @@ abstract interface class ChatRepository {
 
   Future<String?> getSelectedRunner();
   Future<void> setSelectedRunner(String? runner);
-  Future<String?> getDefaultRunnerModel(String runner);
-  Future<void> setDefaultRunnerModel(String runner, String? model);
 
   Future<int> putSessionFile({
     required int sessionId,

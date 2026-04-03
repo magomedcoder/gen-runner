@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,13 +19,14 @@ var LoadedFrom string
 var loadedMu sync.Mutex
 
 type Config struct {
-	Server         ServerConfig
-	Database       DatabaseConfig
-	JWT            JWTConfig
-	Runners        RunnersConfig
-	UploadDir      string `yaml:"upload_dir"`
-	LogLevel       string `yaml:"log_level"`
-	MinClientBuild int32
+	Server                       ServerConfig
+	Database                     DatabaseConfig
+	JWT                          JWTConfig
+	Runners                      RunnersConfig
+	UploadDir                    string `yaml:"upload_dir"`
+	AttachmentHydrateParallelism int    `yaml:"attachment_hydrate_parallelism"`
+	LogLevel                     string `yaml:"log_level"`
+	MinClientBuild               int32
 }
 
 type RunnerEntry struct {
@@ -121,12 +123,17 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Host     string `yaml:"host"`
-	Port     string `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	Name     string `yaml:"name"`
-	SSLMode  string `yaml:"ssl_mode"`
+	Host              string `yaml:"host"`
+	Port              string `yaml:"port"`
+	User              string `yaml:"user"`
+	Password          string `yaml:"password"`
+	Name              string `yaml:"name"`
+	SSLMode           string `yaml:"ssl_mode"`
+	MaxOpenConns      int    `yaml:"max_open_conns"`
+	MaxIdleConns      int    `yaml:"max_idle_conns"`
+	ConnMaxLifetime   string `yaml:"conn_max_lifetime"`
+	ConnMaxIdleTime   string `yaml:"conn_max_idle_time"`
+	ConnectTimeoutSec int    `yaml:"connect_timeout_sec"`
 }
 
 type JWTConfig struct {
@@ -137,22 +144,28 @@ type JWTConfig struct {
 }
 
 type databaseYAML struct {
-	Host     string  `yaml:"host"`
-	Port     string  `yaml:"port"`
-	User     string  `yaml:"user"`
-	Password *string `yaml:"password"`
-	Name     string  `yaml:"name"`
-	SSLMode  string  `yaml:"ssl_mode"`
+	Host              string  `yaml:"host"`
+	Port              string  `yaml:"port"`
+	User              string  `yaml:"user"`
+	Password          *string `yaml:"password"`
+	Name              string  `yaml:"name"`
+	SSLMode           string  `yaml:"ssl_mode"`
+	MaxOpenConns      int     `yaml:"max_open_conns"`
+	MaxIdleConns      int     `yaml:"max_idle_conns"`
+	ConnMaxLifetime   string  `yaml:"conn_max_lifetime"`
+	ConnMaxIdleTime   string  `yaml:"conn_max_idle_time"`
+	ConnectTimeoutSec int     `yaml:"connect_timeout_sec"`
 }
 
 type yamlRoot struct {
-	Server         ServerConfig      `yaml:"server"`
-	Database       databaseYAML      `yaml:"database"`
-	JWT            jwtYAML           `yaml:"jwt"`
-	Runners        *runnersBlockYAML `yaml:"runners"`
-	UploadDir      string            `yaml:"upload_dir"`
-	LogLevel       string            `yaml:"log_level"`
-	MinClientBuild int32
+	Server                       ServerConfig      `yaml:"server"`
+	Database                     databaseYAML      `yaml:"database"`
+	JWT                          jwtYAML           `yaml:"jwt"`
+	Runners                      *runnersBlockYAML `yaml:"runners"`
+	UploadDir                    string            `yaml:"upload_dir"`
+	AttachmentHydrateParallelism int               `yaml:"attachment_hydrate_parallelism"`
+	LogLevel                     string            `yaml:"log_level"`
+	MinClientBuild               int32
 }
 
 type jwtYAML struct {
@@ -191,24 +204,24 @@ func defaultConfig() *Config {
 	}
 }
 
-func configFilePath() string {
-	if p := strings.TrimSpace(os.Getenv("GEN_CONFIG")); p != "" {
-		return p
-	}
-	return "config.yaml"
+func Load() (*Config, error) {
+	return LoadFrom("config.yaml")
 }
 
-func Load() (*Config, error) {
+func LoadFrom(path string) (*Config, error) {
 	loadedMu.Lock()
 	defer loadedMu.Unlock()
 
 	c := defaultConfig()
-	path := configFilePath()
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("путь к файлу конфигурации пустой")
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			LoadedFrom = fmt.Sprintf("встроенные значения по умолчанию (файл не найден: %s)", path)
-			applyEnvOverrides(c)
 			if err := c.validate(); err != nil {
 				return nil, err
 			}
@@ -230,7 +243,6 @@ func Load() (*Config, error) {
 	}
 
 	LoadedFrom = path
-	applyEnvOverrides(c)
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("конфигурация %q: %w", path, err)
 	}
@@ -239,7 +251,7 @@ func Load() (*Config, error) {
 
 func (c *Config) validate() error {
 	if len(c.Runners.Entries) == 0 {
-		return fmt.Errorf("нужна хотя бы одна запись в runners (или GEN_RUNNER_REGISTRATION_TOKENS, или GEN_RUNNERS_ADDRESSES)")
+		return fmt.Errorf("нужна хотя бы одна запись в runners в конфигурационном файле")
 	}
 	seenTok := make(map[string]struct{})
 	for i, e := range c.Runners.Entries {
@@ -304,6 +316,21 @@ func mergeYAML(dst *Config, raw *yamlRoot) error {
 	if raw.Database.SSLMode != "" {
 		dst.Database.SSLMode = raw.Database.SSLMode
 	}
+	if raw.Database.MaxOpenConns != 0 {
+		dst.Database.MaxOpenConns = raw.Database.MaxOpenConns
+	}
+	if raw.Database.MaxIdleConns != 0 {
+		dst.Database.MaxIdleConns = raw.Database.MaxIdleConns
+	}
+	if strings.TrimSpace(raw.Database.ConnMaxLifetime) != "" {
+		dst.Database.ConnMaxLifetime = strings.TrimSpace(raw.Database.ConnMaxLifetime)
+	}
+	if strings.TrimSpace(raw.Database.ConnMaxIdleTime) != "" {
+		dst.Database.ConnMaxIdleTime = strings.TrimSpace(raw.Database.ConnMaxIdleTime)
+	}
+	if raw.Database.ConnectTimeoutSec != 0 {
+		dst.Database.ConnectTimeoutSec = raw.Database.ConnectTimeoutSec
+	}
 	if raw.JWT.AccessSecret != "" {
 		dst.JWT.AccessSecret = raw.JWT.AccessSecret
 	}
@@ -315,6 +342,9 @@ func mergeYAML(dst *Config, raw *yamlRoot) error {
 	}
 	if raw.UploadDir != "" {
 		dst.UploadDir = raw.UploadDir
+	}
+	if raw.AttachmentHydrateParallelism != 0 {
+		dst.AttachmentHydrateParallelism = raw.AttachmentHydrateParallelism
 	}
 	if raw.LogLevel != "" {
 		dst.LogLevel = raw.LogLevel
@@ -368,95 +398,42 @@ func parseJWTTTL(dst *Config, y *jwtYAML) error {
 	return nil
 }
 
-func applyEnvOverrides(c *Config) {
-	if v := strings.TrimSpace(os.Getenv("GEN_SERVER_HOST")); v != "" {
-		c.Server.Host = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_SERVER_PORT")); v != "" {
-		c.Server.Port = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_DATABASE_HOST")); v != "" {
-		c.Database.Host = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_DATABASE_PORT")); v != "" {
-		c.Database.Port = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_DATABASE_USER")); v != "" {
-		c.Database.User = v
-	}
-	if v, ok := os.LookupEnv("GEN_DATABASE_PASSWORD"); ok {
-		c.Database.Password = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_DATABASE_NAME")); v != "" {
-		c.Database.Name = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_DATABASE_SSL_MODE")); v != "" {
-		c.Database.SSLMode = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_JWT_ACCESS_SECRET")); v != "" {
-		c.JWT.AccessSecret = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_JWT_REFRESH_SECRET")); v != "" {
-		c.JWT.RefreshSecret = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_JWT_ACCESS_TTL")); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			c.JWT.AccessTTL = d
-		}
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_JWT_REFRESH_TTL")); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			c.JWT.RefreshTTL = d
-		}
-	}
-	if s := strings.TrimSpace(os.Getenv("GEN_RUNNERS_ADDRESSES")); s != "" {
-		for _, p := range strings.Split(s, ",") {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				c.Runners.Entries = append(c.Runners.Entries, RunnerEntry{Address: p})
-			}
-		}
-	}
-	if s := strings.TrimSpace(os.Getenv("GEN_RUNNER_REGISTRATION_TOKENS")); s != "" {
-		for _, p := range strings.Split(s, ",") {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				c.Runners.Entries = append(c.Runners.Entries, RunnerEntry{Token: p})
-			}
-		}
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_UPLOAD_DIR")); v != "" {
-		c.UploadDir = v
-	}
-	if v := strings.TrimSpace(os.Getenv("GEN_LOG_LEVEL")); v != "" {
-		c.LogLevel = v
-	}
-}
-
 func (c DatabaseConfig) PostgresDSN() (string, error) {
 	name := strings.TrimSpace(c.Name)
 	if name == "" {
 		return "", fmt.Errorf("database: поле name обязательно")
 	}
+
 	host := strings.TrimSpace(c.Host)
 	port := strings.TrimSpace(c.Port)
 	if host == "" || port == "" {
 		return "", fmt.Errorf("database: host и port обязательны")
 	}
+
 	u := &url.URL{
 		Scheme: "postgres",
 		Host:   net.JoinHostPort(host, port),
 		Path:   "/" + strings.TrimPrefix(name, "/"),
 	}
+
 	user := strings.TrimSpace(c.User)
 	if user != "" {
 		u.User = url.UserPassword(user, c.Password)
 	}
+
+	q := url.Values{}
 	if sm := strings.TrimSpace(c.SSLMode); sm != "" {
-		q := url.Values{}
 		q.Set("sslmode", sm)
+	}
+
+	if c.ConnectTimeoutSec > 0 {
+		q.Set("connect_timeout", strconv.Itoa(c.ConnectTimeoutSec))
+	}
+
+	if len(q) > 0 {
 		u.RawQuery = q.Encode()
 	}
+
 	return u.String(), nil
 }
 
@@ -471,5 +448,6 @@ func (c DatabaseConfig) TargetDBName() (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("database: поле name обязательно")
 	}
+
 	return name, nil
 }

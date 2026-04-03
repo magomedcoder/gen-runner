@@ -109,8 +109,6 @@ abstract class IChatRemoteDataSource {
   });
   Future<String?> getSelectedRunner();
   Future<void> setSelectedRunner(String? runner);
-  Future<String?> getDefaultRunnerModel(String runner);
-  Future<void> setDefaultRunnerModel(String runner, String? model);
 
   Future<int> putSessionFile({
     required int sessionId,
@@ -1156,25 +1154,6 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     await _authGuard.execute(
       () => _client.setSelectedRunner(
         grpc.SetSelectedRunnerRequest(runner: runner ?? ''),
-      ),
-    );
-  }
-
-  @override
-  Future<String?> getDefaultRunnerModel(String runner) async {
-    final response = await _authGuard.execute(
-      () => _client.getDefaultRunnerModel(
-        grpc.GetDefaultRunnerModelRequest(runner: runner),
-      ),
-    );
-    return response.model.isEmpty ? null : response.model;
-  }
-
-  @override
-  Future<void> setDefaultRunnerModel(String runner, String? model) async {
-    await _authGuard.execute(
-      () => _client.setDefaultRunnerModel(
-        grpc.SetDefaultRunnerModelRequest(runner: runner, model: model ?? ''),
       ),
     );
   }

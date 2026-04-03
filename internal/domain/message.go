@@ -11,8 +11,8 @@ const (
 	MessageRoleTool      MessageRole = "tool"
 )
 
-func (m *Message) ToMap() map[string]interface{} {
-	return map[string]interface{}{
+func (m *Message) ToMap() map[string]any {
+	return map[string]any{
 		"role":    string(m.Role),
 		"content": m.Content,
 	}

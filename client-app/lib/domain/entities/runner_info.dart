@@ -4,8 +4,11 @@ import 'package:gen/domain/entities/loaded_model_status.dart';
 import 'package:gen/domain/entities/server_info.dart';
 
 class RunnerInfo extends Equatable {
+  final int id;
   final String address;
   final String name;
+  final String host;
+  final int port;
   final bool enabled;
   final bool connected;
   final List<GpuInfo> gpus;
@@ -13,8 +16,11 @@ class RunnerInfo extends Equatable {
   final LoadedModelStatus? loadedModel;
 
   const RunnerInfo({
+    this.id = 0,
     required this.address,
     this.name = '',
+    this.host = '',
+    this.port = 0,
     required this.enabled,
     this.connected = false,
     this.gpus = const [],
@@ -24,8 +30,11 @@ class RunnerInfo extends Equatable {
 
   @override
   List<Object?> get props => [
+    id,
     address,
     name,
+    host,
+    port,
     enabled,
     connected,
     gpus,

@@ -64,6 +64,8 @@ type MessageRepository interface {
 
 	GetBySessionId(ctx context.Context, sessionID int64, page, pageSize int32) ([]*Message, int32, error)
 
+	ListLatestMessagesForSession(ctx context.Context, sessionID int64, limit int32) ([]*Message, error)
+
 	ListBySessionBeforeID(ctx context.Context, sessionID int64, beforeMessageID int64, limit int32) ([]*Message, int32, error)
 
 	SessionHasOlderMessages(ctx context.Context, sessionID int64, olderThanMessageID int64) (bool, error)
@@ -104,6 +106,10 @@ type FileRepository interface {
 
 	GetById(ctx context.Context, id int64) (*File, error)
 
+	ListByIds(ctx context.Context, ids []int64) ([]*File, error)
+
+	SaveExtractedTextCache(ctx context.Context, fileID int64, contentSHA256Hex string, extractedText string) error
+
 	CountSessionTTLArtifacts(ctx context.Context, sessionID int64, userID int) (count int32, totalSize int64, err error)
 }
 
@@ -124,6 +130,7 @@ type Tool struct {
 
 type GenerationParams struct {
 	Temperature    *float32
+	MaxTokens      *int32
 	TopK           *int32
 	TopP           *float32
 	ResponseFormat *ResponseFormat
@@ -144,6 +151,16 @@ type LLMRepository interface {
 		timeoutSeconds int32,
 		genParams *GenerationParams,
 	) (chan string, error)
+
+	SendMessageWithRunnerToolAction(
+		ctx context.Context,
+		sessionID int64,
+		model string,
+		messages []*Message,
+		stopSequences []string,
+		timeoutSeconds int32,
+		genParams *GenerationParams,
+	) (textChunks chan string, runnerToolJSON func() string, err error)
 
 	Embed(ctx context.Context, model string, text string) ([]float32, error)
 

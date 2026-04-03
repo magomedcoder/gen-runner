@@ -61,7 +61,7 @@ func (u *userRepository) GetByUsername(ctx context.Context, username string) (*d
 }
 
 func (u *userRepository) Update(ctx context.Context, user *domain.User) error {
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"username": user.Username,
 		"name":     user.Name,
 		"surname":  user.Surname,

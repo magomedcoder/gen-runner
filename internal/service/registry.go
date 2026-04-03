@@ -12,6 +12,7 @@ type RunnerState struct {
 	Address string
 	Name    string
 	Enabled bool
+	Hints   *RunnerCoreHints
 }
 
 type Registry struct {
@@ -35,26 +36,40 @@ func NewRegistry(initial []RunnerState) *Registry {
 }
 
 func (r *Registry) Register(addr string) {
-	r.RegisterWithName(addr, "")
+	r.RegisterWithNameAndHints(addr, "", nil)
 }
 
 func (r *Registry) RegisterWithName(addr, name string) {
+	r.RegisterWithNameAndHints(addr, name, nil)
+}
+
+func (r *Registry) RegisterWithNameAndHints(addr, name string, hints *RunnerCoreHints) {
 	if addr == "" {
 		return
 	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if existing, ok := r.runners[addr]; !ok {
+	existing, ok := r.runners[addr]
+	if !ok {
 		r.runners[addr] = RunnerState{
 			Address: addr,
 			Name:    strings.TrimSpace(name),
 			Enabled: true,
+			Hints:   hints,
 		}
 		logger.I("Registry: раннер зарегистрирован: %s", addr)
-	} else if strings.TrimSpace(name) != "" && strings.TrimSpace(existing.Name) == "" {
-		existing.Name = strings.TrimSpace(name)
-		r.runners[addr] = existing
+		return
 	}
+	if strings.TrimSpace(name) != "" {
+		existing.Name = strings.TrimSpace(name)
+	}
+
+	if hints != nil {
+		existing.Hints = hints
+	}
+
+	r.runners[addr] = existing
 }
 
 func (r *Registry) Unregister(addr string) {

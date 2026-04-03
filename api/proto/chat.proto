@@ -85,6 +85,7 @@ message ChatMessage {
 enum StreamChunkKind {
   STREAM_CHUNK_KIND_TEXT = 0;
   STREAM_CHUNK_KIND_TOOL_STATUS = 1;
+  STREAM_CHUNK_KIND_NOTICE = 2;
 }
 
 message ChatResponse {

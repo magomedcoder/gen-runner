@@ -207,7 +207,12 @@ func (h *RunnerHandler) RegisterRunnerWithToken(ctx context.Context, req *llmrun
 		return nil, status.Error(codes.PermissionDenied, "неверный registration_token")
 	}
 
-	h.registry.RegisterWithName(addr, entry.Name)
+	pbHints := req.GetHints()
+	if pbHints == nil {
+		return nil, status.Error(codes.InvalidArgument, "hints обязательны: llm-runner должен передать RunnerRegisterHints при регистрации")
+	}
+	hints := service.HintsFromRunnerRegisterProto(pbHints)
+	h.registry.RegisterWithNameAndHints(addr, entry.Name, hints)
 	logger.I("RegisterRunnerWithToken: %s", addr)
 
 	return &llmrunnerpb.Empty{}, nil

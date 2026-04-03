@@ -14,8 +14,44 @@ class RunnersRepositoryImpl implements RunnersRepository {
   Future<List<RunnerInfo>> getUserRunners() => _remote.getUserRunners();
 
   @override
-  Future<void> setRunnerEnabled(String address, bool enabled) => _remote.setRunnerEnabled(address, enabled);
+  Future<void> createRunner({
+    required String name,
+    required String host,
+    required int port,
+    required bool enabled,
+  }) => _remote.createRunner(name: name, host: host, port: port, enabled: enabled);
+
+  @override
+  Future<void> updateRunner({
+    required int id,
+    required String name,
+    required String host,
+    required int port,
+    required bool enabled,
+  }) => _remote.updateRunner(
+    id: id,
+    name: name,
+    host: host,
+    port: port,
+    enabled: enabled,
+  );
+
+  @override
+  Future<void> deleteRunner(int id) => _remote.deleteRunner(id);
 
   @override
   Future<bool> getRunnersStatus() => _remote.getRunnersStatus();
+
+  @override
+  Future<List<String>> getRunnerModels(int runnerId) => _remote.getRunnerModels(runnerId);
+
+  @override
+  Future<void> runnerLoadModel(int runnerId, String model) =>
+      _remote.runnerLoadModel(runnerId, model);
+
+  @override
+  Future<void> runnerUnloadModel(int runnerId) => _remote.runnerUnloadModel(runnerId);
+
+  @override
+  Future<void> runnerResetMemory(int runnerId) => _remote.runnerResetMemory(runnerId);
 }

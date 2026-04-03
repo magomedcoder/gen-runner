@@ -74,7 +74,7 @@ func (r *chatSessionRepository) Update(ctx context.Context, session *domain.Chat
 	session.UpdatedAt = time.Now()
 	return r.db.WithContext(ctx).Model(&model.Chat{}).
 		Where("id = ?", session.Id).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"title":      session.Title,
 			"model":      session.Model,
 			"updated_at": session.UpdatedAt,

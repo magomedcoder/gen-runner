@@ -5,7 +5,30 @@ abstract class RunnersRepository {
 
   Future<List<RunnerInfo>> getUserRunners();
 
-  Future<void> setRunnerEnabled(String address, bool enabled);
+  Future<void> createRunner({
+    required String name,
+    required String host,
+    required int port,
+    required bool enabled,
+  });
+
+  Future<void> updateRunner({
+    required int id,
+    required String name,
+    required String host,
+    required int port,
+    required bool enabled,
+  });
+
+  Future<void> deleteRunner(int id);
 
   Future<bool> getRunnersStatus();
+
+  Future<List<String>> getRunnerModels(int runnerId);
+
+  Future<void> runnerLoadModel(int runnerId, String model);
+
+  Future<void> runnerUnloadModel(int runnerId);
+
+  Future<void> runnerResetMemory(int runnerId);
 }

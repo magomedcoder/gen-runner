@@ -10,6 +10,7 @@ import (
 	"github.com/magomedcoder/gen/api/pb/chatpb"
 	"github.com/magomedcoder/gen/api/pb/commonpb"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/rpcmeta"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/document"
 	"github.com/magomedcoder/gen/pkg/logger"
@@ -43,8 +44,8 @@ func (c *ChatHandler) getUserID(ctx context.Context) (int, error) {
 }
 
 func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.ChatService_SendMessageServer) error {
-	ctx := stream.Context()
-	logger.D("SendMessage: session=%d", req.GetSessionId())
+	ctx := rpcmeta.EnsureTraceInContext(stream.Context())
+	logger.D("SendMessage: session=%d trace_id=%s", req.GetSessionId(), rpcmeta.TraceIDFromContext(ctx))
 	userID, err := c.getUserID(ctx)
 	if err != nil {
 		return err
@@ -85,7 +86,7 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 
 		return ToStatusError(codes.Internal, sendErr)
 	}
-	logger.V("SendMessage: стрим ответа запущен")
+	logger.V("SendMessage: стрим ответа запущен session=%d trace_id=%s", req.GetSessionId(), rpcmeta.TraceIDFromContext(ctx))
 
 	createdAt := time.Now().Unix()
 	var lastMsgID int64
@@ -103,12 +104,18 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
 		if chunk.Kind == usecase.StreamChunkKindToolStatus {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
+		} else if chunk.Kind == usecase.StreamChunkKindNotice {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
+		}
+		role := "assistant"
+		if chunk.Kind == usecase.StreamChunkKindNotice {
+			role = "system"
 		}
 
 		resp := &chatpb.ChatResponse{
 			Id:        respID,
 			Content:   chunk.Text,
-			Role:      "assistant",
+			Role:      role,
 			CreatedAt: createdAt,
 			Done:      false,
 			ChunkKind: pbKind,
@@ -135,8 +142,8 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 }
 
 func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistantRequest, stream chatpb.ChatService_RegenerateAssistantResponseServer) error {
-	ctx := stream.Context()
-	logger.D("RegenerateAssistantResponse: session=%d assistantMsg=%d", req.GetSessionId(), req.GetAssistantMessageId())
+	ctx := rpcmeta.EnsureTraceInContext(stream.Context())
+	logger.D("RegenerateAssistantResponse: session=%d assistantMsg=%d trace_id=%s", req.GetSessionId(), req.GetAssistantMessageId(), rpcmeta.TraceIDFromContext(ctx))
 	userID, err := c.getUserID(ctx)
 	if err != nil {
 		return err
@@ -183,12 +190,18 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
 		if chunk.Kind == usecase.StreamChunkKindToolStatus {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
+		} else if chunk.Kind == usecase.StreamChunkKindNotice {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
+		}
+		role := "assistant"
+		if chunk.Kind == usecase.StreamChunkKindNotice {
+			role = "system"
 		}
 
 		resp := &chatpb.ChatResponse{
 			Id:        respID,
 			Content:   chunk.Text,
-			Role:      "assistant",
+			Role:      role,
 			CreatedAt: createdAt,
 			Done:      false,
 			ChunkKind: pbKind,
@@ -215,8 +228,8 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 }
 
 func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantRequest, stream chatpb.ChatService_ContinueAssistantResponseServer) error {
-	ctx := stream.Context()
-	logger.D("ContinueAssistantResponse: session=%d assistantMsg=%d", req.GetSessionId(), req.GetAssistantMessageId())
+	ctx := rpcmeta.EnsureTraceInContext(stream.Context())
+	logger.D("ContinueAssistantResponse: session=%d assistantMsg=%d trace_id=%s", req.GetSessionId(), req.GetAssistantMessageId(), rpcmeta.TraceIDFromContext(ctx))
 	userID, err := c.getUserID(ctx)
 	if err != nil {
 		return err
@@ -266,12 +279,18 @@ func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantReq
 		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
 		if chunk.Kind == usecase.StreamChunkKindToolStatus {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
+		} else if chunk.Kind == usecase.StreamChunkKindNotice {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
+		}
+		role := "assistant"
+		if chunk.Kind == usecase.StreamChunkKindNotice {
+			role = "system"
 		}
 
 		resp := &chatpb.ChatResponse{
 			Id:        respID,
 			Content:   chunk.Text,
-			Role:      "assistant",
+			Role:      role,
 			CreatedAt: createdAt,
 			Done:      false,
 			ChunkKind: pbKind,
@@ -298,8 +317,8 @@ func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantReq
 }
 
 func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndContinueRequest, stream chatpb.ChatService_EditUserMessageAndContinueServer) error {
-	ctx := stream.Context()
-	logger.D("EditUserMessageAndContinue: session=%d userMsg=%d", req.GetSessionId(), req.GetUserMessageId())
+	ctx := rpcmeta.EnsureTraceInContext(stream.Context())
+	logger.D("EditUserMessageAndContinue: session=%d userMsg=%d trace_id=%s", req.GetSessionId(), req.GetUserMessageId(), rpcmeta.TraceIDFromContext(ctx))
 	userID, err := c.getUserID(ctx)
 	if err != nil {
 		return err
@@ -347,12 +366,18 @@ func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndC
 		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
 		if chunk.Kind == usecase.StreamChunkKindToolStatus {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
+		} else if chunk.Kind == usecase.StreamChunkKindNotice {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
+		}
+		role := "assistant"
+		if chunk.Kind == usecase.StreamChunkKindNotice {
+			role = "system"
 		}
 
 		resp := &chatpb.ChatResponse{
 			Id:        respID,
 			Content:   chunk.Text,
-			Role:      "assistant",
+			Role:      role,
 			CreatedAt: createdAt,
 			Done:      false,
 			ChunkKind: pbKind,

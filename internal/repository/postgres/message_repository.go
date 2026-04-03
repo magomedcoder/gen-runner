@@ -83,7 +83,7 @@ func (r *messageRepository) Create(ctx context.Context, message *domain.Message)
 func (r *messageRepository) UpdateContent(ctx context.Context, id int64, content string) error {
 	return r.db.WithContext(ctx).Model(&model.Message{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"content":    content,
 			"updated_at": gorm.Expr("NOW()"),
 		}).Error
@@ -115,6 +115,32 @@ func (r *messageRepository) GetBySessionId(ctx context.Context, sessionID int64,
 		out = append(out, messageModelToDomain(&rows[i]))
 	}
 	return out, int32(total), nil
+}
+
+func (r *messageRepository) ListLatestMessagesForSession(ctx context.Context, sessionID int64, limit int32) ([]*domain.Message, error) {
+	q := r.withAttachment(ctx).
+		Scopes(scopeMessageSession(sessionID)).
+		Order("id DESC")
+	if limit > 0 {
+		q = q.Limit(int(limit))
+	}
+
+	var rows []model.Message
+	err := q.Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+
+	out := make([]*domain.Message, 0, len(rows))
+	for i := range rows {
+		out = append(out, messageModelToDomain(&rows[i]))
+	}
+
+	return out, nil
 }
 
 func (r *messageRepository) ListBySessionBeforeID(ctx context.Context, sessionID int64, beforeMessageID int64, limit int32) ([]*domain.Message, int32, error) {
@@ -250,7 +276,7 @@ func (r *messageRepository) SoftDeleteRangeAfterID(ctx context.Context, sessionI
 func (r *messageRepository) ResetAssistantForRegenerate(ctx context.Context, sessionID int64, messageID int64) error {
 	res := r.db.WithContext(ctx).Model(&model.Message{}).
 		Where("id = ? AND session_id = ? AND role = ?", messageID, sessionID, "assistant").
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"content":         "",
 			"tool_calls_json": nil,
 			"tool_call_id":    nil,

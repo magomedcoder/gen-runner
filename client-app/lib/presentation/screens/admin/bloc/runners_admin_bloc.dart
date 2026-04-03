@@ -1,36 +1,37 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/log/logs.dart';
 import 'package:gen/core/user_safe_error.dart';
-import 'package:gen/domain/usecases/chat/get_default_runner_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
-import 'package:gen/domain/usecases/chat/set_default_runner_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
+import 'package:gen/domain/usecases/runners/create_runner_usecase.dart';
+import 'package:gen/domain/usecases/runners/delete_runner_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_runners_usecase.dart';
-import 'package:gen/domain/usecases/runners/set_runner_enabled_usecase.dart';
+import 'package:gen/domain/usecases/runners/update_runner_usecase.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_event.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_state.dart';
 
 class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
   final GetRunnersUseCase getRunnersUseCase;
-  final SetRunnerEnabledUseCase setRunnerEnabledUseCase;
+  final CreateRunnerUseCase createRunnerUseCase;
+  final UpdateRunnerUseCase updateRunnerUseCase;
+  final DeleteRunnerUseCase deleteRunnerUseCase;
   final GetSelectedRunnerUseCase getSelectedRunnerUseCase;
   final SetSelectedRunnerUseCase setSelectedRunnerUseCase;
-  final GetDefaultRunnerModelUseCase getDefaultRunnerModelUseCase;
-  final SetDefaultRunnerModelUseCase setDefaultRunnerModelUseCase;
 
   RunnersAdminBloc({
     required this.getRunnersUseCase,
-    required this.setRunnerEnabledUseCase,
+    required this.createRunnerUseCase,
+    required this.updateRunnerUseCase,
+    required this.deleteRunnerUseCase,
     required this.getSelectedRunnerUseCase,
     required this.setSelectedRunnerUseCase,
-    required this.getDefaultRunnerModelUseCase,
-    required this.setDefaultRunnerModelUseCase,
   }) : super(const RunnersAdminState()) {
     on<RunnersAdminLoadRequested>(_onLoad);
-    on<RunnersAdminSetEnabledRequested>(_onSetEnabled);
+    on<RunnersAdminCreateRequested>(_onCreate);
+    on<RunnersAdminUpdateRequested>(_onUpdate);
+    on<RunnersAdminDeleteRequested>(_onDelete);
     on<RunnersAdminClearError>(_onClearError);
     on<RunnersAdminDefaultRunnerChanged>(_onDefaultRunnerChanged);
-    on<RunnersAdminDefaultModelChanged>(_onDefaultModelChanged);
   }
 
   Future<void> _onLoad(
@@ -54,28 +55,12 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
         validDefault = sorted.first;
         await setSelectedRunnerUseCase(validDefault);
       }
-      final defaultModelsByRunner = <String, String?>{};
-      for (final runner in runners) {
-        final models = runner.serverInfo?.models ?? const <String>[];
-        if (models.isEmpty) {
-          continue;
-        }
-        final savedDefault = await getDefaultRunnerModelUseCase(runner.address);
-        if (savedDefault != null && models.contains(savedDefault)) {
-          defaultModelsByRunner[runner.address] = savedDefault;
-        } else {
-          final pick = models.first;
-          await setDefaultRunnerModelUseCase(runner.address, pick);
-          defaultModelsByRunner[runner.address] = pick;
-        }
-      }
 
       Logs().i('RunnersAdminBloc: загружено раннеров: ${runners.length}');
       emit(state.copyWith(
         isLoading: false,
         runners: runners,
         defaultRunner: validDefault,
-        defaultModelsByRunner: defaultModelsByRunner,
         error: null,
       ));
     } catch (e) {
@@ -90,24 +75,61 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
     }
   }
 
-  Future<void> _onSetEnabled(
-    RunnersAdminSetEnabledRequested event,
+  Future<void> _onCreate(
+    RunnersAdminCreateRequested event,
     Emitter<RunnersAdminState> emit,
   ) async {
-    Logs().d('RunnersAdminBloc: setEnabled ${event.address} -> ${event.enabled}');
     emit(state.copyWith(isLoading: true, error: null));
     try {
-      await setRunnerEnabledUseCase(event.address, event.enabled);
-      Logs().i('RunnersAdminBloc: setEnabled успешен');
+      await createRunnerUseCase(
+        name: event.name,
+        host: event.host,
+        port: event.port,
+        enabled: event.enabled,
+      );
       add(const RunnersAdminLoadRequested());
     } catch (e) {
-      Logs().e('RunnersAdminBloc: setEnabled', exception: e);
       emit(state.copyWith(
         isLoading: false,
-        error: userSafeErrorMessage(
-          e,
-          fallback: 'Ошибка изменения раннера',
-        ),
+        error: userSafeErrorMessage(e, fallback: 'Не удалось добавить раннер'),
+      ));
+    }
+  }
+
+  Future<void> _onUpdate(
+    RunnersAdminUpdateRequested event,
+    Emitter<RunnersAdminState> emit,
+  ) async {
+    emit(state.copyWith(isLoading: true, error: null));
+    try {
+      await updateRunnerUseCase(
+        id: event.id,
+        name: event.name,
+        host: event.host,
+        port: event.port,
+        enabled: event.enabled,
+      );
+      add(const RunnersAdminLoadRequested());
+    } catch (e) {
+      emit(state.copyWith(
+        isLoading: false,
+        error: userSafeErrorMessage(e, fallback: 'Не удалось сохранить раннер'),
+      ));
+    }
+  }
+
+  Future<void> _onDelete(
+    RunnersAdminDeleteRequested event,
+    Emitter<RunnersAdminState> emit,
+  ) async {
+    emit(state.copyWith(isLoading: true, error: null));
+    try {
+      await deleteRunnerUseCase(event.id);
+      add(const RunnersAdminLoadRequested());
+    } catch (e) {
+      emit(state.copyWith(
+        isLoading: false,
+        error: userSafeErrorMessage(e, fallback: 'Не удалось удалить раннер'),
       ));
     }
   }
@@ -132,26 +154,6 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
         error: userSafeErrorMessage(
           e,
           fallback: 'Ошибка выбора раннера по умолчанию',
-        ),
-      ));
-    }
-  }
-
-  Future<void> _onDefaultModelChanged(
-    RunnersAdminDefaultModelChanged event,
-    Emitter<RunnersAdminState> emit,
-  ) async {
-    try {
-      await setDefaultRunnerModelUseCase(event.runnerAddress, event.model);
-      final updated = Map<String, String?>.from(state.defaultModelsByRunner);
-      updated[event.runnerAddress] = event.model;
-      emit(state.copyWith(defaultModelsByRunner: updated));
-    } catch (e) {
-      Logs().e('RunnersAdminBloc: defaultModel', exception: e);
-      emit(state.copyWith(
-        error: userSafeErrorMessage(
-          e,
-          fallback: 'Ошибка выбора модели',
         ),
       ));
     }

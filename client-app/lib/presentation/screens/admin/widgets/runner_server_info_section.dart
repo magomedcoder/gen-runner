@@ -3,14 +3,10 @@ import 'package:gen/domain/entities/server_info.dart';
 
 class RunnerServerInfoSection extends StatelessWidget {
   final ServerInfo serverInfo;
-  final String? defaultModel;
-  final ValueChanged<String>? onDefaultModelChanged;
 
   const RunnerServerInfoSection({
     super.key,
     required this.serverInfo,
-    this.defaultModel,
-    this.onDefaultModelChanged,
   });
 
   @override
@@ -19,34 +15,6 @@ class RunnerServerInfoSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (serverInfo.models.isNotEmpty) ...[
-          DropdownButtonFormField<String>(
-            initialValue: defaultModel != null && serverInfo.models.contains(defaultModel)
-                ? defaultModel
-                : serverInfo.models.first,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              isDense: true,
-              labelText: 'Модель',
-            ),
-            items: [
-              for (final model in serverInfo.models)
-                DropdownMenuItem<String>(
-                  value: model,
-                  child: Text(model),
-                ),
-            ],
-            onChanged: onDefaultModelChanged == null ? null : (String? v) {
-              if (v != null) {
-                onDefaultModelChanged!(v);
-              }
-            },
-          ),
-        ],
-        const SizedBox(height: 12),
-        const Divider(height: 1),
-        const SizedBox(height: 12),
         Text(
           'Сервер',
           style: theme.textTheme.labelMedium?.copyWith(

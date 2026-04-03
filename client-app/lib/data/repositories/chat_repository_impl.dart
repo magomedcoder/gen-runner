@@ -344,32 +344,6 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<String?> getDefaultRunnerModel(String runner) async {
-    try {
-      return await dataSource.getDefaultRunnerModel(runner);
-    } catch (e, st) {
-      if (e is Failure) rethrow;
-      Logs().e('ChatRepository: getDefaultRunnerModel', exception: e, stackTrace: st);
-      throw ApiFailure(
-        userSafeErrorMessage(e, fallback: 'Ошибка получения модели по умолчанию'),
-      );
-    }
-  }
-
-  @override
-  Future<void> setDefaultRunnerModel(String runner, String? model) async {
-    try {
-      await dataSource.setDefaultRunnerModel(runner, model);
-    } catch (e, st) {
-      if (e is Failure) rethrow;
-      Logs().e('ChatRepository: setDefaultRunnerModel', exception: e, stackTrace: st);
-      throw ApiFailure(
-        userSafeErrorMessage(e, fallback: 'Ошибка сохранения модели по умолчанию'),
-      );
-    }
-  }
-
-  @override
   Future<int> putSessionFile({
     required int sessionId,
     required String filename,

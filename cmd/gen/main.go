@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -15,7 +16,10 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	configPath := flag.String("config", "config.yaml", "путь к YAML-конфигурации")
+	flag.Parse()
+
+	cfg, err := config.LoadFrom(*configPath)
 	if err != nil {
 		logger.Default.SetLevel(logger.LevelInfo)
 		logger.E("Ошибка загрузки конфигурации: %v", err)
