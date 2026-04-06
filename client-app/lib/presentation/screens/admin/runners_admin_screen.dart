@@ -58,6 +58,7 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
         host: v.host,
         port: v.port,
         enabled: v.enabled,
+        selectedModel: '',
       ),
     );
   }
@@ -75,6 +76,7 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
         host: v.host,
         port: v.port,
         enabled: v.enabled,
+        selectedModel: runner.selectedModel,
       ),
     );
   }
@@ -177,6 +179,7 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
                                     host: r.host,
                                     port: r.port,
                                     enabled: enabled,
+                                    selectedModel: r.selectedModel,
                                   ),
                                 );
                               }

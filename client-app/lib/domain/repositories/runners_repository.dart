@@ -10,6 +10,7 @@ abstract class RunnersRepository {
     required String host,
     required int port,
     required bool enabled,
+    String selectedModel = '',
   });
 
   Future<void> updateRunner({
@@ -18,6 +19,7 @@ abstract class RunnersRepository {
     required String host,
     required int port,
     required bool enabled,
+    String selectedModel = '',
   });
 
   Future<void> deleteRunner(int id);

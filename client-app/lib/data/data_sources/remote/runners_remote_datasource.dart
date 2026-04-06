@@ -19,6 +19,7 @@ abstract class IRunnersRemoteDataSource {
     required String host,
     required int port,
     required bool enabled,
+    String selectedModel = '',
   });
 
   Future<void> updateRunner({
@@ -27,6 +28,7 @@ abstract class IRunnersRemoteDataSource {
     required String host,
     required int port,
     required bool enabled,
+    String selectedModel = '',
   });
 
   Future<void> deleteRunner(int id);
@@ -92,6 +94,7 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
       gpus: gpus,
       serverInfo: server,
       loadedModel: loaded,
+      selectedModel: r.selectedModel,
     );
   }
 
@@ -128,6 +131,7 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
               gpus: const [],
               serverInfo: null,
               loadedModel: null,
+              selectedModel: r.selectedModel,
             ),
           )
           .toList();
@@ -143,6 +147,7 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
     required String host,
     required int port,
     required bool enabled,
+    String selectedModel = '',
   }) async {
     Logs().d('RunnersRemote: createRunner $host:$port');
     try {
@@ -152,6 +157,7 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
           host: host,
           port: port,
           enabled: enabled,
+          selectedModel: selectedModel,
         ),
       ));
     } catch (e) {
@@ -167,6 +173,7 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
     required String host,
     required int port,
     required bool enabled,
+    String selectedModel = '',
   }) async {
     Logs().d('RunnersRemote: updateRunner id=$id');
     try {
@@ -177,6 +184,7 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
           host: host,
           port: port,
           enabled: enabled,
+          selectedModel: selectedModel,
         ),
       ));
     } catch (e) {

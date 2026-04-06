@@ -19,7 +19,14 @@ class RunnersRepositoryImpl implements RunnersRepository {
     required String host,
     required int port,
     required bool enabled,
-  }) => _remote.createRunner(name: name, host: host, port: port, enabled: enabled);
+    String selectedModel = '',
+  }) => _remote.createRunner(
+    name: name,
+    host: host,
+    port: port,
+    enabled: enabled,
+    selectedModel: selectedModel,
+  );
 
   @override
   Future<void> updateRunner({
@@ -28,12 +35,14 @@ class RunnersRepositoryImpl implements RunnersRepository {
     required String host,
     required int port,
     required bool enabled,
+    String selectedModel = '',
   }) => _remote.updateRunner(
     id: id,
     name: name,
     host: host,
     port: port,
     enabled: enabled,
+    selectedModel: selectedModel,
   );
 
   @override

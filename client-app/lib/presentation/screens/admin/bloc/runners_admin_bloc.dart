@@ -86,6 +86,7 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
         host: event.host,
         port: event.port,
         enabled: event.enabled,
+        selectedModel: event.selectedModel,
       );
       add(const RunnersAdminLoadRequested());
     } catch (e) {
@@ -108,6 +109,7 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
         host: event.host,
         port: event.port,
         enabled: event.enabled,
+        selectedModel: event.selectedModel,
       );
       add(const RunnersAdminLoadRequested());
     } catch (e) {

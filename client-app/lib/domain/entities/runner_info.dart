@@ -14,6 +14,7 @@ class RunnerInfo extends Equatable {
   final List<GpuInfo> gpus;
   final ServerInfo? serverInfo;
   final LoadedModelStatus? loadedModel;
+  final String selectedModel;
 
   const RunnerInfo({
     this.id = 0,
@@ -26,6 +27,7 @@ class RunnerInfo extends Equatable {
     this.gpus = const [],
     this.serverInfo,
     this.loadedModel,
+    this.selectedModel = '',
   });
 
   @override
@@ -40,5 +42,6 @@ class RunnerInfo extends Equatable {
     gpus,
     serverInfo,
     loadedModel,
+    selectedModel,
   ];
 }

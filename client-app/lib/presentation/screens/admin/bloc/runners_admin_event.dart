@@ -16,16 +16,18 @@ class RunnersAdminCreateRequested extends RunnersAdminEvent {
   final String host;
   final int port;
   final bool enabled;
+  final String selectedModel;
 
   const RunnersAdminCreateRequested({
     required this.name,
     required this.host,
     required this.port,
     required this.enabled,
+    this.selectedModel = '',
   });
 
   @override
-  List<Object?> get props => [name, host, port, enabled];
+  List<Object?> get props => [name, host, port, enabled, selectedModel];
 }
 
 class RunnersAdminUpdateRequested extends RunnersAdminEvent {
@@ -34,6 +36,7 @@ class RunnersAdminUpdateRequested extends RunnersAdminEvent {
   final String host;
   final int port;
   final bool enabled;
+  final String selectedModel;
 
   const RunnersAdminUpdateRequested({
     required this.id,
@@ -41,10 +44,11 @@ class RunnersAdminUpdateRequested extends RunnersAdminEvent {
     required this.host,
     required this.port,
     required this.enabled,
+    this.selectedModel = '',
   });
 
   @override
-  List<Object?> get props => [id, name, host, port, enabled];
+  List<Object?> get props => [id, name, host, port, enabled, selectedModel];
 }
 
 class RunnersAdminDeleteRequested extends RunnersAdminEvent {

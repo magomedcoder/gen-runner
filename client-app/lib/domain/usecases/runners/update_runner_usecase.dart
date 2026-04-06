@@ -11,11 +11,13 @@ class UpdateRunnerUseCase {
     required String host,
     required int port,
     required bool enabled,
+    String selectedModel = '',
   }) => _repo.updateRunner(
     id: id,
     name: name,
     host: host,
     port: port,
     enabled: enabled,
+    selectedModel: selectedModel,
   );
 }

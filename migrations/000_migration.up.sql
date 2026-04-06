@@ -25,13 +25,24 @@ CREATE TABLE IF NOT EXISTS user_sessions
 
 CREATE TABLE IF NOT EXISTS chats
 (
-    id         BIGSERIAL PRIMARY KEY,
-    user_id    INTEGER      NOT NULL REFERENCES users (id),
-    title      VARCHAR(500) NOT NULL,
-    model      VARCHAR(255) NOT NULL DEFAULT '',
-    created_at TIMESTAMP    NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP    NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMP    NULL
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         INTEGER      NOT NULL REFERENCES users (id),
+    title           VARCHAR(500) NOT NULL,
+    model           VARCHAR(255) NOT NULL DEFAULT '',
+    selected_runner VARCHAR(255) NOT NULL DEFAULT '',
+    system_prompt   TEXT         NOT NULL DEFAULT '',
+    stop_sequences  TEXT[]       NOT NULL DEFAULT '{}',
+    timeout_seconds INTEGER      NOT NULL DEFAULT 0,
+    temperature     REAL         NULL,
+    top_k           INTEGER      NULL,
+    top_p           REAL         NULL,
+    json_mode       BOOLEAN      NOT NULL DEFAULT FALSE,
+    json_schema     TEXT         NOT NULL DEFAULT '',
+    tools_json      TEXT         NOT NULL DEFAULT '',
+    profile         VARCHAR(64)  NOT NULL DEFAULT '',
+    created_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMP    NULL
 );
 
 CREATE TABLE IF NOT EXISTS files
@@ -65,22 +76,6 @@ CREATE TABLE IF NOT EXISTS messages
     deleted_at         TIMESTAMP   NULL
 );
 
-CREATE TABLE IF NOT EXISTS user_chat_preferences
-(
-    user_id         INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
-    selected_runner VARCHAR(255) NOT NULL DEFAULT '',
-    updated_at      TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS user_runner_models
-(
-    user_id        INTEGER      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    runner_address VARCHAR(255) NOT NULL,
-    model          VARCHAR(255) NOT NULL DEFAULT '',
-    updated_at     TIMESTAMP    NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, runner_address)
-);
-
 CREATE TABLE IF NOT EXISTS editor_text_history
 (
     id         BIGSERIAL PRIMARY KEY,
@@ -88,22 +83,6 @@ CREATE TABLE IF NOT EXISTS editor_text_history
     runner     VARCHAR(255) NOT NULL DEFAULT '',
     text       TEXT         NOT NULL,
     created_at TIMESTAMP    NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS chat_settings
-(
-    session_id      BIGINT PRIMARY KEY REFERENCES chats (id) ON DELETE CASCADE,
-    system_prompt   TEXT        NOT NULL DEFAULT '',
-    stop_sequences  TEXT[]      NOT NULL DEFAULT '{}',
-    timeout_seconds INTEGER     NOT NULL DEFAULT 0,
-    temperature     REAL        NULL,
-    top_k           INTEGER     NULL,
-    top_p           REAL        NULL,
-    json_mode       BOOLEAN     NOT NULL DEFAULT FALSE,
-    json_schema     TEXT        NOT NULL DEFAULT '',
-    tools_json      TEXT        NOT NULL DEFAULT '',
-    profile         VARCHAR(64) NOT NULL DEFAULT '',
-    updated_at      TIMESTAMP   NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS message_edits
@@ -119,6 +98,15 @@ CREATE TABLE IF NOT EXISTS message_edits
     soft_deleted_to_id   BIGINT      NULL,
     created_at           TIMESTAMP   NOT NULL DEFAULT NOW(),
     reverted_at          TIMESTAMP   NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_runner_models
+(
+    user_id        INTEGER      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    runner_address VARCHAR(255) NOT NULL,
+    model          VARCHAR(255) NOT NULL DEFAULT '',
+    updated_at     TIMESTAMP    NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, runner_address)
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
@@ -141,10 +129,9 @@ CREATE INDEX IF NOT EXISTS idx_messages_deleted_at ON messages (deleted_at);
 CREATE INDEX IF NOT EXISTS idx_messages_attachment_file_id ON messages (attachment_file_id);
 CREATE INDEX IF NOT EXISTS idx_messages_session_created_active ON messages (session_id, created_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_messages_session_id_active ON messages (session_id, id) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_user_runner_models_user_id ON user_runner_models (user_id);
 CREATE INDEX IF NOT EXISTS idx_editor_text_history_user_id ON editor_text_history (user_id);
 CREATE INDEX IF NOT EXISTS idx_editor_text_history_created_at ON editor_text_history (created_at);
-CREATE INDEX IF NOT EXISTS idx_chat_settings_updated_at ON chat_settings (updated_at);
+CREATE INDEX IF NOT EXISTS idx_user_runner_models_user_id ON user_runner_models (user_id);
 CREATE INDEX IF NOT EXISTS idx_message_edits_message_id_created_at ON message_edits (message_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_message_edits_session_id_created_at ON message_edits (session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_message_edits_kind_created_at ON message_edits (kind, created_at);

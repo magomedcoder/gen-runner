@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/repository/postgres/model"
 	"gorm.io/gorm"
@@ -18,12 +19,23 @@ func NewChatSessionRepository(db *gorm.DB) domain.ChatSessionRepository {
 }
 
 func (r *chatSessionRepository) Create(ctx context.Context, session *domain.ChatSession) error {
+	selectedRunner := ""
+	var prev model.Chat
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ?", session.UserId).
+		Order("updated_at DESC").
+		First(&prev).Error; err == nil {
+		selectedRunner = prev.SelectedRunner
+	}
+
 	row := model.Chat{
-		UserID:    session.UserId,
-		Title:     session.Title,
-		Model:     session.Model,
-		CreatedAt: session.CreatedAt,
-		UpdatedAt: session.UpdatedAt,
+		UserID:         session.UserId,
+		Title:          session.Title,
+		Model:          session.Model,
+		SelectedRunner: selectedRunner,
+		StopSequences:  pq.StringArray{},
+		CreatedAt:      session.CreatedAt,
+		UpdatedAt:      session.UpdatedAt,
 	}
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return err

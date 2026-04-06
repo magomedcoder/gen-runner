@@ -46,8 +46,7 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
       _syncFromRunner(r, forceLoad: true);
       return;
     }
-    if (oldWidget.runner.enabled != r.enabled ||
-        oldWidget.runner.loadedModel?.loaded != r.loadedModel?.loaded) {
+    if (oldWidget.runner.enabled != r.enabled || oldWidget.runner.loadedModel?.loaded != r.loadedModel?.loaded || oldWidget.runner.selectedModel != r.selectedModel) {
       _syncFromRunner(r, forceLoad: false);
     }
   }
@@ -78,8 +77,24 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
     }
   }
 
+  String? _pickInitialModel(List<String> list, RunnerInfo r) {
+    if (list.isEmpty) {
+      return null;
+    }
+
+    final saved = r.selectedModel.trim();
+    if (saved.isNotEmpty && list.contains(saved)) {
+      return saved;
+    }
+
+    return _defaultModelSelection(list, r);
+  }
+
   String? _defaultModelSelection(List<String> list, RunnerInfo r) {
-    if (list.isEmpty) return null;
+    if (list.isEmpty) {
+      return null;
+    }
+
     final prev = _selectedModel;
     if (prev != null && list.contains(prev)) return prev;
     final lm = r.loadedModel;
@@ -88,10 +103,14 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
       final d = lm.displayName.trim();
       for (final m in list) {
         final t = m.trim();
-        if (t.isEmpty) continue;
+        if (t.isEmpty) {
+          continue;
+        }
+
         if (b.isNotEmpty && (t == b || t.endsWith(b) || b.endsWith(t))) {
           return m;
         }
+
         if (d.isNotEmpty && (t == d || t.contains(d) || d.contains(t))) {
           return m;
         }
@@ -102,7 +121,9 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
 
   Future<void> _loadModels() async {
     final r = widget.runner;
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _loadingModels = true;
       _modelsError = null;
@@ -110,14 +131,18 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
     });
     try {
       final list = await _repo.getRunnerModels(r.id);
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _models = list;
         _loadingModels = false;
-        _selectedModel = _defaultModelSelection(list, widget.runner);
+        _selectedModel = _pickInitialModel(list, widget.runner);
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _loadingModels = false;
         _modelsError = userSafeErrorMessage(
@@ -132,7 +157,9 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
     final r = widget.runner;
     final m = _selectedModel;
     if (m == null || m.isEmpty) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Выберите модель')),
       );
@@ -141,13 +168,25 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
     setState(() => _modelBusy = true);
     try {
       await _repo.runnerLoadModel(r.id, m);
-      if (!mounted) return;
+      await _repo.updateRunner(
+        id: r.id,
+        name: r.name,
+        host: r.host,
+        port: r.port,
+        enabled: r.enabled,
+        selectedModel: m,
+      );
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Модель загружена')),
       );
       widget.onAfterOperation();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -165,13 +204,17 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
     setState(() => _modelBusy = true);
     try {
       await _repo.runnerUnloadModel(r.id);
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Модель выгружена')),
       );
       widget.onAfterOperation();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -192,7 +235,9 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
           await _repo.runnerUnloadModel(r.id);
         }
       } catch (_) {}
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _modelWorkEnabled = false;
         _models = null;
@@ -216,14 +261,18 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
       setState(() => _modelBusy = true);
       try {
         await _repo.runnerUnloadModel(r.id);
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
         setState(() => _modelWorkEnabled = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Модель выгружена, работа остановлена')),
         );
         widget.onAfterOperation();
       } catch (e) {
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -244,12 +293,18 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
 
   Future<void> _resetRunnerMemory() async {
     final r = widget.runner;
-    if (_memoryResetBusy || !r.enabled || !_modelWorkEnabled) return;
+    if (_memoryResetBusy || !r.enabled || !_modelWorkEnabled) {
+      return;
+    }
+
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _memoryResetBusy = true);
     try {
       await _repo.runnerResetMemory(r.id);
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
       setState(() => _modelWorkEnabled = false);
       messenger.showSnackBar(
         const SnackBar(
@@ -260,7 +315,9 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
       );
       widget.onAfterOperation();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       messenger.showSnackBar(
         SnackBar(
           content: Text(
@@ -272,7 +329,9 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _memoryResetBusy = false);
+      if (mounted) {
+        setState(() => _memoryResetBusy = false);
+      }
     }
   }
 
@@ -346,15 +405,15 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
         OutlinedButton.icon(
           onPressed: canResetMemory ? _resetRunnerMemory : null,
           icon: _memoryResetBusy
-              ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: theme.colorScheme.primary,
-                  ),
-                )
-              : const Icon(Icons.restart_alt_outlined),
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: theme.colorScheme.primary,
+                ),
+              )
+            : const Icon(Icons.restart_alt_outlined),
           label: Text(_memoryResetBusy ? 'Сброс…' : 'Сбросить память'),
         ),
         const SizedBox(height: 8),
@@ -432,8 +491,36 @@ class _RunnerCardControlsSectionState extends State<RunnerCardControlsSection> {
                       DropdownMenuItem<String>(value: m, child: Text(m)),
                   ],
                   onChanged: _modelBusy
-                      ? null
-                      : (v) => setState(() => _selectedModel = v),
+                    ? null
+                    : (v) async {
+                        setState(() => _selectedModel = v);
+                        final vm = v?.trim() ?? '';
+                        if (vm.isEmpty) return;
+                        final messenger = ScaffoldMessenger.of(context);
+                        try {
+                          await _repo.updateRunner(
+                            id: r.id,
+                            name: r.name,
+                            host: r.host,
+                            port: r.port,
+                            enabled: r.enabled,
+                            selectedModel: vm,
+                          );
+                          widget.onAfterOperation();
+                        } catch (e) {
+                          if (!mounted) return;
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                userSafeErrorMessage(
+                                  e,
+                                  fallback: 'Не удалось сохранить модель',
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+                      },
                 ),
               ),
             ),
