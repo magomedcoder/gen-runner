@@ -5,6 +5,7 @@ import 'package:gen/core/log/logs.dart';
 import 'package:gen/domain/entities/gpu_info.dart' as gpu_ent;
 import 'package:gen/domain/entities/loaded_model_status.dart' as lm_ent;
 import 'package:gen/domain/entities/runner_info.dart' as domain;
+import 'package:gen/domain/entities/web_search_settings.dart';
 import 'package:gen/domain/entities/server_info.dart' as srv_ent;
 import 'package:gen/generated/grpc_pb/common.pb.dart' as common;
 import 'package:gen/generated/grpc_pb/runner.pb.dart' as pb;
@@ -42,6 +43,10 @@ abstract class IRunnersRemoteDataSource {
   Future<void> runnerUnloadModel(int runnerId);
 
   Future<void> runnerResetMemory(int runnerId);
+
+  Future<WebSearchSettingsEntity> getWebSearchSettings();
+
+  Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings);
 }
 
 class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
@@ -278,6 +283,56 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
       );
     } catch (e) {
       Logs().e('RunnersRemote: runnerResetMemory', exception: e);
+      rethrow;
+    }
+  }
+
+  WebSearchSettingsEntity _mapWebSearch(pb.WebSearchSettings s) {
+    return WebSearchSettingsEntity(
+      enabled: s.enabled,
+      maxResults: s.maxResults,
+      braveApiKey: s.braveApiKey,
+      googleApiKey: s.googleApiKey,
+      googleSearchEngineId: s.googleSearchEngineId,
+      yandexUser: s.yandexUser,
+      yandexKey: s.yandexKey,
+    );
+  }
+
+  @override
+  Future<WebSearchSettingsEntity> getWebSearchSettings() async {
+    Logs().d('RunnersRemote: getWebSearchSettings');
+    try {
+      final resp = await _authGuard.execute(
+        () => _channelManager.runnerClient.getWebSearchSettings(common.Empty()),
+      );
+      final s = resp.hasSettings() ? resp.settings : pb.WebSearchSettings();
+      return _mapWebSearch(s);
+    } catch (e) {
+      Logs().e('RunnersRemote: getWebSearchSettings', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings) async {
+    Logs().d('RunnersRemote: updateWebSearchSettings');
+    try {
+      await _authGuard.execute(
+        () => _channelManager.runnerClient.updateWebSearchSettings(
+          pb.UpdateWebSearchSettingsRequest(
+            enabled: settings.enabled,
+            maxResults: settings.maxResults,
+            braveApiKey: settings.braveApiKey,
+            googleApiKey: settings.googleApiKey,
+            googleSearchEngineId: settings.googleSearchEngineId,
+            yandexUser: settings.yandexUser,
+            yandexKey: settings.yandexKey,
+          ),
+        ),
+      );
+    } catch (e) {
+      Logs().e('RunnersRemote: updateWebSearchSettings', exception: e);
       rethrow;
     }
   }

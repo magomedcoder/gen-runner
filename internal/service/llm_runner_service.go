@@ -51,6 +51,10 @@ func mapGenerationParamsToProto(in *domain.GenerationParams) *llmrunnerpb.Genera
 		out.TopP = in.TopP
 	}
 
+	if in.EnableThinking != nil {
+		out.EnableThinking = in.EnableThinking
+	}
+
 	if len(in.Tools) > 0 {
 		out.Tools = make([]*llmrunnerpb.Tool, 0, len(in.Tools))
 		for _, t := range in.Tools {
@@ -243,7 +247,7 @@ func (s *LLMRunnerService) SendMessage(
 	stopSequences []string,
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
-) (chan string, error) {
+) (chan domain.LLMStreamChunk, error) {
 	ch, _, err := s.sendMessageStream(ctx, sessionID, model, messages, stopSequences, timeoutSeconds, genParams)
 	return ch, err
 }
@@ -256,7 +260,7 @@ func (s *LLMRunnerService) SendMessageWithRunnerToolAction(
 	stopSequences []string,
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
-) (chan string, func() string, error) {
+) (chan domain.LLMStreamChunk, func() string, error) {
 	return s.sendMessageStream(ctx, sessionID, model, messages, stopSequences, timeoutSeconds, genParams)
 }
 
@@ -268,7 +272,7 @@ func (s *LLMRunnerService) sendMessageStream(
 	stopSequences []string,
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
-) (chan string, func() string, error) {
+) (chan domain.LLMStreamChunk, func() string, error) {
 	modelName := s.resolveRunnerModel(model)
 	req := &llmrunnerpb.SendMessageRequest{
 		SessionId:        sessionID,
@@ -291,7 +295,7 @@ func (s *LLMRunnerService) sendMessageStream(
 		return nil, nil, fmt.Errorf("llm-runner SendMessage: ошибка чтения чанка из потока ответа: %w", err)
 	}
 
-	output := make(chan string, 100)
+	output := make(chan domain.LLMStreamChunk, 100)
 	var toolBlob atomic.Value
 
 	go func() {
@@ -302,11 +306,13 @@ func (s *LLMRunnerService) sendMessageStream(
 				toolBlob.Store(ta)
 			}
 
-			if current.Content != "" {
+			content := current.GetContent()
+			rc := current.GetReasoningContent()
+			if content != "" || rc != "" {
 				select {
 				case <-ctx.Done():
 					return
-				case output <- current.Content:
+				case output <- domain.LLMStreamChunk{Content: content, ReasoningContent: rc}:
 				}
 			}
 

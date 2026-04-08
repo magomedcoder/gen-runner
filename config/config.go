@@ -23,7 +23,7 @@ type Config struct {
 	Database                     DatabaseConfig
 	JWT                          JWTConfig
 	Runners                      RunnersConfig
-	UploadDir                    string `yaml:"upload_dir"`
+	DataDir                      string `yaml:"data_dir"`
 	AttachmentHydrateParallelism int    `yaml:"attachment_hydrate_parallelism"`
 	LogLevel                     string `yaml:"log_level"`
 	MinClientBuild               int32
@@ -162,7 +162,7 @@ type yamlRoot struct {
 	Database                     databaseYAML      `yaml:"database"`
 	JWT                          jwtYAML           `yaml:"jwt"`
 	Runners                      *runnersBlockYAML `yaml:"runners"`
-	UploadDir                    string            `yaml:"upload_dir"`
+	DataDir                      string            `yaml:"data_dir"`
 	AttachmentHydrateParallelism int               `yaml:"attachment_hydrate_parallelism"`
 	LogLevel                     string            `yaml:"log_level"`
 	MinClientBuild               int32
@@ -198,7 +198,7 @@ func defaultConfig() *Config {
 		Runners: RunnersConfig{
 			Entries: nil,
 		},
-		UploadDir:      "./uploads",
+		DataDir:        "./data",
 		LogLevel:       "info",
 		MinClientBuild: 1,
 	}
@@ -336,8 +336,8 @@ func mergeYAML(dst *Config, raw *yamlRoot) error {
 	if err := mergeRunnersFromYAML(dst, raw.Runners); err != nil {
 		return err
 	}
-	if raw.UploadDir != "" {
-		dst.UploadDir = raw.UploadDir
+	if dd := strings.TrimSpace(raw.DataDir); dd != "" {
+		dst.DataDir = dd
 	}
 	if raw.AttachmentHydrateParallelism != 0 {
 		dst.AttachmentHydrateParallelism = raw.AttachmentHydrateParallelism

@@ -579,8 +579,8 @@ func (p *Pool) pickRunner(ctx context.Context, model string) (*LLMRunnerService,
 	return best.client, best.addr, nil
 }
 
-func forwardStream(ch <-chan string, ai *atomic.Int32) chan string {
-	out := make(chan string, 100)
+func forwardStream(ch <-chan domain.LLMStreamChunk, ai *atomic.Int32) chan domain.LLMStreamChunk {
+	out := make(chan domain.LLMStreamChunk, 100)
 	go func() {
 		defer close(out)
 		if ai != nil {
@@ -687,7 +687,7 @@ func (p *Pool) SendMessage(
 	stopSequences []string,
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
-) (chan string, error) {
+) (chan domain.LLMStreamChunk, error) {
 	client, addr, err := p.pickRunner(ctx, model)
 	if err != nil {
 		return nil, err
@@ -712,7 +712,7 @@ func (p *Pool) SendMessageWithRunnerToolAction(
 	stopSequences []string,
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
-) (chan string, func() string, error) {
+) (chan domain.LLMStreamChunk, func() string, error) {
 	client, addr, err := p.pickRunner(ctx, model)
 	if err != nil {
 		return nil, nil, err
@@ -738,7 +738,7 @@ func (p *Pool) SendMessageOnRunner(
 	stopSequences []string,
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
-) (chan string, error) {
+) (chan domain.LLMStreamChunk, error) {
 	runnerAddr = strings.TrimSpace(runnerAddr)
 	if runnerAddr == "" {
 		return nil, fmt.Errorf("runner address is empty")
@@ -758,6 +758,37 @@ func (p *Pool) SendMessageOnRunner(
 	}
 
 	return forwardStream(ch, ai), nil
+}
+
+func (p *Pool) SendMessageWithRunnerToolActionOnRunner(
+	ctx context.Context,
+	runnerAddr string,
+	sessionID int64,
+	model string,
+	messages []*domain.Message,
+	stopSequences []string,
+	timeoutSeconds int32,
+	genParams *domain.GenerationParams,
+) (chan domain.LLMStreamChunk, func() string, error) {
+	runnerAddr = strings.TrimSpace(runnerAddr)
+	if runnerAddr == "" {
+		return nil, nil, fmt.Errorf("runner address is empty")
+	}
+
+	client, err := p.getClient(runnerAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ai := p.getOrCreateInflight(runnerAddr)
+	ai.Add(1)
+	ch, toolFn, err := client.SendMessageWithRunnerToolAction(ctx, sessionID, model, messages, stopSequences, timeoutSeconds, genParams)
+	if err != nil {
+		ai.Add(-1)
+		return nil, nil, err
+	}
+
+	return forwardStream(ch, ai), toolFn, nil
 }
 
 func (p *Pool) Embed(ctx context.Context, model string, text string) ([]float32, error) {

@@ -198,6 +198,8 @@ class ChatUpdateSessionSettings extends ChatEvent {
   final String toolsJson;
   final String profile;
   final bool modelReasoningEnabled;
+  final bool webSearchEnabled;
+  final String webSearchProvider;
 
   const ChatUpdateSessionSettings({
     required this.systemPrompt,
@@ -211,6 +213,8 @@ class ChatUpdateSessionSettings extends ChatEvent {
     required this.toolsJson,
     required this.profile,
     this.modelReasoningEnabled = false,
+    this.webSearchEnabled = false,
+    this.webSearchProvider = '',
   });
 
   @override
@@ -226,6 +230,8 @@ class ChatUpdateSessionSettings extends ChatEvent {
     toolsJson,
     profile,
     modelReasoningEnabled,
+    webSearchEnabled,
+    webSearchProvider,
   ];
 }
 
@@ -236,4 +242,14 @@ class ChatSetModelReasoning extends ChatEvent {
 
   @override
   List<Object?> get props => [enabled];
+}
+
+class ChatSetWebSearch extends ChatEvent {
+  final bool enabled;
+  final String provider;
+
+  const ChatSetWebSearch({required this.enabled, this.provider = ''});
+
+  @override
+  List<Object?> get props => [enabled, provider];
 }

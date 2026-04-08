@@ -8,11 +8,12 @@ import (
 )
 
 type Runner struct {
-	ID      int64
-	Name    string
-	Host    string
-	Port    int32
-	Enabled bool
+	ID            int64
+	Name          string
+	Host          string
+	Port          int32
+	Enabled       bool
+	SelectedModel string
 }
 
 func RunnerListenAddress(host string, port int32) string {

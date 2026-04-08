@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/magomedcoder/gen/internal/domain"
 )
 
 func TestExtractLeadingJSONArray(t *testing.T) {
@@ -102,21 +104,21 @@ func TestRunFnWithContextNoDeadline(t *testing.T) {
 	}
 }
 
-func TestDrainLLMStringChannelForward(t *testing.T) {
-	ch := make(chan string, 2)
+func TestDrainLLMStreamChannelForward(t *testing.T) {
+	ch := make(chan domain.LLMStreamChunk, 2)
 	go func() {
-		ch <- "a"
-		ch <- "b"
+		ch <- domain.LLMStreamChunk{Content: "a"}
+		ch <- domain.LLMStreamChunk{Content: "b"}
 		close(ch)
 	}()
 
-	var got []string
-	raw, streamed := drainLLMStringChannelForward(ch, func(s string) bool {
-		got = append(got, s)
+	var got []domain.LLMStreamChunk
+	raw, streamed := drainLLMStreamChannelForward(ch, func(c domain.LLMStreamChunk) bool {
+		got = append(got, c)
 		return true
 	})
 
-	if raw != "ab" || !streamed || len(got) != 2 || got[0] != "a" || got[1] != "b" {
+	if raw != "ab" || !streamed || len(got) != 2 || got[0].Content != "a" || got[1].Content != "b" {
 		t.Fatalf("raw=%q streamed=%v got=%v", raw, streamed, got)
 	}
 }

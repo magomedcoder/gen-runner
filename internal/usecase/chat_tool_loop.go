@@ -101,17 +101,19 @@ func normalizeToolName(s string) string {
 	return s
 }
 
-func drainLLMStringChannelForward(ch chan string, forward func(s string) bool) (raw string, streamedNonEmpty bool) {
+func drainLLMStreamChannelForward(ch chan domain.LLMStreamChunk, forward func(c domain.LLMStreamChunk) bool) (raw string, streamedNonEmpty bool) {
 	var b strings.Builder
-	for s := range ch {
-		b.WriteString(s)
-		if s == "" {
+	for c := range ch {
+		if c.Content != "" {
+			b.WriteString(c.Content)
+		}
+		if c.Content == "" && c.ReasoningContent == "" {
 			continue
 		}
 
-		if !forward(s) {
-			for s2 := range ch {
-				b.WriteString(s2)
+		if !forward(c) {
+			for c2 := range ch {
+				b.WriteString(c2.Content)
 			}
 
 			return b.String(), true
@@ -406,6 +408,7 @@ func (c *ChatUseCase) sendMessageWithToolLoop(
 	ctx context.Context,
 	userID int,
 	sessionID int64,
+	runnerAddr string,
 	resolvedModel string,
 	messagesForLLM []*domain.Message,
 	stopSequences []string,
@@ -418,7 +421,7 @@ func (c *ChatUseCase) sendMessageWithToolLoop(
 	}
 
 	out := make(chan ChatStreamChunk, 64)
-	go c.runChatToolLoop(ctx, userID, sessionID, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyInitiallyTrimmed, out)
+	go c.runChatToolLoop(ctx, userID, sessionID, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyInitiallyTrimmed, out)
 
 	return out, nil
 }
@@ -427,6 +430,7 @@ func (c *ChatUseCase) runChatToolLoop(
 	ctx context.Context,
 	userID int,
 	sessionID int64,
+	runnerAddr string,
 	resolvedModel string,
 	messagesForLLM []*domain.Message,
 	stopSequences []string,
@@ -473,14 +477,22 @@ func (c *ChatUseCase) runChatToolLoop(
 	}
 
 	for round := 0; round < maxToolRounds; round++ {
-		ch, runnerToolFn, err := c.llmRepo.SendMessageWithRunnerToolAction(ctx, sessionID, resolvedModel, history, stopSequences, timeoutSeconds, gp)
+		ch, runnerToolFn, err := c.llmRepo.SendMessageWithRunnerToolActionOnRunner(ctx, runnerAddr, sessionID, resolvedModel, history, stopSequences, timeoutSeconds, gp)
 		if err != nil {
 			sendErr(err)
 			return
 		}
 
-		raw, streamed := drainLLMStringChannelForward(ch, func(s string) bool {
-			return send(ChatStreamChunk{Kind: StreamChunkKindText, Text: s, MessageID: 0})
+		raw, streamed := drainLLMStreamChannelForward(ch, func(c domain.LLMStreamChunk) bool {
+			if c.ReasoningContent != "" {
+				if !send(ChatStreamChunk{Kind: StreamChunkKindReasoning, Text: c.ReasoningContent, MessageID: 0}) {
+					return false
+				}
+			}
+			if c.Content != "" {
+				return send(ChatStreamChunk{Kind: StreamChunkKindText, Text: c.Content, MessageID: 0})
+			}
+			return true
 		})
 		full := strings.TrimSpace(raw)
 		if full == "" {
@@ -624,7 +636,7 @@ func (c *ChatUseCase) runChatToolLoop(
 		history = append(history, assist)
 		history = append(history, toolMsgs...)
 		var loopTrimmed bool
-		history, loopTrimmed = c.capLLMHistoryTokens(ctx, history, 1+len(toolMsgs), sessionID, resolvedModel, false)
+		history, loopTrimmed = c.capLLMHistoryTokens(ctx, history, 1+len(toolMsgs), sessionID, resolvedModel, runnerAddr, false)
 		if loopTrimmed {
 			_ = send(ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice})
 		}
@@ -632,6 +644,14 @@ func (c *ChatUseCase) runChatToolLoop(
 
 	logger.W("ChatUseCase: session=%d превышен лимит итераций tool-calling (%d)", sessionID, maxToolRounds)
 	sendErr(fmt.Errorf("превышено число итераций tool-calling (%d)", maxToolRounds))
+}
+
+func webSearchToolDefinition() domain.Tool {
+	return domain.Tool{
+		Name:           "web_search",
+		Description:    "Поиск актуальной информации в интернете: новости, цены, погода, документация, свежие факты. Используй, когда ответ зависит от текущих данных или знания модели могут быть устаревшими. Передай короткий точный запрос на языке пользователя или на английском.",
+		ParametersJSON: `{"type":"object","properties":{"query":{"type":"string","description":"Поисковый запрос: несколько ключевых слов или короткая фраза."}},"required":["query"]}`,
+	}
 }
 
 func (c *ChatUseCase) executeDeclaredTool(ctx context.Context, userID int, sessionID int64, nameNorm string, params json.RawMessage) (string, error) {
@@ -644,6 +664,8 @@ func (c *ChatUseCase) executeDeclaredTool(ctx context.Context, userID int, sessi
 		return c.toolApplyMarkdownPatch(ctx, userID, sessionID, params)
 	case "put_session_file":
 		return c.toolPutSessionFile(ctx, userID, sessionID, params)
+	case "web_search":
+		return c.toolWebSearch(ctx, userID, sessionID, params)
 	default:
 		return "", fmt.Errorf("инструмент %q пока не реализован на сервере", nameNorm)
 	}
@@ -775,6 +797,36 @@ func (c *ChatUseCase) toolApplySpreadsheet(ctx context.Context, userID int, sess
 	}
 
 	return string(b), nil
+}
+
+func (c *ChatUseCase) toolWebSearch(ctx context.Context, _ int, sessionID int64, params json.RawMessage) (string, error) {
+	settings, err := c.sessionSettingsRepo.GetBySessionID(ctx, sessionID)
+	if err != nil {
+		return "", err
+	}
+	searcher := c.webSearcherFor(ctx, settings)
+	if searcher == nil {
+		return "", fmt.Errorf("веб-поиск не настроен на сервере или выбранный источник недоступен")
+	}
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(params, &m); err != nil {
+		return "", fmt.Errorf("parameters web_search: %w", err)
+	}
+
+	q, err := mustStringField(m, "query")
+	if err != nil {
+		return "", err
+	}
+
+	out, err := runFnWithContext(ctx, func() (string, error) {
+		return searcher.Search(ctx, q)
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return out, nil
 }
 
 func filterExecutableToolRows(rows []cohereActionRow) []cohereActionRow {

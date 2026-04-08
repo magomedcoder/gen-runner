@@ -13,7 +13,7 @@ import (
 const droppedHistorySummarizerSystem = `Тебе дан фрагмент переписки чата (роли user, assistant, tool). Сожми его в связный пересказ: факты, договорённости, открытые вопросы - чтобы модель могла продолжить без полного текста.
 Не более 8 предложений. Без приветствий и метакомментариев. Язык ответа - как у фрагмента.`
 
-func (c *ChatUseCase) summarizeDroppedMessages(ctx context.Context, sessionID int64, chatModel string, dropped []*domain.Message) string {
+func (c *ChatUseCase) summarizeDroppedMessages(ctx context.Context, sessionID int64, chatModel string, chatRunnerAddr string, dropped []*domain.Message) string {
 	if c.llmRepo == nil || len(dropped) == 0 {
 		return ""
 	}
@@ -60,10 +60,12 @@ func (c *ChatUseCase) summarizeDroppedMessages(ctx context.Context, sessionID in
 		Temperature: &temp,
 	}
 
-	var ch chan string
+	var ch chan domain.LLMStreamChunk
 	var err error
 	if hints.SummaryRunnerListenAddress != "" && c.runnerPool != nil {
 		ch, err = c.runnerPool.SendMessageOnRunner(sumCtx, hints.SummaryRunnerListenAddress, sessionID, model, []*domain.Message{sys, usr}, nil, 90, gp)
+	} else if strings.TrimSpace(chatRunnerAddr) != "" && c.runnerPool != nil {
+		ch, err = c.runnerPool.SendMessageOnRunner(sumCtx, chatRunnerAddr, sessionID, model, []*domain.Message{sys, usr}, nil, 90, gp)
 	} else {
 		ch, err = c.llmRepo.SendMessage(sumCtx, sessionID, model, []*domain.Message{sys, usr}, nil, 90, gp)
 	}
@@ -74,8 +76,8 @@ func (c *ChatUseCase) summarizeDroppedMessages(ctx context.Context, sessionID in
 	}
 
 	var b strings.Builder
-	for s := range ch {
-		b.WriteString(s)
+	for c := range ch {
+		b.WriteString(c.Content)
 	}
 
 	out := strings.TrimSpace(b.String())

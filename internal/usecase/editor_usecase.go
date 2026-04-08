@@ -57,8 +57,8 @@ func (e *EditorUseCase) Transform(
 	}
 
 	var b strings.Builder
-	for chunk := range ch {
-		b.WriteString(chunk)
+	for c := range ch {
+		b.WriteString(c.Content)
 	}
 
 	return strings.TrimSpace(b.String()), nil

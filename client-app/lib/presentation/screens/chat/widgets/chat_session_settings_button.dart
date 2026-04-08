@@ -431,6 +431,8 @@ class ChatSessionSettingsButton extends StatelessWidget {
                     toolsJson: toolsJsonController.text.trim(),
                     profile: selectedProfile,
                     modelReasoningEnabled: current.modelReasoningEnabled,
+                    webSearchEnabled: current.webSearchEnabled,
+                    webSearchProvider: current.webSearchProvider,
                   ),
                 );
                 Navigator.of(ctx).pop();

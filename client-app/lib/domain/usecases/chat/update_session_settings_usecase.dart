@@ -19,6 +19,8 @@ class UpdateSessionSettingsUseCase {
     required String toolsJson,
     required String profile,
     required bool modelReasoningEnabled,
+    required bool webSearchEnabled,
+    required String webSearchProvider,
   }) {
     return repository.updateSessionSettings(
       sessionId: sessionId,
@@ -33,6 +35,8 @@ class UpdateSessionSettingsUseCase {
       toolsJson: toolsJson,
       profile: profile,
       modelReasoningEnabled: modelReasoningEnabled,
+      webSearchEnabled: webSearchEnabled,
+      webSearchProvider: webSearchProvider,
     );
   }
 }

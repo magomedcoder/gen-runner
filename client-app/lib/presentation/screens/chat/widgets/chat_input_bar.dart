@@ -556,9 +556,7 @@ class ChatInputBarState extends State<ChatInputBar> {
                 onPressed: widget.isEnabled ? _pickFile : null,
                 icon: Icon(
                   Icons.attach_file_rounded,
-                  color: widget.isEnabled
-                    ? theme.colorScheme.onSurfaceVariant
-                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                 ),
               ),
             Builder(
@@ -600,6 +598,115 @@ class ChatInputBarState extends State<ChatInputBar> {
                       ? theme.colorScheme.onSurfaceVariant
                       : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                   ),
+                );
+              },
+            ),
+            Builder(
+              builder: (context) {
+                final searchOn = state.currentSessionId == null
+                  ? state.draftWebSearchEnabled
+                  : (state.sessionSettings?.webSearchEnabled ?? false);
+                final canSearch = widget.isEnabled && (state.currentSessionId == null || state.sessionSettings != null);
+                final curProv = state.currentSessionId == null
+                  ? state.draftWebSearchProvider
+                  : (state.sessionSettings?.webSearchProvider ?? '');
+                final Color searchIconColor;
+
+                if (!canSearch) {
+                  searchIconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38);
+                } else if (searchOn) {
+                  final primary = theme.colorScheme.primary;
+                  searchIconColor = widget.isEnabled
+                    ? theme.colorScheme.onSurfaceVariant
+                    : primary.withValues(alpha: 0.48);
+                } else {
+                  searchIconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
+                }
+
+                PopupMenuItem<String> menuItem(String value, String label, {bool checked = false}) {
+                  return PopupMenuItem<String>(
+                    value: value,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 22,
+                          child: checked ? Icon(
+                            Icons.check_rounded,
+                            size: 18,
+                            color: theme.colorScheme.primary
+                          ) : null,
+                        ),
+                        Expanded(child: Text(label)),
+                      ],
+                    ),
+                  );
+                }
+
+                return PopupMenuButton<String>(
+                  tooltip: 'Поиск в интернете',
+                  enabled: canSearch,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: searchOn && canSearch
+                      ? DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.16),
+                            shape: BoxShape.circle,
+                          ),
+                          child: SizedBox(
+                            width: 26,
+                            height: 26,
+                            child: Center(
+                              child: Icon(
+                                Icons.travel_explore,
+                                color: searchIconColor,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          Icons.travel_explore_outlined,
+                          color: searchIconColor,
+                          size: 22,
+                        ),
+                  ),
+                  onSelected: (v) {
+                    final bloc = context.read<ChatBloc>();
+                    if (v == 'off') {
+                      bloc.add(const ChatSetWebSearch(enabled: false, provider: ''));
+                    } else {
+                      bloc.add(ChatSetWebSearch(enabled: true, provider: v));
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    menuItem(
+                      'multi',
+                      'Мультипоиск',
+                      checked: searchOn && curProv == 'multi',
+                    ),
+                    menuItem(
+                      'off',
+                      'Выключить',
+                      checked: !searchOn,
+                    ),
+                    const PopupMenuDivider(),
+                    menuItem(
+                      'yandex',
+                      'Яндекс',
+                      checked: searchOn && curProv == 'yandex',
+                    ),
+                    menuItem(
+                      'google',
+                      'Google',
+                      checked: searchOn && curProv == 'google',
+                    ),
+                    menuItem(
+                      'brave',
+                      'Brave',
+                      checked: searchOn && curProv == 'brave',
+                    ),
+                  ],
                 );
               },
             ),
@@ -703,21 +810,19 @@ class ChatInputBarState extends State<ChatInputBar> {
                                 : null,
                               icon: _voskModelLoading
                                 ? SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  )
-                                : Icon(
-                                    _dictating ? Icons.mic_rounded : Icons.mic_none_rounded,
-                                    color: _dictating
-                                      ? theme.colorScheme.error
-                                      : (widget.isEnabled
-                                          ? theme.colorScheme.onSurfaceVariant
-                                          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: theme.colorScheme.onSurfaceVariant,
                                   ),
+                                )
+                                : Icon(
+                                  _dictating ? Icons.mic_rounded : Icons.mic_none_rounded,
+                                  color: _dictating
+                                    ? theme.colorScheme.error
+                                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
+                                ),
                             ),
                             const SizedBox(width: 4),
                           ],

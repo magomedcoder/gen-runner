@@ -87,6 +87,8 @@ abstract interface class ChatRepository {
     required String toolsJson,
     required String profile,
     required bool modelReasoningEnabled,
+    required bool webSearchEnabled,
+    required String webSearchProvider,
   });
 
   Future<String?> getSelectedRunner();

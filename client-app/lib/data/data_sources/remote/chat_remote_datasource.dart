@@ -107,6 +107,8 @@ abstract class IChatRemoteDataSource {
     required String toolsJson,
     required String profile,
     required bool modelReasoningEnabled,
+    required bool webSearchEnabled,
+    required String webSearchProvider,
   });
   Future<String?> getSelectedRunner();
   Future<void> setSelectedRunner(String? runner);
@@ -1147,6 +1149,8 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       modelReasoningEnabled: response.hasModelReasoningEnabled()
           ? response.modelReasoningEnabled
           : false,
+      webSearchEnabled: response.webSearchEnabled,
+      webSearchProvider: response.webSearchProvider,
     );
   }
 
@@ -1164,6 +1168,8 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     required String toolsJson,
     required String profile,
     required bool modelReasoningEnabled,
+    required bool webSearchEnabled,
+    required String webSearchProvider,
   }) async {
     final request = grpc.UpdateSessionSettingsRequest(
       sessionId: Int64(sessionId),
@@ -1175,6 +1181,8 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       toolsJson: toolsJson,
       profile: profile,
       modelReasoningEnabled: modelReasoningEnabled,
+      webSearchEnabled: webSearchEnabled,
+      webSearchProvider: webSearchProvider,
     );
     if (temperature != null) {
       request.temperature = temperature;
@@ -1203,6 +1211,8 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       modelReasoningEnabled: response.hasModelReasoningEnabled()
           ? response.modelReasoningEnabled
           : false,
+      webSearchEnabled: response.webSearchEnabled,
+      webSearchProvider: response.webSearchProvider,
     );
   }
 

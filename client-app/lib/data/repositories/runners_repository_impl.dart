@@ -1,4 +1,5 @@
 import 'package:gen/domain/entities/runner_info.dart';
+import 'package:gen/domain/entities/web_search_settings.dart';
 import 'package:gen/domain/repositories/runners_repository.dart';
 import 'package:gen/data/data_sources/remote/runners_remote_datasource.dart';
 
@@ -63,4 +64,11 @@ class RunnersRepositoryImpl implements RunnersRepository {
 
   @override
   Future<void> runnerResetMemory(int runnerId) => _remote.runnerResetMemory(runnerId);
+
+  @override
+  Future<WebSearchSettingsEntity> getWebSearchSettings() => _remote.getWebSearchSettings();
+
+  @override
+  Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings) =>
+      _remote.updateWebSearchSettings(settings);
 }

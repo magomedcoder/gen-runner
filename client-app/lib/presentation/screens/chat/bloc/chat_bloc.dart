@@ -186,6 +186,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatLoadSessionSettings>(_onLoadSessionSettings);
     on<ChatUpdateSessionSettings>(_onUpdateSessionSettings);
     on<ChatSetModelReasoning>(_onSetModelReasoning);
+    on<ChatSetWebSearch>(_onSetWebSearch);
   }
 
   Future<void> _onShowUserMessageEdits(
@@ -711,6 +712,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               hasActiveRunners: hasActiveRunners,
               error: null,
               draftModelReasoningEnabled: false,
+              draftWebSearchEnabled: false,
+              draftWebSearchProvider: '',
             ));
         } catch (e) {
           Logs().e('ChatBloc: ошибка загрузки сессий', exception: e);
@@ -786,6 +789,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       isLoadingOlderMessages: false,
       clearPartialAssistant: true,
       draftModelReasoningEnabled: false,
+      draftWebSearchEnabled: false,
+      draftWebSearchProvider: '',
     ));
   }
 
@@ -987,6 +992,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
     var sessionId = state.currentSessionId;
     final draftReasoning = state.draftModelReasoningEnabled;
+    final draftWebSearch = state.draftWebSearchEnabled;
+    final draftWebProv = state.draftWebSearchProvider;
     if (sessionId == null) {
       try {
         final session = await createSessionUseCase();
@@ -999,7 +1006,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           sessions: updatedSessions,
           messages: const [],
         ));
-        if (draftReasoning) {
+        if (draftReasoning || draftWebSearch) {
           try {
             final settings = await updateSessionSettingsUseCase(
               sessionId: sessionId,
@@ -1013,13 +1020,16 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               jsonSchema: '',
               toolsJson: '',
               profile: '',
-              modelReasoningEnabled: true,
+              modelReasoningEnabled: draftReasoning,
+              webSearchEnabled: draftWebSearch,
+              webSearchProvider: draftWebProv,
             );
             emit(state.copyWith(sessionSettings: settings));
           } catch (e) {
             requestLogoutIfUnauthorized(e, authBloc);
             emit(state.copyWith(
-              error: 'Не удалось сохранить настройку «Размышление модели»',
+              error:
+                  'Не удалось сохранить настройки чата (размышление / поиск)',
               isLoading: false,
             ));
             return;
@@ -1725,6 +1735,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         toolsJson: event.toolsJson,
         profile: event.profile,
         modelReasoningEnabled: event.modelReasoningEnabled,
+        webSearchEnabled: event.webSearchEnabled,
+        webSearchProvider: event.webSearchProvider,
       );
       emit(state.copyWith(sessionSettings: settings));
     } catch (e) {
@@ -1759,11 +1771,56 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         toolsJson: cur.toolsJson,
         profile: cur.profile,
         modelReasoningEnabled: event.enabled,
+        webSearchEnabled: cur.webSearchEnabled,
+        webSearchProvider: cur.webSearchProvider,
       );
       emit(state.copyWith(sessionSettings: settings));
     } catch (e) {
       emit(state.copyWith(
         error: 'Не удалось сохранить настройку «Размышление модели»',
+      ));
+    }
+  }
+
+  Future<void> _onSetWebSearch(
+    ChatSetWebSearch event,
+    Emitter<ChatState> emit,
+  ) async {
+    final sessionId = state.currentSessionId;
+    if (sessionId == null) {
+      final prov = event.enabled ? event.provider : '';
+      emit(state.copyWith(
+        draftWebSearchEnabled: event.enabled,
+        draftWebSearchProvider: prov,
+      ));
+      return;
+    }
+    final cur = state.sessionSettings;
+    if (cur == null) {
+      return;
+    }
+    try {
+      final prov = event.enabled ? event.provider : '';
+      final settings = await updateSessionSettingsUseCase(
+        sessionId: sessionId,
+        systemPrompt: cur.systemPrompt,
+        stopSequences: cur.stopSequences,
+        timeoutSeconds: cur.timeoutSeconds,
+        temperature: cur.temperature,
+        topK: cur.topK,
+        topP: cur.topP,
+        jsonMode: cur.jsonMode,
+        jsonSchema: cur.jsonSchema,
+        toolsJson: cur.toolsJson,
+        profile: cur.profile,
+        modelReasoningEnabled: cur.modelReasoningEnabled,
+        webSearchEnabled: event.enabled,
+        webSearchProvider: prov,
+      );
+      emit(state.copyWith(sessionSettings: settings));
+    } catch (e) {
+      emit(state.copyWith(
+        error: 'Не удалось сохранить настройку «Поиск в интернете»',
       ));
     }
   }

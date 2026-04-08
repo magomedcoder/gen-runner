@@ -3,12 +3,13 @@ package domain
 import "time"
 
 type ChatSession struct {
-	Id        int64
-	UserId    int
-	Title     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt *time.Time
+	Id               int64
+	UserId           int
+	Title            string
+	SelectedRunnerID *int64
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	DeletedAt        *time.Time
 }
 
 type Message struct {

@@ -1,4 +1,5 @@
 import 'package:gen/domain/entities/runner_info.dart';
+import 'package:gen/domain/entities/web_search_settings.dart';
 
 abstract class RunnersRepository {
   Future<List<RunnerInfo>> getRunners();
@@ -33,4 +34,8 @@ abstract class RunnersRepository {
   Future<void> runnerUnloadModel(int runnerId);
 
   Future<void> runnerResetMemory(int runnerId);
+
+  Future<WebSearchSettingsEntity> getWebSearchSettings();
+
+  Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings);
 }

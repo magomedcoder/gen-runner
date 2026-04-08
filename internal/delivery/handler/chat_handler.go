@@ -3,12 +3,17 @@ package handler
 import (
 	"context"
 	"errors"
-	"github.com/magomedcoder/gen/internal/delivery/mappers"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/magomedcoder/gen/api/pb/chatpb"
 	"github.com/magomedcoder/gen/api/pb/commonpb"
+	"github.com/magomedcoder/gen/config"
+	"github.com/magomedcoder/gen/internal/delivery/mappers"
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/rpcmeta"
 	"github.com/magomedcoder/gen/internal/usecase"
@@ -22,14 +27,55 @@ import (
 
 const maxChatEmbedBatchSize = 256
 
+func voskTopLevelZipPaths(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+
+		name := e.Name()
+		if strings.Contains(name, "..") {
+			continue
+		}
+
+		if !strings.HasSuffix(strings.ToLower(name), ".zip") {
+			continue
+		}
+
+		info, err := e.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		out = append(out, filepath.Join(dir, n))
+	}
+
+	return out, nil
+}
+
 type ChatHandler struct {
 	chatpb.UnimplementedChatServiceServer
+	cfg         *config.Config
 	chatUseCase *usecase.ChatUseCase
 	authUseCase *usecase.AuthUseCase
 }
 
-func NewChatHandler(chatUseCase *usecase.ChatUseCase, authUseCase *usecase.AuthUseCase) *ChatHandler {
+func NewChatHandler(cfg *config.Config, chatUseCase *usecase.ChatUseCase, authUseCase *usecase.AuthUseCase) *ChatHandler {
 	return &ChatHandler{
+		cfg:         cfg,
 		chatUseCase: chatUseCase,
 		authUseCase: authUseCase,
 	}
@@ -92,7 +138,7 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 	var lastMsgID int64
 
 	for chunk := range responseChan {
-		if chunk.Kind == usecase.StreamChunkKindText && chunk.MessageID != 0 {
+		if (chunk.Kind == usecase.StreamChunkKindText || chunk.Kind == usecase.StreamChunkKindReasoning) && chunk.MessageID != 0 {
 			lastMsgID = chunk.MessageID
 		}
 
@@ -106,6 +152,8 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
 		} else if chunk.Kind == usecase.StreamChunkKindNotice {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
+		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
 		}
 		role := "assistant"
 		if chunk.Kind == usecase.StreamChunkKindNotice {
@@ -178,7 +226,7 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 	var lastMsgID int64
 
 	for chunk := range responseChan {
-		if chunk.Kind == usecase.StreamChunkKindText && chunk.MessageID != 0 {
+		if (chunk.Kind == usecase.StreamChunkKindText || chunk.Kind == usecase.StreamChunkKindReasoning) && chunk.MessageID != 0 {
 			lastMsgID = chunk.MessageID
 		}
 
@@ -192,6 +240,8 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
 		} else if chunk.Kind == usecase.StreamChunkKindNotice {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
+		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
 		}
 		role := "assistant"
 		if chunk.Kind == usecase.StreamChunkKindNotice {
@@ -267,7 +317,7 @@ func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantReq
 	var lastMsgID int64
 
 	for chunk := range responseChan {
-		if chunk.Kind == usecase.StreamChunkKindText && chunk.MessageID != 0 {
+		if (chunk.Kind == usecase.StreamChunkKindText || chunk.Kind == usecase.StreamChunkKindReasoning) && chunk.MessageID != 0 {
 			lastMsgID = chunk.MessageID
 		}
 
@@ -281,6 +331,8 @@ func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantReq
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
 		} else if chunk.Kind == usecase.StreamChunkKindNotice {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
+		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
 		}
 		role := "assistant"
 		if chunk.Kind == usecase.StreamChunkKindNotice {
@@ -354,7 +406,7 @@ func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndC
 	var lastMsgID int64
 
 	for chunk := range responseChan {
-		if chunk.Kind == usecase.StreamChunkKindText && chunk.MessageID != 0 {
+		if (chunk.Kind == usecase.StreamChunkKindText || chunk.Kind == usecase.StreamChunkKindReasoning) && chunk.MessageID != 0 {
 			lastMsgID = chunk.MessageID
 		}
 
@@ -368,6 +420,8 @@ func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndC
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
 		} else if chunk.Kind == usecase.StreamChunkKindNotice {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
+		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
 		}
 		role := "assistant"
 		if chunk.Kind == usecase.StreamChunkKindNotice {
@@ -585,6 +639,14 @@ func (c *ChatHandler) CreateSession(ctx context.Context, req *chatpb.CreateSessi
 	session, err := c.chatUseCase.CreateSession(ctx, userID, req.GetTitle())
 	if err != nil {
 		logger.E("CreateSession: %v", err)
+		if errors.Is(err, domain.ErrNoRunners) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+
+		if errors.Is(err, domain.ErrRunnerChatModelNotConfigured) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+
 		return nil, ToStatusError(codes.Internal, err)
 	}
 	logger.I("CreateSession: создана сессия id=%d", session.Id)
@@ -698,17 +760,20 @@ func mapSessionSettings(s *domain.ChatSessionSettings) *chatpb.SessionSettings {
 	}
 
 	return &chatpb.SessionSettings{
-		SessionId:      s.SessionID,
-		SystemPrompt:   s.SystemPrompt,
-		StopSequences:  s.StopSequences,
-		TimeoutSeconds: s.TimeoutSeconds,
-		Temperature:    s.Temperature,
-		TopK:           s.TopK,
-		TopP:           s.TopP,
-		JsonMode:       s.JSONMode,
-		JsonSchema:     s.JSONSchema,
-		ToolsJson:      s.ToolsJSON,
-		Profile:        s.Profile,
+		SessionId:             s.SessionID,
+		SystemPrompt:          s.SystemPrompt,
+		StopSequences:         s.StopSequences,
+		TimeoutSeconds:        s.TimeoutSeconds,
+		Temperature:           s.Temperature,
+		TopK:                  s.TopK,
+		TopP:                  s.TopP,
+		JsonMode:              s.JSONMode,
+		JsonSchema:            s.JSONSchema,
+		ToolsJson:             s.ToolsJSON,
+		Profile:               s.Profile,
+		ModelReasoningEnabled: s.ModelReasoningEnabled,
+		WebSearchEnabled:      s.WebSearchEnabled,
+		WebSearchProvider:     s.WebSearchProvider,
 	}
 }
 
@@ -745,6 +810,9 @@ func (c *ChatHandler) UpdateSessionSettings(ctx context.Context, req *chatpb.Upd
 		req.GetJsonSchema(),
 		req.GetToolsJson(),
 		req.GetProfile(),
+		req.GetModelReasoningEnabled(),
+		req.GetWebSearchEnabled(),
+		req.GetWebSearchProvider(),
 	)
 	if err != nil {
 		return nil, ToStatusError(codes.Internal, err)
@@ -1017,4 +1085,72 @@ func (c *ChatHandler) ApplyMarkdownPatch(ctx context.Context, req *chatpb.Markdo
 	}
 
 	return &chatpb.MarkdownPatchResponse{Text: out}, nil
+}
+
+func (c *ChatHandler) DownloadVoskModel(req *chatpb.VoskModelDownloadRequest, stream chatpb.ChatService_DownloadVoskModelServer) error {
+	ctx := rpcmeta.EnsureTraceInContext(stream.Context())
+	if _, err := GetUserFromContext(ctx, c.authUseCase); err != nil {
+		return err
+	}
+
+	modelID := strings.TrimSpace(req.GetModelId())
+	dir := strings.TrimSpace(filepath.Join(c.cfg.DataDir, "vosk-models"))
+	var zipPath string
+	if modelID == "" {
+		paths, err := voskTopLevelZipPaths(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				logger.W("DownloadVoskModel: нет каталога %s", dir)
+				return status.Errorf(codes.NotFound, "каталог моделей Vosk не найден")
+			}
+
+			logger.E("DownloadVoskModel: read dir %s: %v", dir, err)
+			return status.Errorf(codes.Internal, "не удалось прочитать каталог моделей")
+		}
+
+		if len(paths) == 0 {
+			logger.W("DownloadVoskModel: в %s нет .zip в корне", dir)
+			return status.Errorf(codes.NotFound, "в каталоге моделей нет файлов .zip (ожидаются только в корне, без подпапок)")
+		}
+
+		zipPath = paths[0]
+		modelID = strings.TrimSuffix(filepath.Base(zipPath), filepath.Ext(zipPath))
+	} else {
+		if strings.Contains(modelID, "..") || strings.ContainsAny(modelID, `/\`) {
+			return status.Error(codes.InvalidArgument, "некорректный model_id")
+		}
+		zipPath = filepath.Join(dir, modelID+".zip")
+	}
+
+	f, err := os.Open(zipPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			logger.W("DownloadVoskModel: нет файла %s", zipPath)
+			return status.Errorf(codes.NotFound, "модель %s не найдена на сервере (ожидается %s)", modelID, zipPath)
+		}
+		logger.E("DownloadVoskModel: open %s: %v", zipPath, err)
+		return status.Errorf(codes.Internal, "не удалось открыть архив модели")
+	}
+	defer f.Close()
+
+	logger.I("DownloadVoskModel: model=%s file=%s", modelID, zipPath)
+
+	buf := make([]byte, 64*1024)
+	for {
+		n, readErr := f.Read(buf)
+		if n > 0 {
+			if err := stream.Send(&chatpb.VoskModelChunk{Data: buf[:n]}); err != nil {
+				return err
+			}
+		}
+
+		if readErr == io.EOF {
+			return nil
+		}
+
+		if readErr != nil {
+			logger.E("DownloadVoskModel: read: %v", readErr)
+			return status.Errorf(codes.Internal, "ошибка чтения архива")
+		}
+	}
 }

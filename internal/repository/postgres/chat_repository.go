@@ -19,19 +19,10 @@ func NewChatSessionRepository(db *gorm.DB) domain.ChatSessionRepository {
 }
 
 func (r *chatSessionRepository) Create(ctx context.Context, session *domain.ChatSession) error {
-	var selectedRunnerID *int64
-	var prev model.Chat
-	if err := r.db.WithContext(ctx).
-		Where("user_id = ?", session.UserId).
-		Order("updated_at DESC").
-		First(&prev).Error; err == nil {
-		selectedRunnerID = prev.SelectedRunnerID
-	}
-
 	row := model.Chat{
 		UserID:           session.UserId,
 		Title:            session.Title,
-		SelectedRunnerID: selectedRunnerID,
+		SelectedRunnerID: session.SelectedRunnerID,
 		StopSequences:    pq.StringArray{},
 		CreatedAt:        session.CreatedAt,
 		UpdatedAt:        session.UpdatedAt,
@@ -98,12 +89,18 @@ func (r *chatSessionRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func chatToDomain(m *model.Chat) *domain.ChatSession {
+	var rid *int64
+	if m.SelectedRunnerID != nil {
+		v := *m.SelectedRunnerID
+		rid = &v
+	}
 	return &domain.ChatSession{
-		Id:        m.ID,
-		UserId:    m.UserID,
-		Title:     m.Title,
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
-		DeletedAt: gormDeletedAtToPtr(m.DeletedAt),
+		Id:               m.ID,
+		UserId:           m.UserID,
+		Title:            m.Title,
+		SelectedRunnerID: rid,
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
+		DeletedAt:        gormDeletedAtToPtr(m.DeletedAt),
 	}
 }

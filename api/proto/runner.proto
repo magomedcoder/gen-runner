@@ -28,6 +28,10 @@ service RunnerService {
   rpc RunnerUnloadModel(RunnerUnloadModelRequest) returns (common.Empty);
 
   rpc RunnerResetMemory(RunnerResetMemoryRequest) returns (common.Empty);
+
+  rpc GetWebSearchSettings(common.Empty) returns (WebSearchSettingsResponse);
+
+  rpc UpdateWebSearchSettings(UpdateWebSearchSettingsRequest) returns (WebSearchSettingsResponse);
 }
 
 message CreateRunnerRequest {
@@ -35,6 +39,7 @@ message CreateRunnerRequest {
   string host = 2;
   int32 port = 3;
   bool enabled = 4;
+  string selected_model = 5;
 }
 
 message UpdateRunnerRequest {
@@ -43,6 +48,7 @@ message UpdateRunnerRequest {
   string host = 3;
   int32 port = 4;
   bool enabled = 5;
+  string selected_model = 6;
 }
 
 message DeleteRunnerRequest {
@@ -83,6 +89,7 @@ message RunnerInfo {
   int64 id = 8;
   string host = 9;
   int32 port = 10;
+  string selected_model = 11;
 }
 
 message GetRunnersResponse {
@@ -92,6 +99,7 @@ message GetRunnersResponse {
 message UserRunnerInfo {
   string address = 1;
   string name = 2;
+  string selected_model = 3;
 }
 
 message GetUserRunnersResponse {
@@ -126,4 +134,30 @@ message RunnerUnloadModelRequest {
 
 message RunnerResetMemoryRequest {
   int64 runner_id = 1;
+}
+
+message WebSearchSettings {
+  bool enabled = 1;
+  reserved 2;
+  int32 max_results = 3;
+  string brave_api_key = 4;
+  string google_api_key = 5;
+  string google_search_engine_id = 6;
+  string yandex_user = 7;
+  string yandex_key = 8;
+}
+
+message WebSearchSettingsResponse {
+  WebSearchSettings settings = 1;
+}
+
+message UpdateWebSearchSettingsRequest {
+  bool enabled = 1;
+  reserved 2;
+  int32 max_results = 3;
+  string brave_api_key = 4;
+  string google_api_key = 5;
+  string google_search_engine_id = 6;
+  string yandex_user = 7;
+  string yandex_key = 8;
 }

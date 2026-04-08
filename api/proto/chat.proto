@@ -58,6 +58,8 @@ service ChatService {
   rpc BuildDocx(DocxBuildRequest) returns (DocxBuildResponse);
 
   rpc ApplyMarkdownPatch(MarkdownPatchRequest) returns (MarkdownPatchResponse);
+
+  rpc DownloadVoskModel(VoskModelDownloadRequest) returns (stream VoskModelChunk);
 }
 
 message ConnectionResponse {
@@ -82,6 +84,7 @@ enum StreamChunkKind {
   STREAM_CHUNK_KIND_TEXT = 0;
   STREAM_CHUNK_KIND_TOOL_STATUS = 1;
   STREAM_CHUNK_KIND_NOTICE = 2;
+  STREAM_CHUNK_KIND_REASONING = 3;
 }
 
 message ChatResponse {
@@ -229,6 +232,9 @@ message UpdateSessionSettingsRequest {
   string json_schema = 9;
   string tools_json = 10;
   string profile = 11;
+  bool model_reasoning_enabled = 12;
+  bool web_search_enabled = 13;
+  string web_search_provider = 14;
 }
 
 message SessionSettings {
@@ -243,6 +249,9 @@ message SessionSettings {
   string json_schema = 9;
   string tools_json = 10;
   string profile = 11;
+  bool model_reasoning_enabled = 12;
+  bool web_search_enabled = 13;
+  string web_search_provider = 14;
 }
 
 message SelectedRunnerResponse {
@@ -324,4 +333,12 @@ message MarkdownPatchRequest {
 
 message MarkdownPatchResponse {
   string text = 1;
+}
+
+message VoskModelDownloadRequest {
+  string model_id = 1;
+}
+
+message VoskModelChunk {
+  bytes data = 1;
 }

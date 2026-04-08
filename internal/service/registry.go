@@ -11,13 +11,14 @@ import (
 )
 
 type RunnerState struct {
-	ID      int64
-	Address string
-	Host    string
-	Port    int32
-	Name    string
-	Enabled bool
-	Hints   *RunnerCoreHints
+	ID            int64
+	Address       string
+	Host          string
+	Port          int32
+	Name          string
+	Enabled       bool
+	SelectedModel string
+	Hints         *RunnerCoreHints
 }
 
 type Registry struct {
@@ -33,12 +34,13 @@ func RunnerStatesFromDomain(rows []domain.Runner) []RunnerState {
 			continue
 		}
 		out = append(out, RunnerState{
-			ID:      r.ID,
-			Address: addr,
-			Host:    strings.TrimSpace(r.Host),
-			Port:    r.Port,
-			Name:    strings.TrimSpace(r.Name),
-			Enabled: r.Enabled,
+			ID:            r.ID,
+			Address:       addr,
+			Host:          strings.TrimSpace(r.Host),
+			Port:          r.Port,
+			Name:          strings.TrimSpace(r.Name),
+			Enabled:       r.Enabled,
+			SelectedModel: strings.TrimSpace(r.SelectedModel),
 		})
 	}
 	return out
@@ -117,12 +119,13 @@ func (r *Registry) GetRunners() []*runnerpb.RunnerInfo {
 	out := make([]*runnerpb.RunnerInfo, 0, len(r.runners))
 	for _, state := range r.runners {
 		out = append(out, &runnerpb.RunnerInfo{
-			Address: state.Address,
-			Enabled: state.Enabled,
-			Name:    state.Name,
-			Id:      state.ID,
-			Host:    state.Host,
-			Port:    state.Port,
+			Address:       state.Address,
+			Enabled:       state.Enabled,
+			Name:          state.Name,
+			Id:            state.ID,
+			Host:          state.Host,
+			Port:          state.Port,
+			SelectedModel: state.SelectedModel,
 		})
 	}
 	return out

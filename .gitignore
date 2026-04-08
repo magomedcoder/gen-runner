@@ -3,5 +3,5 @@ build
 /api/pb/
 /llm-runner
 .DS_Store
-uploads
+data
 /config.yaml

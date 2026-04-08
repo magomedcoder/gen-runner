@@ -23,6 +23,6 @@ jwt:
   access_ttl: "15m"
   refresh_ttl: "168h"
 
-upload_dir: "./uploads"
+data_dir: "./data"
 
 # attachment_hydrate_parallelism: 16 # Параллельная подготовка вложений в истории для LLM (1...64). 0 = 8

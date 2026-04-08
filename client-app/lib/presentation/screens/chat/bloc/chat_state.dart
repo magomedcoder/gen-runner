@@ -46,6 +46,8 @@ class ChatState extends Equatable {
   final bool isLoadingOlderMessages;
   final int? partialAssistantMessageId;
   final bool draftModelReasoningEnabled;
+  final bool draftWebSearchEnabled;
+  final String draftWebSearchProvider;
 
   bool get isStreamingInCurrentSession =>
       isStreaming &&
@@ -91,6 +93,8 @@ class ChatState extends Equatable {
     this.isLoadingOlderMessages = false,
     this.partialAssistantMessageId,
     this.draftModelReasoningEnabled = false,
+    this.draftWebSearchEnabled = false,
+    this.draftWebSearchProvider = '',
   });
 
   ChatState copyWith({
@@ -136,6 +140,8 @@ class ChatState extends Equatable {
     int? partialAssistantMessageId,
     bool clearPartialAssistant = false,
     bool? draftModelReasoningEnabled,
+    bool? draftWebSearchEnabled,
+    String? draftWebSearchProvider,
   }) {
     return ChatState(
       isConnected: isConnected ?? this.isConnected,
@@ -197,6 +203,10 @@ class ChatState extends Equatable {
           : (partialAssistantMessageId ?? this.partialAssistantMessageId),
       draftModelReasoningEnabled:
           draftModelReasoningEnabled ?? this.draftModelReasoningEnabled,
+      draftWebSearchEnabled:
+          draftWebSearchEnabled ?? this.draftWebSearchEnabled,
+      draftWebSearchProvider:
+          draftWebSearchProvider ?? this.draftWebSearchProvider,
     );
   }
 
@@ -238,5 +248,7 @@ class ChatState extends Equatable {
     isLoadingOlderMessages,
     partialAssistantMessageId,
     draftModelReasoningEnabled,
+    draftWebSearchEnabled,
+    draftWebSearchProvider,
   ];
 }

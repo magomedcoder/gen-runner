@@ -6,6 +6,7 @@ const (
 	StreamChunkKindText StreamChunkKind = iota
 	StreamChunkKindToolStatus
 	StreamChunkKindNotice
+	StreamChunkKindReasoning
 )
 
 type ChatStreamChunk struct {

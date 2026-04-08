@@ -21,11 +21,12 @@ func NewRunnerRepository(db *gorm.DB) domain.RunnerRepository {
 
 func rowToRunner(m *model.RunnerRow) domain.Runner {
 	return domain.Runner{
-		ID:      m.ID,
-		Name:    m.Name,
-		Host:    m.Host,
-		Port:    m.Port,
-		Enabled: m.Enabled,
+		ID:            m.ID,
+		Name:          m.Name,
+		Host:          m.Host,
+		Port:          m.Port,
+		Enabled:       m.Enabled,
+		SelectedModel: strings.TrimSpace(m.SelectedModel),
 	}
 }
 
@@ -54,12 +55,26 @@ func (r *runnerRepository) GetByID(ctx context.Context, id int64) (*domain.Runne
 	return &ru, nil
 }
 
-func (r *runnerRepository) Create(ctx context.Context, name, host string, port int32, enabled bool) (*domain.Runner, error) {
+func (r *runnerRepository) FirstEnabled(ctx context.Context) (*domain.Runner, error) {
+	var row model.RunnerRow
+	err := r.db.WithContext(ctx).Where("enabled = ?", true).Order("id ASC").First(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	ru := rowToRunner(&row)
+	return &ru, nil
+}
+
+func (r *runnerRepository) Create(ctx context.Context, name, host string, port int32, enabled bool, selectedModel string) (*domain.Runner, error) {
 	row := model.RunnerRow{
-		Name:    strings.TrimSpace(name),
-		Host:    strings.TrimSpace(host),
-		Port:    port,
-		Enabled: enabled,
+		Name:          strings.TrimSpace(name),
+		Host:          strings.TrimSpace(host),
+		Port:          port,
+		Enabled:       enabled,
+		SelectedModel: strings.TrimSpace(selectedModel),
 	}
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return nil, err
@@ -68,7 +83,7 @@ func (r *runnerRepository) Create(ctx context.Context, name, host string, port i
 	return &ru, nil
 }
 
-func (r *runnerRepository) Update(ctx context.Context, id int64, name, host string, port int32, enabled bool) (*domain.Runner, error) {
+func (r *runnerRepository) Update(ctx context.Context, id int64, name, host string, port int32, enabled bool, selectedModel string) (*domain.Runner, error) {
 	var row model.RunnerRow
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -81,6 +96,7 @@ func (r *runnerRepository) Update(ctx context.Context, id int64, name, host stri
 	row.Host = strings.TrimSpace(host)
 	row.Port = port
 	row.Enabled = enabled
+	row.SelectedModel = strings.TrimSpace(selectedModel)
 	row.UpdatedAt = time.Now()
 
 	if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
