@@ -102,11 +102,27 @@ type FileRepository interface {
 
 	GetById(ctx context.Context, id int64) (*File, error)
 
+	GetByIdWithExtractedCache(ctx context.Context, id int64) (*File, error)
+
 	ListByIds(ctx context.Context, ids []int64) ([]*File, error)
 
 	SaveExtractedTextCache(ctx context.Context, fileID int64, contentSHA256Hex string, extractedText string) error
 
 	CountSessionTTLArtifacts(ctx context.Context, sessionID int64, userID int) (count int32, totalSize int64, err error)
+}
+
+type DocumentRAGRepository interface {
+	GetFileIndex(ctx context.Context, fileID int64) (*FileRAGIndex, error)
+
+	SaveFileRAGIndex(ctx context.Context, row *FileRAGIndex) error
+
+	MarkFileRAGIndexFailed(ctx context.Context, fileID int64, errMsg string) error
+
+	ReplaceFileChunks(ctx context.Context, sessionID int64, userID int, fileID int64, pipelineVersion, embeddingModel, sourceSHA256 string, chunks []DocumentRAGChunk) error
+
+	DeleteIndexForFile(ctx context.Context, fileID int64) error
+
+	SearchSessionTopK(ctx context.Context, sessionID int64, userID int, embeddingModel string, queryEmbedding []float32, topK int, fileID *int64) ([]ScoredDocumentRAGChunk, error)
 }
 
 type EditorHistoryRepository interface {

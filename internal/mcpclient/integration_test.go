@@ -67,7 +67,7 @@ func TestIntegrationInMemoryListAndCall(t *testing.T) {
 		t.Fatalf("CallTool: %v", err)
 	}
 
-	out := strings.TrimSpace(callToolResultString(res))
+	out := strings.TrimSpace(CallToolResultString(res))
 	if out != "pong" {
 		t.Fatalf("result: получил %q, требуется pong", out)
 	}

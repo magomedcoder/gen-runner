@@ -482,7 +482,7 @@ type candidate struct {
 func (p *Pool) pickRunner(ctx context.Context, model string) (*LLMRunnerService, string, error) {
 	addrs := p.reg.GetEnabledAddresses()
 	if len(addrs) == 0 {
-		return nil, "", fmt.Errorf("нет включённых llm-runner в реестре")
+		return nil, "", fmt.Errorf("нет включённых gen-runner в реестре")
 	}
 
 	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -565,7 +565,7 @@ func (p *Pool) pickRunner(ctx context.Context, model string) (*LLMRunnerService,
 	}
 
 	if len(found) == 0 {
-		return nil, "", fmt.Errorf("ни один llm-runner не отвечает по gRPC")
+		return nil, "", fmt.Errorf("ни один gen-runner не отвечает по gRPC")
 	}
 
 	best := found[0]
@@ -624,7 +624,7 @@ func (p *Pool) CheckConnection(ctx context.Context) (bool, error) {
 func (p *Pool) GetModels(ctx context.Context) ([]string, error) {
 	addrs := p.reg.GetEnabledAddresses()
 	if len(addrs) == 0 {
-		return nil, fmt.Errorf("нет включённых llm-runner")
+		return nil, fmt.Errorf("нет включённых gen-runner")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -673,7 +673,7 @@ func (p *Pool) GetModels(ctx context.Context) ([]string, error) {
 
 	slices.Sort(out)
 	if len(out) == 0 {
-		return nil, fmt.Errorf("не удалось получить модели ни с одного llm-runner")
+		return nil, fmt.Errorf("не удалось получить модели ни с одного gen-runner")
 	}
 
 	return out, nil

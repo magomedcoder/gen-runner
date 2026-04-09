@@ -1,0 +1,206 @@
+import 'package:flutter/material.dart';
+import 'package:gen/core/injector.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
+import 'package:gen/core/user_safe_error.dart';
+import 'package:gen/core/layout/responsive.dart';
+import 'package:gen/domain/usecases/auth/change_password_usecase.dart';
+import 'package:gen/presentation/screens/auth/login_form_decoration.dart';
+
+class ChangePasswordScreen extends StatefulWidget {
+  const ChangePasswordScreen({super.key});
+
+  @override
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
+}
+
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _oldPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _obscureOld = true;
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+  bool _savingPassword = false;
+
+  @override
+  void dispose() {
+    _oldPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitChangePassword() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() => _savingPassword = true);
+    try {
+      await sl<ChangePasswordUseCase>()(
+        _oldPasswordController.text,
+        _newPasswordController.text,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      _oldPasswordController.clear();
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+
+      showAppTopNotice('Пароль успешно изменён');
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      showAppTopNotice(
+        userSafeErrorMessage(e, fallback: 'Не удалось сменить пароль'),
+        error: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _savingPassword = false);
+      }
+    }
+  }
+
+  String? _validateNewPassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Введите новый пароль';
+    }
+
+    if (value.length < 8) {
+      return 'Пароль должен содержать минимум 8 символов';
+    }
+
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final horizontal = Breakpoints.isMobile(context) ? 16.0 : 24.0;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Смена пароля'),
+      ),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(horizontal, 16, horizontal, 24),
+          children: [
+            Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextFormField(
+                    controller: _oldPasswordController,
+                    obscureText: _obscureOld,
+                    textInputAction: TextInputAction.next,
+                    decoration: LoginFormDecoration.field(
+                      labelText: 'Текущий пароль',
+                      hintText: 'Введите текущий пароль',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureOld
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        ),
+                        onPressed: () => setState(() => _obscureOld = !_obscureOld),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Введите текущий пароль';
+                      }
+
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _newPasswordController,
+                    obscureText: _obscureNew,
+                    textInputAction: TextInputAction.next,
+                    decoration: LoginFormDecoration.field(
+                      labelText: 'Новый пароль',
+                      hintText: 'Не менее 8 символов',
+                      prefixIcon: const Icon(Icons.lock_outlined),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureNew
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        ),
+                        onPressed: () => setState(() => _obscureNew = !_obscureNew),
+                      ),
+                    ),
+                    validator: _validateNewPassword,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    obscureText: _obscureConfirm,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _submitChangePassword(),
+                    decoration: LoginFormDecoration.field(
+                      labelText: 'Повторите новый пароль',
+                      hintText: 'Тот же пароль ещё раз',
+                      prefixIcon: const Icon(Icons.lock_outlined),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        ),
+                        onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Повторите новый пароль';
+                      }
+
+                      if (value != _newPasswordController.text) {
+                        return 'Пароли не совпадают';
+                      }
+
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: _savingPassword ? null : _submitChangePassword,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _savingPassword
+                      ? SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Theme.of(context).colorScheme.onPrimary,
+                          ),
+                        ),
+                      )
+                      : const Text('Сохранить'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -14,6 +14,9 @@ class Message extends Equatable {
   final Uint8List? attachmentContent;
   final int? attachmentFileId;
   final String? reasoningContent;
+  final bool useFileRag;
+  final int fileRagTopK;
+  final String fileRagEmbedModel;
 
   const Message({
     required this.id,
@@ -25,6 +28,9 @@ class Message extends Equatable {
     this.attachmentContent,
     this.attachmentFileId,
     this.reasoningContent,
+    this.useFileRag = false,
+    this.fileRagTopK = 0,
+    this.fileRagEmbedModel = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -42,5 +48,8 @@ class Message extends Equatable {
     attachmentFileName,
     attachmentFileId,
     reasoningContent,
+    useFileRag,
+    fileRagTopK,
+    fileRagEmbedModel,
   ];
 }

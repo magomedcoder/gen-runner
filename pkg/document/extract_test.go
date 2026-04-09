@@ -101,6 +101,32 @@ func TestExtractText_PDF_textLayerGolden(t *testing.T) {
 	}
 }
 
+func TestExtractText_HTML(t *testing.T) {
+	html := `<!DOCTYPE html><html><head><title>Заголовок</title><style>.x{display:none}</style></head>
+<body><p>Первый <b>абзац</b>.</p><script>alert(1)</script><div>Второй</div></body></html>`
+	got, err := ExtractText("page.html", []byte(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "Первый") || !strings.Contains(got, "абзац") || !strings.Contains(got, "Второй") {
+		t.Fatalf("expected visible text, got %q", got)
+	}
+	if strings.Contains(got, "alert") || strings.Contains(got, "display:none") {
+		t.Fatalf("script/style leaked: %q", got)
+	}
+}
+
+func TestExtractText_PPTX_minimalZip(t *testing.T) {
+	b := mustMinimalPptx(t, []string{"Текст слайда"})
+	got, err := ExtractText("s.pptx", b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "[Слайд 1]") || !strings.Contains(got, "Текст слайда") {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestExtractText_XLSX(t *testing.T) {
 	f := excelize.NewFile()
 	if err := f.SetCellValue("Sheet1", "A1", "столбец1"); err != nil {
@@ -172,6 +198,50 @@ func mustMinimalDocx(t *testing.T, lines []string) []byte {
 		"word/_rels/document.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`,
 		"word/document.xml": docXML,
+	} {
+		w, err := zw.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func mustMinimalPptx(t *testing.T, slideLines []string) []byte {
+	t.Helper()
+	var paras strings.Builder
+	for _, line := range slideLines {
+		paras.WriteString("<a:p><a:r><a:t>")
+		paras.WriteString(xmlEscape(line))
+		paras.WriteString("</a:t></a:r></a:p>")
+	}
+	slide1 := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+<p:cSld><p:spTree><p:sp><p:txBody><a:body>` + paras.String() + `</a:body></p:txBody></p:sp></p:spTree></p:cSld>
+</p:sld>`
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for path, content := range map[string]string{
+		"[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+</Types>`,
+		"_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+</Relationships>`,
+		"ppt/presentation.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>`,
+		"ppt/slides/slide1.xml": slide1,
 	} {
 		w, err := zw.Create(path)
 		if err != nil {

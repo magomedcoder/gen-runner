@@ -6,6 +6,7 @@ import 'package:gen/presentation/screens/admin/bloc/runners_admin_bloc.dart';
 import 'package:gen/presentation/screens/admin/bloc/users_admin_bloc.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
+import 'package:gen/presentation/widgets/app_top_notice/bloc/app_top_notice_bloc.dart';
 import 'package:gen/presentation/screens/editor/bloc/editor_bloc.dart';
 import 'package:get_it/get_it.dart';
 
@@ -21,9 +22,17 @@ void registerBlocsModule(GetIt sl) {
     ),
   );
 
+  sl.registerLazySingleton<AppTopNoticeBloc>(
+    () => AppTopNoticeBloc(
+      connectUseCase: sl(),
+      authBloc: sl<AuthBloc>(),
+    ),
+  );
+
   sl.registerFactory(
     () => ChatBloc(
       authBloc: sl<AuthBloc>(),
+      appTopNoticeBloc: sl<AppTopNoticeBloc>(),
       connectUseCase: sl(),
       getRunnersUseCase: sl(),
       getUserRunnersUseCase: sl(),
@@ -31,6 +40,7 @@ void registerBlocsModule(GetIt sl) {
       updateSessionSettingsUseCase: sl(),
       sendMessageUseCase: sl(),
       putSessionFileUseCase: sl(),
+      getFileIngestionStatusUseCase: sl(),
       regenerateAssistantUseCase: sl(),
       continueAssistantUseCase: sl(),
       editUserMessageAndContinueUseCase: sl(),
@@ -46,6 +56,7 @@ void registerBlocsModule(GetIt sl) {
       getRunnersStatusUseCase: sl(),
       getSelectedRunnerUseCase: sl(),
       setSelectedRunnerUseCase: sl(),
+      getWebSearchAvailabilityUseCase: sl(),
     ),
   );
 

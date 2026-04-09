@@ -52,6 +52,14 @@ func (r *fileRepository) GetById(ctx context.Context, id int64) (*domain.File, e
 	return fileToDomain(&row), nil
 }
 
+func (r *fileRepository) GetByIdWithExtractedCache(ctx context.Context, id int64) (*domain.File, error) {
+	var row model.File
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+		return nil, err
+	}
+	return fileToDomain(&row), nil
+}
+
 func (r *fileRepository) ListByIds(ctx context.Context, ids []int64) ([]*domain.File, error) {
 	if len(ids) == 0 {
 		return nil, nil

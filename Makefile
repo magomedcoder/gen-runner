@@ -15,12 +15,17 @@ gen-proto:
 	done
 
 	mkdir -p ./api/pb/llmrunnerpb
-	protoc --proto_path=../llm-runner \
+	protoc --proto_path=../gen-runner \
 		--go_opt=Mllmrunner.proto=github.com/magomedcoder/gen/api/pb/llmrunnerpb \
 		--go-grpc_opt=Mllmrunner.proto=github.com/magomedcoder/gen/api/pb/llmrunnerpb \
 		--go_out=module=github.com/magomedcoder/gen:. \
 		--go-grpc_out=module=github.com/magomedcoder/gen:. \
-		../llm-runner/llmrunner.proto
+		../gen-runner/llmrunner.proto
+
+	mkdir -p ./lib/generated/grpc_pb
+	protoc --proto_path=../gen/api/proto \
+		--dart_out=grpc:./lib/generated/grpc_pb \
+		../gen/api/proto/*.proto
 
 run:
 	go run ./cmd/gen

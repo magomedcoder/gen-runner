@@ -81,7 +81,7 @@ func NewLLMRunnerService(address, model string) (*LLMRunnerService, error) {
 
 	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return nil, fmt.Errorf("подключение к llm-runner: %w", err)
+		return nil, fmt.Errorf("подключение к gen-runner: %w", err)
 	}
 
 	return &LLMRunnerService{
@@ -102,7 +102,7 @@ func (s *LLMRunnerService) rpcCtx(ctx context.Context) context.Context {
 func (s *LLMRunnerService) CheckConnection(ctx context.Context) (bool, error) {
 	resp, err := s.client.CheckConnection(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
-		return false, fmt.Errorf("llm-runner CheckConnection: %w", err)
+		return false, fmt.Errorf("gen-runner CheckConnection: %w", err)
 	}
 
 	return resp.IsConnected, nil
@@ -111,7 +111,7 @@ func (s *LLMRunnerService) CheckConnection(ctx context.Context) (bool, error) {
 func (s *LLMRunnerService) RunnerProbe(ctx context.Context) (*llmrunnerpb.RunnerProbeResponse, error) {
 	resp, err := s.client.RunnerProbe(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner RunnerProbe: %w", err)
+		return nil, fmt.Errorf("gen-runner RunnerProbe: %w", err)
 	}
 
 	return resp, nil
@@ -120,7 +120,7 @@ func (s *LLMRunnerService) RunnerProbe(ctx context.Context) (*llmrunnerpb.Runner
 func (s *LLMRunnerService) GetModels(ctx context.Context) ([]string, error) {
 	resp, err := s.client.GetModels(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner GetModels: %w", err)
+		return nil, fmt.Errorf("gen-runner GetModels: %w", err)
 	}
 
 	if resp == nil {
@@ -133,7 +133,7 @@ func (s *LLMRunnerService) GetModels(ctx context.Context) ([]string, error) {
 func (s *LLMRunnerService) GetGpuInfo(ctx context.Context) (*llmrunnerpb.GetGpuInfoResponse, error) {
 	resp, err := s.client.GetGpuInfo(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner GetGpuInfo: %w", err)
+		return nil, fmt.Errorf("gen-runner GetGpuInfo: %w", err)
 	}
 
 	return resp, nil
@@ -142,7 +142,7 @@ func (s *LLMRunnerService) GetGpuInfo(ctx context.Context) (*llmrunnerpb.GetGpuI
 func (s *LLMRunnerService) GetServerInfo(ctx context.Context) (*llmrunnerpb.ServerInfo, error) {
 	resp, err := s.client.GetServerInfo(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner GetServerInfo: %w", err)
+		return nil, fmt.Errorf("gen-runner GetServerInfo: %w", err)
 	}
 
 	return resp, nil
@@ -151,7 +151,7 @@ func (s *LLMRunnerService) GetServerInfo(ctx context.Context) (*llmrunnerpb.Serv
 func (s *LLMRunnerService) GetLoadedModel(ctx context.Context) (*llmrunnerpb.GetLoadedModelResponse, error) {
 	resp, err := s.client.GetLoadedModel(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner GetLoadedModel: %w", err)
+		return nil, fmt.Errorf("gen-runner GetLoadedModel: %w", err)
 	}
 
 	return resp, nil
@@ -160,7 +160,7 @@ func (s *LLMRunnerService) GetLoadedModel(ctx context.Context) (*llmrunnerpb.Get
 func (s *LLMRunnerService) UnloadModel(ctx context.Context) error {
 	_, err := s.client.UnloadModel(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
-		return fmt.Errorf("llm-runner UnloadModel: %w", err)
+		return fmt.Errorf("gen-runner UnloadModel: %w", err)
 	}
 
 	return nil
@@ -169,7 +169,7 @@ func (s *LLMRunnerService) UnloadModel(ctx context.Context) error {
 func (s *LLMRunnerService) ResetMemory(ctx context.Context) error {
 	_, err := s.client.ResetMemory(s.rpcCtx(ctx), &llmrunnerpb.Empty{})
 	if err != nil {
-		return fmt.Errorf("llm-runner ResetMemory: %w", err)
+		return fmt.Errorf("gen-runner ResetMemory: %w", err)
 	}
 
 	return nil
@@ -178,7 +178,7 @@ func (s *LLMRunnerService) ResetMemory(ctx context.Context) error {
 func (s *LLMRunnerService) SendMessageStream(ctx context.Context, req *llmrunnerpb.SendMessageRequest) (llmrunnerpb.LLMRunnerService_SendMessageClient, error) {
 	stream, err := s.client.SendMessage(s.rpcCtx(ctx), req)
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner SendMessage: %w", err)
+		return nil, fmt.Errorf("gen-runner SendMessage: %w", err)
 	}
 
 	return stream, nil
@@ -203,7 +203,7 @@ func (s *LLMRunnerService) Embed(ctx context.Context, model, text string) ([]flo
 		Text:  text,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner Embed: %w", err)
+		return nil, fmt.Errorf("gen-runner Embed: %w", err)
 	}
 
 	if resp == nil {
@@ -219,7 +219,7 @@ func (s *LLMRunnerService) EmbedBatch(ctx context.Context, model string, texts [
 		Texts: texts,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner EmbedBatch: %w", err)
+		return nil, fmt.Errorf("gen-runner EmbedBatch: %w", err)
 	}
 
 	if resp == nil {
@@ -287,12 +287,12 @@ func (s *LLMRunnerService) sendMessageStream(
 
 	stream, err := s.client.SendMessage(s.rpcCtx(ctx), req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("llm-runner SendMessage: %w", err)
+		return nil, nil, fmt.Errorf("gen-runner SendMessage: %w", err)
 	}
 
 	firstMsg, err := stream.Recv()
 	if err != nil {
-		return nil, nil, fmt.Errorf("llm-runner SendMessage: ошибка чтения чанка из потока ответа: %w", err)
+		return nil, nil, fmt.Errorf("gen-runner SendMessage: ошибка чтения чанка из потока ответа: %w", err)
 	}
 
 	output := make(chan domain.LLMStreamChunk, 100)

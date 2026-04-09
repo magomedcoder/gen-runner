@@ -20,6 +20,7 @@ import 'package:gen/domain/entities/session_file_download.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/entities/session_messages_page.dart';
 import 'package:gen/domain/entities/spreadsheet_apply_result.dart';
+import 'package:gen/domain/entities/file_ingestion_status.dart';
 import 'package:gen/generated/grpc_pb/chat.pb.dart' as chat_pb;
 import 'package:gen/generated/grpc_pb/common.pb.dart' as common;
 import 'package:gen/generated/grpc_pb/chat.pbgrpc.dart' as grpc;
@@ -122,6 +123,11 @@ abstract class IChatRemoteDataSource {
     int ttlSeconds = 0,
   });
 
+  Future<FileIngestionStatus> getFileIngestionStatus({
+    required int sessionId,
+    required int fileId,
+  });
+
   Future<SessionFileDownload> getSessionFile({
     required int sessionId,
     required int fileId,
@@ -209,6 +215,15 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         if (fid != null && fid > 0) {
           request.attachmentFileId = Int64(fid);
         }
+        if (message.useFileRag) {
+          request.useFileRag = true;
+          if (message.fileRagTopK > 0) {
+            request.fileRagTopK = message.fileRagTopK;
+          }
+          if (message.fileRagEmbedModel.isNotEmpty) {
+            request.fileRagEmbedModel = message.fileRagEmbedModel;
+          }
+        }
         final responseStream = _client.sendMessage(request);
         streamSubscription = responseStream.listen(
           (response) {
@@ -286,12 +301,21 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
                   ApiFailure('Некорректный запрос (код ${e.code})'),
                   st,
                 );
+              } else if (e.code == StatusCode.failedPrecondition) {
+                final m = e.message?.trim();
+                await closeWithError(
+                  ApiFailure(m != null && m.isNotEmpty ? m : 'Условие не выполнено (код ${e.code})'),
+                  st,
+                );
               } else {
                 await closeWithError(NetworkFailure('Ошибка сервера (код ${e.code})'), st);
               }
               return;
             }
-            await closeWithError(ApiFailure('Ошибка отправки сообщения'), st);
+            await closeWithError(
+              ApiFailure('Ошибка отправки сообщения: $e'),
+              st,
+            );
           },
           onDone: () async {
             if (!controller.isClosed) {
@@ -314,6 +338,11 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
           await closeWithError(
             ApiFailure('Некорректный запрос (код ${e.code})'),
           );
+        } else if (e.code == StatusCode.failedPrecondition) {
+          final m = e.message?.trim();
+          await closeWithError(
+            ApiFailure(m != null && m.isNotEmpty ? m : 'Условие не выполнено (код ${e.code})'),
+          );
         } else {
           await closeWithError(NetworkFailure('Ошибка сервера (код ${e.code})'));
         }
@@ -321,7 +350,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         await closeWithError(e, st);
       } catch (e, st) {
         Logs().e('ChatRemote: sendMessage', exception: e);
-        await closeWithError(ApiFailure('Ошибка отправки сообщения'), st);
+        await closeWithError(ApiFailure('Ошибка отправки сообщения: $e'), st);
       }
     }();
 
@@ -1275,6 +1304,44 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       if (e is Failure) rethrow;
       Logs().e('ChatRemote: putSessionFile', exception: e);
       throw ApiFailure('Ошибка загрузки файла сессии');
+    }
+  }
+
+  @override
+  Future<FileIngestionStatus> getFileIngestionStatus({
+    required int sessionId,
+    required int fileId,
+  }) async {
+    final req = chat_pb.GetIngestionStatusRequest(
+      sessionId: Int64(sessionId),
+      fileId: Int64(fileId),
+    );
+    try {
+      final resp = await _authGuard.execute(() => _client.getIngestionStatus(req));
+      return FileIngestionStatus(
+        status: resp.status,
+        lastError: resp.lastError,
+        chunkCount: resp.chunkCount,
+        sourceContentSha256: resp.sourceContentSha256,
+        pipelineVersion: resp.pipelineVersion,
+        embeddingModel: resp.embeddingModel,
+      );
+    } on GrpcError catch (e) {
+      if (e.code == StatusCode.unauthenticated) {
+        throw UnauthorizedFailure(kSessionExpiredMessage);
+      }
+
+      if (e.code == StatusCode.permissionDenied) {
+        throw ApiFailure('Нет доступа (код ${e.code})');
+      }
+
+      if (e.code == StatusCode.invalidArgument) {
+        throw ApiFailure('Некорректный запрос (код ${e.code})');
+      }
+      throwGrpcError(e, 'статус индексации файла');
+    } catch (e) {
+      if (e is Failure) rethrow;
+      throw ApiFailure('Ошибка статуса индексации');
     }
   }
 

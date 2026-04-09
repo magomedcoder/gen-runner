@@ -10,6 +10,7 @@ import 'package:gen/domain/entities/user_message_edit.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/entities/session_file_download.dart';
 import 'package:gen/domain/entities/session_messages_page.dart';
+import 'package:gen/domain/entities/file_ingestion_status.dart';
 
 abstract interface class ChatRepository {
   Future<bool> checkConnection();
@@ -101,6 +102,11 @@ abstract interface class ChatRepository {
     required String filename,
     required List<int> content,
     int ttlSeconds = 0,
+  });
+
+  Future<FileIngestionStatus> getFileIngestionStatus({
+    required int sessionId,
+    required int fileId,
   });
 
   Future<SessionFileDownload> getSessionFile({

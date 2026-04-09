@@ -30,6 +30,9 @@ func rowToDomain(m *model.WebSearchSettings) *domain.WebSearchSettings {
 		GoogleSearchEngineID: m.GoogleSearchEngineID,
 		YandexUser:           m.YandexUser,
 		YandexKey:            m.YandexKey,
+		YandexEnabled:        m.YandexEnabled,
+		GoogleEnabled:        m.GoogleEnabled,
+		BraveEnabled:         m.BraveEnabled,
 	}
 }
 
@@ -38,7 +41,12 @@ func (r *webSearchSettingsRepository) Get(ctx context.Context) (*domain.WebSearc
 	err := r.db.WithContext(ctx).Where("id = ?", 1).First(&m).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return &domain.WebSearchSettings{MaxResults: 20}, nil
+			return &domain.WebSearchSettings{
+				MaxResults:    20,
+				YandexEnabled: false,
+				GoogleEnabled: false,
+				BraveEnabled:  false,
+			}, nil
 		}
 
 		return nil, err
@@ -61,6 +69,9 @@ func (r *webSearchSettingsRepository) Upsert(ctx context.Context, s *domain.WebS
 		GoogleSearchEngineID: s.GoogleSearchEngineID,
 		YandexUser:           s.YandexUser,
 		YandexKey:            s.YandexKey,
+		YandexEnabled:        s.YandexEnabled,
+		GoogleEnabled:        s.GoogleEnabled,
+		BraveEnabled:         s.BraveEnabled,
 	}
 
 	return r.db.WithContext(ctx).Save(&m).Error

@@ -7,6 +7,7 @@ class AuthState extends Equatable {
   final User? user;
   final String? error;
   final bool needsUpdate;
+  final bool initialAuthCheckComplete;
 
   const AuthState({
     this.isLoading = false,
@@ -14,6 +15,7 @@ class AuthState extends Equatable {
     this.user,
     this.error,
     this.needsUpdate = false,
+    this.initialAuthCheckComplete = false,
   });
 
   AuthState copyWith({
@@ -22,6 +24,7 @@ class AuthState extends Equatable {
     User? user,
     String? error,
     bool? needsUpdate,
+    bool? initialAuthCheckComplete,
   }) {
     return AuthState(
       isLoading: isLoading ?? this.isLoading,
@@ -29,6 +32,8 @@ class AuthState extends Equatable {
       user: user ?? this.user,
       error: error,
       needsUpdate: needsUpdate ?? this.needsUpdate,
+      initialAuthCheckComplete:
+          initialAuthCheckComplete ?? this.initialAuthCheckComplete,
     );
   }
 
@@ -39,5 +44,6 @@ class AuthState extends Equatable {
     user,
     error,
     needsUpdate,
+    initialAuthCheckComplete,
   ];
 }

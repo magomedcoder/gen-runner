@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/injector.dart' as di;
 import 'package:gen/domain/entities/runner_info.dart';
-import 'package:gen/core/ui/app_top_notice.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_bloc.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_event.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_state.dart';

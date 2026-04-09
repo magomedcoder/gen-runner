@@ -63,7 +63,9 @@ func trimLLMMessagesByApproxTokensWithDropped(msgs []*domain.Message, maxTokens 
 			return msgs, false, nil
 		}
 
-		return msgs, false, nil
+		out := cloneMessageSliceForTrim(msgs)
+		out = shrinkMessagesToApproxTokenBudget(out, maxTokens)
+		return out, true, nil
 	}
 
 	tailStart := len(msgs) - tailPreserve
@@ -96,6 +98,57 @@ func trimLLMMessagesByApproxTokensWithDropped(msgs []*domain.Message, maxTokens 
 	out = append(out, tail...)
 
 	return out, true, dropped
+}
+
+const llmContextTruncationNotice = "\n\n[…фрагмент убран из‑за лимита контекста модели…]"
+
+func cloneMessageSliceForTrim(msgs []*domain.Message) []*domain.Message {
+	out := make([]*domain.Message, len(msgs))
+	for i, m := range msgs {
+		if m == nil {
+			continue
+		}
+
+		cp := *m
+		out[i] = &cp
+	}
+
+	return out
+}
+
+func shrinkMessagesToApproxTokenBudget(msgs []*domain.Message, maxTokens int) []*domain.Message {
+	if len(msgs) == 0 {
+		return msgs
+	}
+
+	out := cloneMessageSliceForTrim(msgs)
+	for sumApproxTokens(out) > maxTokens {
+		idx := -1
+		for i := len(out) - 1; i >= 0; i-- {
+			if out[i] != nil && strings.TrimSpace(out[i].Content) != "" {
+				idx = i
+				break
+			}
+		}
+
+		if idx < 0 {
+			break
+		}
+
+		r := []rune(out[idx].Content)
+		if len(r) <= 96 {
+			out[idx].Content = ""
+			continue
+		}
+
+		newLen := len(r) * 3 / 4
+		if newLen < 64 {
+			newLen = 64
+		}
+
+		out[idx].Content = string(r[:newLen]) + llmContextTruncationNotice
+	}
+	return out
 }
 
 func truncateRunes(s string, maxRunes int) string {

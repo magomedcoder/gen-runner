@@ -4,13 +4,11 @@ import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/server_config.dart';
 import 'package:gen/core/speech/local_vosk_dictation_service.dart';
 import 'package:gen/core/speech/vosk_model_sync_service.dart';
-import 'package:gen/core/ui/app_top_notice_controller.dart';
 import 'package:gen/data/data_sources/local/user_local_data_source.dart';
 import 'package:gen/domain/usecases/auth/refresh_token_usecase.dart';
 import 'package:get_it/get_it.dart';
 
 Future<void> registerCoreModule(GetIt sl) async {
-  sl.registerLazySingleton<AppTopNoticeController>(AppTopNoticeController.new);
   sl.registerLazySingleton<LocalVoskDictationService>(LocalVoskDictationService.new);
 
   sl.registerLazySingleton<UserLocalDataSourceImpl>(() => UserLocalDataSourceImpl());

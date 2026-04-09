@@ -6,6 +6,7 @@ import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_drop_overlay.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_input_bar.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_message_list.dart';
+import 'package:gen/presentation/screens/chat/widgets/rag_ingestion_status_banner.dart';
 
 class ChatMessagesPanel extends StatelessWidget {
   const ChatMessagesPanel({
@@ -49,6 +50,8 @@ class ChatMessagesPanel extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (state.ragIngestionUi != null)
+                  RagIngestionStatusBanner(ui: state.ragIngestionUi!),
                 Expanded(
                   child: Center(
                     child: SingleChildScrollView(
@@ -87,6 +90,8 @@ class ChatMessagesPanel extends StatelessWidget {
                   state: state,
                 ),
               ),
+              if (state.ragIngestionUi != null)
+                RagIngestionStatusBanner(ui: state.ragIngestionUi!),
               ChatInputBar(key: inputBarKey, isEnabled: canDropFile),
             ],
           ),

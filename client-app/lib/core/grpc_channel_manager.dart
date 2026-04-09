@@ -23,7 +23,7 @@ class GrpcChannelManager {
 
   ClientChannel get channel {
     if (_channel == null) {
-      Logs().d('Создание gRPC канала ${_config.host}:${_config.port}');
+      Logs().d('Создание канала ${_config.host}:${_config.port}');
       _channel = ClientChannel(
         _config.host,
         port: _config.port,
@@ -95,7 +95,7 @@ class GrpcChannelManager {
     _runnerClient = null;
     _editorClient = null;
     if (ch != null) {
-      Logs().d('Закрытие gRPC канала');
+      Logs().d('Закрытие канала');
       await ch.shutdown();
     }
   }

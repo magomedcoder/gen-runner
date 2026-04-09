@@ -22,20 +22,22 @@ import (
 	"github.com/magomedcoder/gen/internal/service"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
+	"github.com/magomedcoder/gen/pkg/rag"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gorm.io/gorm"
 )
 
 type Container struct {
-	db            *gorm.DB
-	pool          *service.Pool
-	fileRepo      domain.FileRepository
-	authHandler   *handler.AuthHandler
-	chatHandler   *handler.ChatHandler
-	editorHandler *handler.EditorHandler
-	userHandler   *handler.UserHandler
-	runnerHandler *handler.RunnerHandler
+	db             *gorm.DB
+	pool           *service.Pool
+	fileRepo       domain.FileRepository
+	DocumentIngest *usecase.DocumentIngestUseCase
+	authHandler    *handler.AuthHandler
+	chatHandler    *handler.ChatHandler
+	editorHandler  *handler.EditorHandler
+	userHandler    *handler.UserHandler
+	runnerHandler  *handler.RunnerHandler
 }
 
 func New(ctx context.Context, cfg *config.Config) (*Container, error) {
@@ -96,6 +98,7 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	messageEditRepo := postgres.NewMessageEditRepository(db)
 	assistantRegenRepo := postgres.NewAssistantMessageRegenerationRepository(db)
 	fileRepo := postgres.NewFileRepository(db)
+	documentRAGRepo := postgres.NewDocumentRAGRepository(db)
 
 	jwtService := service.NewJWTService(cfg)
 
@@ -124,19 +127,30 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	mcpToolsListCache := mcpclient.NewToolsListCache()
 	mcpclient.SetToolsListCacheForNotifications(mcpToolsListCache)
 
-	chatUseCase := usecase.NewChatUseCase(chatTxRunner, sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, runnerRepo, llmRepo, runnerPool, runnerReg, filepath.Join(cfg.DataDir, "uploads"), cfg.AttachmentHydrateParallelism, webSearchSettingsRepo, mcpServerRepo, mcpToolsListCache)
+	documentIngestUC := usecase.NewDocumentIngestUseCase(
+		sessionRepo, fileRepo, documentRAGRepo, runnerRepo, llmRepo, filepath.Join(cfg.DataDir, "uploads"),
+		rag.SplitOptions{
+			ChunkSizeRunes:    cfg.RAG.EffectiveChunkSizeRunes(),
+			ChunkOverlapRunes: cfg.RAG.EffectiveChunkOverlapRunes(),
+		},
+		cfg.RAG.EffectiveEmbedBatchSize(),
+		cfg.RAG.EffectiveMaxChunkEmbedRunes(),
+	)
+
+	chatUseCase := usecase.NewChatUseCase(chatTxRunner, sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, runnerRepo, llmRepo, runnerPool, runnerReg, filepath.Join(cfg.DataDir, "uploads"), cfg.AttachmentHydrateParallelism, webSearchSettingsRepo, mcpServerRepo, mcpToolsListCache, documentIngestUC, cfg.RAG.BackgroundIndexTimeout(), cfg.RAG.EffectiveLLMContextFallbackTokens(), cfg.RAG.EffectiveMaxExtractedRunesOnUpload())
 	editorUseCase := usecase.NewEditorUseCase(llmRepo, editorHistoryRepo, runnerRepo)
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 
 	return &Container{
-		db:            db,
-		pool:          runnerPool,
-		fileRepo:      fileRepo,
-		authHandler:   handler.NewAuthHandler(cfg, authUseCase),
-		chatHandler:   handler.NewChatHandler(cfg, chatUseCase, authUseCase),
-		editorHandler: handler.NewEditorHandler(editorUseCase, authUseCase),
-		userHandler:   handler.NewUserHandler(userUseCase, authUseCase),
-		runnerHandler: handler.NewRunnerHandler(runnerReg, runnerPool, authUseCase, cfg, runnerRepo, webSearchSettingsUC, mcpServersUC, mcpToolsListCache),
+		db:             db,
+		pool:           runnerPool,
+		fileRepo:       fileRepo,
+		DocumentIngest: documentIngestUC,
+		authHandler:    handler.NewAuthHandler(cfg, authUseCase),
+		chatHandler:    handler.NewChatHandler(cfg, chatUseCase, authUseCase, documentIngestUC),
+		editorHandler:  handler.NewEditorHandler(editorUseCase, authUseCase),
+		userHandler:    handler.NewUserHandler(userUseCase, authUseCase),
+		runnerHandler:  handler.NewRunnerHandler(runnerReg, runnerPool, authUseCase, cfg, runnerRepo, webSearchSettingsUC, mcpServersUC, mcpToolsListCache),
 	}, nil
 }
 

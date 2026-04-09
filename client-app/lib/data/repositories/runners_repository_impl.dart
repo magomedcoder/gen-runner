@@ -71,8 +71,10 @@ class RunnersRepositoryImpl implements RunnersRepository {
   Future<WebSearchSettingsEntity> getWebSearchSettings() => _remote.getWebSearchSettings();
 
   @override
-  Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings) =>
-      _remote.updateWebSearchSettings(settings);
+  Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings) => _remote.updateWebSearchSettings(settings);
+
+  @override
+  Future<bool> getWebSearchGloballyEnabled() => _remote.getWebSearchGloballyEnabled();
 
   @override
   Future<List<McpServerEntity>> listMcpServers() => _remote.listMcpServers();

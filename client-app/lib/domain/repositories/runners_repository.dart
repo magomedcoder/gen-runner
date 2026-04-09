@@ -41,6 +41,8 @@ abstract class RunnersRepository {
 
   Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings);
 
+  Future<bool> getWebSearchGloballyEnabled();
+
   Future<List<McpServerEntity>> listMcpServers();
 
   Future<McpServerEntity> createMcpServer(McpServerEntity server);

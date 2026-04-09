@@ -7,6 +7,9 @@ class WebSearchSettingsEntity {
     required this.googleSearchEngineId,
     required this.yandexUser,
     required this.yandexKey,
+    required this.yandexEnabled,
+    required this.googleEnabled,
+    required this.braveEnabled,
   });
 
   final bool enabled;
@@ -16,4 +19,7 @@ class WebSearchSettingsEntity {
   final String googleSearchEngineId;
   final String yandexUser;
   final String yandexKey;
+  final bool yandexEnabled;
+  final bool googleEnabled;
+  final bool braveEnabled;
 }

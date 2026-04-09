@@ -8,7 +8,6 @@ class UpdateRequiredScreen extends StatelessWidget {
     final theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
-        top: false,
         child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),

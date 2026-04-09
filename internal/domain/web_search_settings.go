@@ -8,4 +8,7 @@ type WebSearchSettings struct {
 	GoogleSearchEngineID string
 	YandexUser           string
 	YandexKey            string
+	YandexEnabled        bool
+	GoogleEnabled        bool
+	BraveEnabled         bool
 }

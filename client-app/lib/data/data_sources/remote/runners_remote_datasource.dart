@@ -50,6 +50,8 @@ abstract class IRunnersRemoteDataSource {
 
   Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings);
 
+  Future<bool> getWebSearchGloballyEnabled();
+
   Future<List<McpServerEntity>> listMcpServers();
 
   Future<McpServerEntity> createMcpServer(McpServerEntity server);
@@ -318,6 +320,9 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
       googleSearchEngineId: s.googleSearchEngineId,
       yandexUser: s.yandexUser,
       yandexKey: s.yandexKey,
+      yandexEnabled: s.hasYandexEnabled() ? s.yandexEnabled : false,
+      googleEnabled: s.hasGoogleEnabled() ? s.googleEnabled : false,
+      braveEnabled: s.hasBraveEnabled() ? s.braveEnabled : false,
     );
   }
 
@@ -350,11 +355,28 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
             googleSearchEngineId: settings.googleSearchEngineId,
             yandexUser: settings.yandexUser,
             yandexKey: settings.yandexKey,
+            yandexEnabled: settings.yandexEnabled,
+            googleEnabled: settings.googleEnabled,
+            braveEnabled: settings.braveEnabled,
           ),
         ),
       );
     } catch (e) {
       Logs().e('RunnersRemote: updateWebSearchSettings', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<bool> getWebSearchGloballyEnabled() async {
+    Logs().d('RunnersRemote: getWebSearchGloballyEnabled');
+    try {
+      final resp = await _authGuard.execute(
+        () => _channelManager.runnerClient.getWebSearchAvailability(common.Empty()),
+      );
+      return resp.globallyEnabled;
+    } catch (e) {
+      Logs().e('RunnersRemote: getWebSearchGloballyEnabled', exception: e);
       rethrow;
     }
   }

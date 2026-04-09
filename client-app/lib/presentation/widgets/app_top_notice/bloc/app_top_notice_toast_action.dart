@@ -1,0 +1,4 @@
+enum AppTopNoticeToastAction {
+  none,
+  chatReloadRunners,
+}

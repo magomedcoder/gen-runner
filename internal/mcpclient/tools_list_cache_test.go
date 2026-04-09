@@ -28,20 +28,42 @@ func TestServerConfigFingerprintChangesWithCommand(t *testing.T) {
 
 func TestToolsListCacheInvalidateServerID(t *testing.T) {
 	c := NewToolsListCache()
-	key := toolsCacheKey{
+	key := listCacheKey{
 		id: 1,
 		fp: "abc",
 	}
 
 	c.mu.Lock()
-	c.entries[key] = toolsCacheEntry{until: time.Now().Add(time.Hour)}
+	c.toolEntries[key] = toolsCacheEntry{until: time.Now().Add(time.Hour)}
+	c.resEntries[key] = resourcesCacheEntry{until: time.Now().Add(time.Hour)}
+	c.promptsEntries[key] = promptsCacheEntry{until: time.Now().Add(time.Hour)}
 	c.mu.Unlock()
 	c.InvalidateServerID(1)
 	c.mu.RLock()
-	_, ok := c.entries[key]
+	_, okTools := c.toolEntries[key]
+	_, okRes := c.resEntries[key]
+	_, okPr := c.promptsEntries[key]
 	c.mu.RUnlock()
 
-	if ok {
-		t.Fatal("ожидаемый ключ удален\n")
+	if okTools || okRes || okPr {
+		t.Fatal("ожидается удаление ключей tools/resources/prompts")
+	}
+}
+
+func TestNotifyForListChangedHandlers(t *testing.T) {
+	t.Cleanup(func() { SetToolsListCacheForNotifications(nil) })
+
+	SetToolsListCacheForNotifications(nil)
+	if g := notifyForListChangedHandlers(nil); g != nil {
+		t.Fatalf("want nil, got %p", g)
+	}
+
+	c := NewToolsListCache()
+	SetToolsListCacheForNotifications(c)
+	if g := notifyForListChangedHandlers(nil); g != c {
+		t.Fatal("expected process default cache")
+	}
+	if g := notifyForListChangedHandlers(c); g != c {
+		t.Fatal("explicit notify must override default")
 	}
 }

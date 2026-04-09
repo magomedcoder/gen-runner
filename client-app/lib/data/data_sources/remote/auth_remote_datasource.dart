@@ -87,7 +87,7 @@ class AuthRemoteDataSource implements IAuthRemoteDataSource {
         return;
       }
       Logs().w(
-        'AuthRemote: logout gRPC code=${e.code} message=${e.message}',
+        'AuthRemote: logout code=${e.code} message=${e.message}',
         exception: e,
       );
       throw NetworkFailure('Ошибка выхода (код ${e.code})');

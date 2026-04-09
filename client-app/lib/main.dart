@@ -10,8 +10,12 @@ import 'package:gen/presentation/screens/auth/bloc/auth_state.dart';
 import 'package:gen/presentation/screens/auth/login_screen.dart';
 import 'package:gen/presentation/screens/auth/update_required_screen.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
+import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/home/home_shell.dart';
 import 'package:gen/presentation/widgets/app_root_top_chrome.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
+import 'package:gen/presentation/widgets/app_top_notice/bloc/app_top_notice_bloc.dart';
+import 'package:gen/presentation/widgets/app_top_notice/bloc/app_top_notice_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,40 +38,56 @@ class App extends StatelessWidget {
         BlocProvider(
           create: (context) => di.sl<ChatBloc>(),
         ),
+        BlocProvider<AppTopNoticeBloc>.value(
+          value: di.sl<AppTopNoticeBloc>(),
+        ),
       ],
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'Gen',
-        theme: AppTheme.dark,
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: const [Locale('ru')],
-        builder: (context, child) {
-          return AppRootTopChrome(
-            child: child ?? const SizedBox.shrink(),
-          );
-        },
-        home: BlocBuilder<AuthBloc, AuthState>(
-          builder: (context, authState) {
-            if (authState.needsUpdate) {
-              return const UpdateRequiredScreen();
-            }
-
-            if (authState.isLoading && !authState.isAuthenticated) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
+      child: BlocListener<AppTopNoticeBloc, AppTopNoticeState>(
+        listenWhen: (previous, current) =>
+            previous.serverLink == AppTopNoticeServerLink.unreachable &&
+            current.serverLink == AppTopNoticeServerLink.reachable,
+        listener: (context, _) {
+          context.read<ChatBloc>().add(
+                const ChatReconnectAfterConnectionRestored(),
               );
-            }
-
-            if (authState.isAuthenticated) {
-              return const HomeShell();
-            }
-
-            return const LoginScreen();
+        },
+        child: MaterialApp(
+          navigatorKey: appNavigatorKey,
+          debugShowCheckedModeBanner: false,
+          title: 'Gen',
+          theme: AppTheme.dark,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('ru')],
+          builder: (context, child) {
+            return AppRootTopChrome(
+              child: child ?? const SizedBox.shrink(),
+            );
           },
+          home: BlocBuilder<AuthBloc, AuthState>(
+            builder: (context, authState) {
+              if (authState.needsUpdate) {
+                return const UpdateRequiredScreen();
+              }
+
+              if (!authState.initialAuthCheckComplete &&
+                  authState.isLoading &&
+                  !authState.isAuthenticated) {
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              if (authState.isAuthenticated) {
+                return const HomeShell();
+              }
+
+              return const LoginScreen();
+            },
+          ),
         ),
       ),
     );

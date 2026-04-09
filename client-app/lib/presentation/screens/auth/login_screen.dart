@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/injector.dart';
-import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/core/server_config.dart';
 import 'package:gen/core/util.dart';
@@ -9,7 +8,7 @@ import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/auth/login_form_decoration.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_event.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_state.dart';
-import 'package:gen/presentation/widgets/app_top_notice_bar.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -68,7 +67,6 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           Scaffold(
             body: SafeArea(
-              top: false,
               child: Center(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.symmetric(
@@ -204,12 +202,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(bottom: false, child: AppTopNoticeBar()),
           ),
         ],
       ),

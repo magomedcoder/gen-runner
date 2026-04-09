@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/message.dart';
+import 'package:gen/domain/entities/rag_ingestion_ui.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/entities/assistant_message_regeneration.dart';
 import 'package:gen/domain/entities/user_message_edit.dart';
@@ -8,6 +9,7 @@ import 'package:gen/domain/entities/user_message_edit.dart';
 const _kKeepCurrentSessionId = Symbol('_kKeepCurrentSessionId');
 const _kKeepToolProgress = Object();
 const _kKeepStreamNotice = Object();
+const _kKeepRagIngestionUi = Object();
 
 class ChatState extends Equatable {
   final bool isConnected;
@@ -29,6 +31,8 @@ class ChatState extends Equatable {
   final String? selectedRunner;
   final bool? hasActiveRunners;
   final bool runnersStatusRefreshing;
+  final bool? selectedRunnerEnabled;
+  final bool? selectedRunnerConnected;
   final ChatSessionSettings? sessionSettings;
   final String? retryText;
   final String? retryAttachmentFileName;
@@ -46,10 +50,12 @@ class ChatState extends Equatable {
   final bool isLoadingOlderMessages;
   final int? partialAssistantMessageId;
   final bool draftModelReasoningEnabled;
+  final bool webSearchGloballyEnabled;
   final bool draftWebSearchEnabled;
   final String draftWebSearchProvider;
   final bool draftMcpEnabled;
   final List<int> draftMcpServerIds;
+  final RagIngestionUi? ragIngestionUi;
 
   bool get isStreamingInCurrentSession =>
       isStreaming &&
@@ -78,6 +84,8 @@ class ChatState extends Equatable {
     this.selectedRunner,
     this.hasActiveRunners,
     this.runnersStatusRefreshing = false,
+    this.selectedRunnerEnabled,
+    this.selectedRunnerConnected,
     this.sessionSettings,
     this.retryText,
     this.retryAttachmentFileName,
@@ -95,10 +103,12 @@ class ChatState extends Equatable {
     this.isLoadingOlderMessages = false,
     this.partialAssistantMessageId,
     this.draftModelReasoningEnabled = false,
+    this.webSearchGloballyEnabled = false,
     this.draftWebSearchEnabled = false,
     this.draftWebSearchProvider = '',
     this.draftMcpEnabled = false,
     this.draftMcpServerIds = const [],
+    this.ragIngestionUi,
   });
 
   ChatState copyWith({
@@ -124,6 +134,9 @@ class ChatState extends Equatable {
     String? selectedRunner,
     bool? hasActiveRunners,
     bool? runnersStatusRefreshing,
+    bool? selectedRunnerEnabled,
+    bool? selectedRunnerConnected,
+    bool clearSelectedRunnerHealth = false,
     ChatSessionSettings? sessionSettings,
     String? retryText,
     String? retryAttachmentFileName,
@@ -144,10 +157,13 @@ class ChatState extends Equatable {
     int? partialAssistantMessageId,
     bool clearPartialAssistant = false,
     bool? draftModelReasoningEnabled,
+    bool? webSearchGloballyEnabled,
     bool? draftWebSearchEnabled,
     String? draftWebSearchProvider,
     bool? draftMcpEnabled,
     List<int>? draftMcpServerIds,
+    Object? ragIngestionUi = _kKeepRagIngestionUi,
+    bool clearRagIngestionUi = false,
   }) {
     return ChatState(
       isConnected: isConnected ?? this.isConnected,
@@ -183,6 +199,12 @@ class ChatState extends Equatable {
       selectedRunner: selectedRunner ?? this.selectedRunner,
       hasActiveRunners: hasActiveRunners ?? this.hasActiveRunners,
       runnersStatusRefreshing: runnersStatusRefreshing ?? this.runnersStatusRefreshing,
+      selectedRunnerEnabled: clearSelectedRunnerHealth
+        ? null
+        : (selectedRunnerEnabled ?? this.selectedRunnerEnabled),
+      selectedRunnerConnected: clearSelectedRunnerHealth
+        ? null
+        : (selectedRunnerConnected ?? this.selectedRunnerConnected),
       sessionSettings: sessionSettings ?? this.sessionSettings,
       retryText: clearRetryPayload ? null : (retryText ?? this.retryText),
       retryAttachmentFileName: clearRetryPayload
@@ -209,12 +231,19 @@ class ChatState extends Equatable {
           : (partialAssistantMessageId ?? this.partialAssistantMessageId),
       draftModelReasoningEnabled:
           draftModelReasoningEnabled ?? this.draftModelReasoningEnabled,
+      webSearchGloballyEnabled:
+          webSearchGloballyEnabled ?? this.webSearchGloballyEnabled,
       draftWebSearchEnabled:
           draftWebSearchEnabled ?? this.draftWebSearchEnabled,
       draftWebSearchProvider:
           draftWebSearchProvider ?? this.draftWebSearchProvider,
       draftMcpEnabled: draftMcpEnabled ?? this.draftMcpEnabled,
       draftMcpServerIds: draftMcpServerIds ?? this.draftMcpServerIds,
+      ragIngestionUi: clearRagIngestionUi
+          ? null
+          : (identical(ragIngestionUi, _kKeepRagIngestionUi)
+              ? this.ragIngestionUi
+              : ragIngestionUi as RagIngestionUi?),
     );
   }
 
@@ -239,6 +268,8 @@ class ChatState extends Equatable {
     selectedRunner,
     hasActiveRunners,
     runnersStatusRefreshing,
+    selectedRunnerEnabled,
+    selectedRunnerConnected,
     sessionSettings,
     retryText,
     retryAttachmentFileName,
@@ -256,9 +287,11 @@ class ChatState extends Equatable {
     isLoadingOlderMessages,
     partialAssistantMessageId,
     draftModelReasoningEnabled,
+    webSearchGloballyEnabled,
     draftWebSearchEnabled,
     draftWebSearchProvider,
     draftMcpEnabled,
     draftMcpServerIds,
+    ragIngestionUi,
   ];
 }

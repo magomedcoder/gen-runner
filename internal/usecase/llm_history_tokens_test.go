@@ -3,6 +3,7 @@ package usecase
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/magomedcoder/gen/internal/domain"
 )
@@ -38,6 +39,24 @@ func TestTrimLLMMessagesByApproxTokens_disabled(t *testing.T) {
 	out, trimmed := trimLLMMessagesByApproxTokens(msgs, 0, 1)
 	if trimmed || len(out) != 2 {
 		t.Fatalf("maxTokens=0: trimmed=%v len=%d", trimmed, len(out))
+	}
+}
+
+func TestTrimLLMMessagesByApproxTokens_systemAndOneUserShrinks(t *testing.T) {
+	sys := domain.NewMessage(1, "system prompt text", domain.MessageRoleSystem)
+	u := domain.NewMessage(1, strings.Repeat("ж", 12000), domain.MessageRoleUser)
+	msgs := []*domain.Message{sys, u}
+	out, trimmed := trimLLMMessagesByApproxTokens(msgs, 200, 1)
+	if !trimmed {
+		t.Fatal("ожидалась обрезка при system + одно user (раньше баг: лимит игнорировался)")
+	}
+
+	if sumApproxTokens(out) > 260 {
+		t.Fatalf("после обрезки всё ещё много токенов по оценке: %d", sumApproxTokens(out))
+	}
+
+	if got := utf8.RuneCountInString(out[1].Content); got >= len([]rune(u.Content)) {
+		t.Fatalf("сообщение пользователя не укоротили: runes=%d", got)
 	}
 }
 

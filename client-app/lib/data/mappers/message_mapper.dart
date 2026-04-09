@@ -32,6 +32,9 @@ abstract class MessageMapper {
       attachmentFileName: proto.hasAttachmentName() ? proto.attachmentName : null,
       attachmentContent: proto.attachmentContent.isNotEmpty ? Uint8List.fromList(proto.attachmentContent) : null,
       attachmentFileId: proto.hasAttachmentFileId() ? proto.attachmentFileId.toInt() : null,
+      useFileRag: false,
+      fileRagTopK: 0,
+      fileRagEmbedModel: '',
     );
   }
 

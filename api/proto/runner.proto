@@ -33,6 +33,8 @@ service RunnerService {
 
   rpc UpdateWebSearchSettings(UpdateWebSearchSettingsRequest) returns (WebSearchSettingsResponse);
 
+  rpc GetWebSearchAvailability(common.Empty) returns (WebSearchAvailabilityResponse);
+
   rpc ListMCPServers(common.Empty) returns (ListMCPServersResponse);
 
   rpc GetMCPServer(GetMCPServerRequest) returns (MCPServer);
@@ -169,10 +171,17 @@ message WebSearchSettings {
   string google_search_engine_id = 6;
   string yandex_user = 7;
   string yandex_key = 8;
+  bool yandex_enabled = 9;
+  bool google_enabled = 10;
+  bool brave_enabled = 11;
 }
 
 message WebSearchSettingsResponse {
   WebSearchSettings settings = 1;
+}
+
+message WebSearchAvailabilityResponse {
+  bool globally_enabled = 1;
 }
 
 message UpdateWebSearchSettingsRequest {
@@ -184,6 +193,9 @@ message UpdateWebSearchSettingsRequest {
   string google_search_engine_id = 6;
   string yandex_user = 7;
   string yandex_key = 8;
+  optional bool yandex_enabled = 9;
+  optional bool google_enabled = 10;
+  optional bool brave_enabled = 11;
 }
 
 message MCPServer {

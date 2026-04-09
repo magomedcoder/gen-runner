@@ -102,7 +102,7 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
                   return const SessionsSidebarLoadingState();
                 }
 
-                if (state.error != null) {
+                if (state.error != null && state.isConnected) {
                   return SessionsSidebarErrorState(onRetry: _loadSessions);
                 }
 

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/layout/responsive.dart';
-import 'package:gen/core/ui/app_top_notice.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
 import 'package:gen/generated/grpc_pb/editor.pb.dart' as grpc;
 import 'package:gen/presentation/screens/editor/bloc/editor_bloc.dart';
 import 'package:gen/presentation/screens/editor/bloc/editor_event.dart';
@@ -129,7 +129,13 @@ class _EditorScreenState extends State<EditorScreen> {
         }
 
         if (state.error != null && state.error!.isNotEmpty) {
-          showAppTopNotice(state.error!, error: true);
+          final err = state.error!;
+          final shortValidation = err == 'Введите текст';
+          showAppTopNotice(
+            err,
+            error: true,
+            duration: shortValidation ? const Duration(seconds: 4) : null,
+          );
           context.read<EditorBloc>().add(const EditorClearError());
         }
       },
@@ -138,7 +144,6 @@ class _EditorScreenState extends State<EditorScreen> {
 
         return Scaffold(
           body: SafeArea(
-            top: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

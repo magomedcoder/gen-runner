@@ -11,6 +11,7 @@ import 'package:gen/domain/usecases/chat/create_session_usecase.dart';
 import 'package:gen/domain/usecases/chat/delete_session_usecase.dart';
 import 'package:gen/domain/usecases/chat/edit_user_message_and_continue_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_file_ingestion_status_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_session_file_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_session_messages_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_assistant_message_regenerations_usecase.dart';
@@ -31,6 +32,7 @@ import 'package:gen/domain/usecases/runners/delete_runner_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_runners_status_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_runners_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_user_runners_usecase.dart';
+import 'package:gen/domain/usecases/runners/get_web_search_availability_usecase.dart';
 import 'package:gen/domain/usecases/runners/update_runner_usecase.dart';
 import 'package:gen/domain/usecases/users/create_user_usecase.dart';
 import 'package:gen/domain/usecases/users/edit_user_usecase.dart';
@@ -56,6 +58,7 @@ void registerUseCasesModule(GetIt sl) {
   sl.registerFactory(() => SetSelectedRunnerUseCase(sl()));
   sl.registerFactory(() => DeleteSessionUseCase(sl()));
   sl.registerFactory(() => PutSessionFileUseCase(sl()));
+  sl.registerFactory(() => GetFileIngestionStatusUseCase(sl()));
   sl.registerFactory(() => GetSessionFileUseCase(sl()));
   sl.registerFactory(() => UpdateSessionTitleUseCase(sl()));
   sl.registerFactory(() => TransformTextUseCase(sl()));
@@ -68,6 +71,7 @@ void registerUseCasesModule(GetIt sl) {
   sl.registerFactory(() => UpdateRunnerUseCase(sl()));
   sl.registerFactory(() => DeleteRunnerUseCase(sl()));
   sl.registerFactory(() => GetRunnersStatusUseCase(sl()));
+  sl.registerFactory(() => GetWebSearchAvailabilityUseCase(sl()));
 
   sl.registerFactory(() => LoginUseCase(sl()));
   sl.registerFactory(() => RefreshTokenUseCase(sl()));

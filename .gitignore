@@ -1,7 +1,6 @@
 .idea
 build
 /api/pb/
-/llm-runner
 .DS_Store
 data
 /config.yaml

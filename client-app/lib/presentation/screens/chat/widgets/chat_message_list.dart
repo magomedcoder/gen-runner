@@ -99,6 +99,9 @@ class ChatMessageList extends StatelessWidget {
               attachmentFileName: msg.attachmentFileName,
               attachmentContent: msg.attachmentContent,
               attachmentFileId: msg.attachmentFileId,
+              useFileRag: msg.useFileRag,
+              fileRagTopK: msg.fileRagTopK,
+              fileRagEmbedModel: msg.fileRagEmbedModel,
             )
             : msg;
 
@@ -119,6 +122,9 @@ class ChatMessageList extends StatelessWidget {
               attachmentFileName: msg.attachmentFileName,
               attachmentContent: msg.attachmentContent,
               attachmentFileId: msg.attachmentFileId,
+              useFileRag: msg.useFileRag,
+              fileRagTopK: msg.fileRagTopK,
+              fileRagEmbedModel: msg.fileRagEmbedModel,
             )
             : displayMsg;
           final showAssistantNav = msg.role == MessageRole.assistant && (state.regeneratedAssistantMessageIds.contains(msg.id) || hasRegens);

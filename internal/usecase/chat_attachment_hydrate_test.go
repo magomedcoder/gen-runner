@@ -47,6 +47,10 @@ func (m mapFileRepo) GetById(_ context.Context, id int64) (*domain.File, error) 
 	return f, nil
 }
 
+func (m mapFileRepo) GetByIdWithExtractedCache(ctx context.Context, id int64) (*domain.File, error) {
+	return m.GetById(ctx, id)
+}
+
 func (m mapFileRepo) ListByIds(_ context.Context, ids []int64) ([]*domain.File, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -98,6 +102,10 @@ func (s *spyFileRepo) GetById(_ context.Context, id int64) (*domain.File, error)
 	}
 
 	return f, nil
+}
+
+func (s *spyFileRepo) GetByIdWithExtractedCache(ctx context.Context, id int64) (*domain.File, error) {
+	return s.GetById(ctx, id)
 }
 
 func (s *spyFileRepo) ListByIds(_ context.Context, ids []int64) ([]*domain.File, error) {

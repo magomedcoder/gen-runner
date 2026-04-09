@@ -43,14 +43,82 @@ type MCPConfig struct {
 	HTTPSessionMaxIdleSeconds int      `yaml:"http_session_max_idle_seconds"`
 }
 
+type RAGConfig struct {
+	ChunkSizeRunes                int `yaml:"chunk_size_runes"`
+	ChunkOverlapRunes             int `yaml:"chunk_overlap_runes"`
+	EmbedBatchSize                int `yaml:"embed_batch_size"`
+	MaxChunkEmbedRunes            int `yaml:"max_chunk_embed_runes"`
+	BackgroundIndexTimeoutSeconds int `yaml:"background_index_timeout_seconds"`
+	LLMContextFallbackTokens      int `yaml:"llm_context_fallback_tokens"`
+	MaxExtractedRunesOnUpload     int `yaml:"max_extracted_runes_on_upload"`
+}
+
+func (r RAGConfig) EffectiveChunkSizeRunes() int {
+	if r.ChunkSizeRunes <= 0 {
+		return 1024
+	}
+	return r.ChunkSizeRunes
+}
+
+func (r RAGConfig) EffectiveChunkOverlapRunes() int {
+	if r.ChunkOverlapRunes < 0 {
+		return 0
+	}
+	return r.ChunkOverlapRunes
+}
+
+func (r RAGConfig) EffectiveEmbedBatchSize() int {
+	if r.EmbedBatchSize <= 0 {
+		return 32
+	}
+	return r.EmbedBatchSize
+}
+
+func (r RAGConfig) EffectiveMaxChunkEmbedRunes() int {
+	if r.MaxChunkEmbedRunes <= 0 {
+		return 8192
+	}
+	return r.MaxChunkEmbedRunes
+}
+
+func (r RAGConfig) BackgroundIndexTimeout() time.Duration {
+	if r.BackgroundIndexTimeoutSeconds <= 0 {
+		return 30 * time.Minute
+	}
+
+	return time.Duration(r.BackgroundIndexTimeoutSeconds) * time.Second
+}
+
+const ragBuiltinLLMContextFallbackTokens = 4096
+
+func (r RAGConfig) EffectiveLLMContextFallbackTokens() int {
+	if r.LLMContextFallbackTokens < 0 {
+		return 0
+	}
+
+	if r.LLMContextFallbackTokens == 0 {
+		return ragBuiltinLLMContextFallbackTokens
+	}
+
+	return r.LLMContextFallbackTokens
+}
+
+func (r RAGConfig) EffectiveMaxExtractedRunesOnUpload() int {
+	if r.MaxExtractedRunesOnUpload <= 0 {
+		return 0
+	}
+	return r.MaxExtractedRunesOnUpload
+}
+
 type Config struct {
 	Server                       ServerConfig
 	Database                     DatabaseConfig
 	JWT                          JWTConfig
 	MCP                          MCPConfig
-	DataDir                      string `yaml:"data_dir"`
-	AttachmentHydrateParallelism int    `yaml:"attachment_hydrate_parallelism"`
-	LogLevel                     string `yaml:"log_level"`
+	RAG                          RAGConfig `yaml:"rag"`
+	DataDir                      string    `yaml:"data_dir"`
+	AttachmentHydrateParallelism int       `yaml:"attachment_hydrate_parallelism"`
+	LogLevel                     string    `yaml:"log_level"`
 	MinClientBuild               int32
 }
 

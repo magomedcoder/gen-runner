@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/injector.dart' as di;
 import 'package:gen/core/layout/responsive.dart';
-import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
-import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
-import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/screens/admin/admin_screen.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_state.dart';
@@ -14,7 +11,6 @@ import 'package:gen/presentation/screens/editor/bloc/editor_event.dart';
 import 'package:gen/presentation/screens/editor/editor_screen.dart';
 import 'package:gen/presentation/screens/profile/profile_screen.dart';
 import 'package:gen/presentation/widgets/app_side_navigation_rail.dart';
-import 'package:gen/presentation/widgets/chat_status_alerts_column.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -97,39 +93,7 @@ class _HomeShellState extends State<HomeShell> {
 
         if (mobile) {
           return Scaffold(
-            body: Stack(
-              fit: StackFit.expand,
-              clipBehavior: Clip.none,
-              children: [
-                Positioned.fill(child: IndexedStack(index: _index, children: pages)),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: SafeArea(
-                    bottom: false,
-                    left: false,
-                    right: false,
-                    child: BlocBuilder<ChatBloc, ChatState>(
-                      builder: (context, state) {
-                        return ChatStatusAlertsColumn(
-                          state: state,
-                          onRetryConnection: () =>
-                              context.read<ChatBloc>().add(const ChatStarted()),
-                          onRefreshRunners: () =>
-                              context.read<ChatBloc>().add(const ChatLoadRunners()),
-                          onClearChatError: () =>
-                              context.read<ChatBloc>().add(const ChatClearError()),
-                          onDismissStreamNotice: () => context
-                              .read<ChatBloc>()
-                              .add(const ChatDismissStreamNotice()),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            body: IndexedStack(index: _index, children: pages),
             bottomNavigationBar: NavigationBar(
               selectedIndex: _index,
               onDestinationSelected: select,
@@ -158,41 +122,7 @@ class _HomeShellState extends State<HomeShell> {
               ),
               const VerticalDivider(width: 1, thickness: 1),
               Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned.fill(
-                      child: IndexedStack(index: _index, children: pages),
-                    ),
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: SafeArea(
-                        bottom: false,
-                        left: false,
-                        right: false,
-                        child: BlocBuilder<ChatBloc, ChatState>(
-                          builder: (context, state) {
-                            return ChatStatusAlertsColumn(
-                              state: state,
-                              onRetryConnection: () =>
-                                  context.read<ChatBloc>().add(const ChatStarted()),
-                              onRefreshRunners: () =>
-                                  context.read<ChatBloc>().add(const ChatLoadRunners()),
-                              onClearChatError: () =>
-                                  context.read<ChatBloc>().add(const ChatClearError()),
-                              onDismissStreamNotice: () => context
-                                  .read<ChatBloc>()
-                                  .add(const ChatDismissStreamNotice()),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                child: IndexedStack(index: _index, children: pages),
               ),
             ],
           ),

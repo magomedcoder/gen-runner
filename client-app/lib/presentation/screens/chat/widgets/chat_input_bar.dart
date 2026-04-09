@@ -11,7 +11,7 @@ import 'package:gen/core/injector.dart';
 import 'package:gen/core/speech/local_vosk_dictation_service.dart';
 import 'package:gen/core/speech/vosk_model_sync_service.dart';
 import 'package:grpc/grpc.dart';
-import 'package:gen/core/ui/app_top_notice.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
 import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
@@ -50,7 +50,8 @@ class ChatInputBar extends StatefulWidget {
 }
 
 class ChatInputBarState extends State<ChatInputBar> {
-  static const double _inputCardMinHeight = 90.0;
+  static const double _inputCardMinHeightDesktop = 90.0;
+  static const double _inputCardMinHeightMobile = 124.0;
   static const double _inputCardGrowthStep = 50.0;
   static const double _inputCardMaxWindowFactor = 0.5;
   static const double _roundedCardRadius = 22.0;
@@ -429,9 +430,15 @@ class ChatInputBarState extends State<ChatInputBar> {
     super.dispose();
   }
 
+  double _minCardHeight(BuildContext context) {
+    return Breakpoints.isMobile(context)
+      ? _inputCardMinHeightMobile
+      : _inputCardMinHeightDesktop;
+  }
+
   double _cardMaxHeight(BuildContext context) {
     final h = MediaQuery.sizeOf(context).height;
-    return math.max(_inputCardMinHeight, h * _inputCardMaxWindowFactor);
+    return math.max(_minCardHeight(context), h * _inputCardMaxWindowFactor);
   }
 
   int _estimatedLineCount({
@@ -469,11 +476,12 @@ class ChatInputBarState extends State<ChatInputBar> {
       textStyle: textStyle,
       availableWidth: availableTextWidth,
     );
+    final minH = _minCardHeight(context);
     final attachmentExtra = _selectedFile == null ? 0.0 : 36.0;
-    final targetHeight = _inputCardMinHeight + attachmentExtra + ((lines - 1) * _inputCardGrowthStep);
+    final targetHeight = minH + attachmentExtra + ((lines - 1) * _inputCardGrowthStep);
     final maxHeight = _cardMaxHeight(context);
 
-    return targetHeight.clamp(_inputCardMinHeight, maxHeight);
+    return targetHeight.clamp(minH, maxHeight);
   }
 
   Widget _buildAttachmentChip(ThemeData theme) {
@@ -601,115 +609,116 @@ class ChatInputBarState extends State<ChatInputBar> {
                 );
               },
             ),
-            Builder(
-              builder: (context) {
-                final searchOn = state.currentSessionId == null
-                  ? state.draftWebSearchEnabled
-                  : (state.sessionSettings?.webSearchEnabled ?? false);
-                final canSearch = widget.isEnabled && (state.currentSessionId == null || state.sessionSettings != null);
-                final curProv = state.currentSessionId == null
-                  ? state.draftWebSearchProvider
-                  : (state.sessionSettings?.webSearchProvider ?? '');
-                final Color searchIconColor;
+            if (state.webSearchGloballyEnabled)
+              Builder(
+                builder: (context) {
+                  final searchOn = state.currentSessionId == null
+                    ? state.draftWebSearchEnabled
+                    : (state.sessionSettings?.webSearchEnabled ?? false);
+                  final canSearch = widget.isEnabled && (state.currentSessionId == null || state.sessionSettings != null);
+                  final curProv = state.currentSessionId == null
+                    ? state.draftWebSearchProvider
+                    : (state.sessionSettings?.webSearchProvider ?? '');
+                  final Color searchIconColor;
 
-                if (!canSearch) {
-                  searchIconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38);
-                } else if (searchOn) {
-                  final primary = theme.colorScheme.primary;
-                  searchIconColor = widget.isEnabled
-                    ? theme.colorScheme.onSurfaceVariant
-                    : primary.withValues(alpha: 0.48);
-                } else {
-                  searchIconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
-                }
+                  if (!canSearch) {
+                    searchIconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38);
+                  } else if (searchOn) {
+                    final primary = theme.colorScheme.primary;
+                    searchIconColor = widget.isEnabled
+                      ? theme.colorScheme.onSurfaceVariant
+                      : primary.withValues(alpha: 0.48);
+                  } else {
+                    searchIconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
+                  }
 
-                PopupMenuItem<String> menuItem(String value, String label, {bool checked = false}) {
-                  return PopupMenuItem<String>(
-                    value: value,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 22,
-                          child: checked ? Icon(
-                            Icons.check_rounded,
-                            size: 18,
-                            color: theme.colorScheme.primary
-                          ) : null,
-                        ),
-                        Expanded(child: Text(label)),
-                      ],
-                    ),
-                  );
-                }
-
-                return PopupMenuButton<String>(
-                  tooltip: 'Поиск в интернете',
-                  enabled: canSearch,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: searchOn && canSearch
-                      ? DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.16),
-                            shape: BoxShape.circle,
+                  PopupMenuItem<String> menuItem(String value, String label, {bool checked = false}) {
+                    return PopupMenuItem<String>(
+                      value: value,
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 22,
+                            child: checked ? Icon(
+                              Icons.check_rounded,
+                              size: 18,
+                              color: theme.colorScheme.primary
+                            ) : null,
                           ),
-                          child: SizedBox(
-                            width: 26,
-                            height: 26,
-                            child: Center(
-                              child: Icon(
-                                Icons.travel_explore,
-                                color: searchIconColor,
-                                size: 22,
+                          Expanded(child: Text(label)),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return PopupMenuButton<String>(
+                    tooltip: 'Поиск в интернете',
+                    enabled: canSearch,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: searchOn && canSearch
+                        ? DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.16),
+                              shape: BoxShape.circle,
+                            ),
+                            child: SizedBox(
+                              width: 26,
+                              height: 26,
+                              child: Center(
+                                child: Icon(
+                                  Icons.travel_explore,
+                                  color: searchIconColor,
+                                  size: 22,
+                                ),
                               ),
                             ),
+                          )
+                        : Icon(
+                            Icons.travel_explore_outlined,
+                            color: searchIconColor,
+                            size: 22,
                           ),
-                        )
-                      : Icon(
-                          Icons.travel_explore_outlined,
-                          color: searchIconColor,
-                          size: 22,
-                        ),
-                  ),
-                  onSelected: (v) {
-                    final bloc = context.read<ChatBloc>();
-                    if (v == 'off') {
-                      bloc.add(const ChatSetWebSearch(enabled: false, provider: ''));
-                    } else {
-                      bloc.add(ChatSetWebSearch(enabled: true, provider: v));
-                    }
-                  },
-                  itemBuilder: (ctx) => [
-                    menuItem(
-                      'multi',
-                      'Мультипоиск',
-                      checked: searchOn && curProv == 'multi',
                     ),
-                    menuItem(
-                      'off',
-                      'Выключить',
-                      checked: !searchOn,
-                    ),
-                    const PopupMenuDivider(),
-                    menuItem(
-                      'yandex',
-                      'Яндекс',
-                      checked: searchOn && curProv == 'yandex',
-                    ),
-                    menuItem(
-                      'google',
-                      'Google',
-                      checked: searchOn && curProv == 'google',
-                    ),
-                    menuItem(
-                      'brave',
-                      'Brave',
-                      checked: searchOn && curProv == 'brave',
-                    ),
-                  ],
-                );
-              },
-            ),
+                    onSelected: (v) {
+                      final bloc = context.read<ChatBloc>();
+                      if (v == 'off') {
+                        bloc.add(const ChatSetWebSearch(enabled: false, provider: ''));
+                      } else {
+                        bloc.add(ChatSetWebSearch(enabled: true, provider: v));
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      menuItem(
+                        'multi',
+                        'Мультипоиск',
+                        checked: searchOn && curProv == 'multi',
+                      ),
+                      menuItem(
+                        'off',
+                        'Выключить',
+                        checked: !searchOn,
+                      ),
+                      const PopupMenuDivider(),
+                      menuItem(
+                        'yandex',
+                        'Яндекс',
+                        checked: searchOn && curProv == 'yandex',
+                      ),
+                      menuItem(
+                        'google',
+                        'Google',
+                        checked: searchOn && curProv == 'google',
+                      ),
+                      menuItem(
+                        'brave',
+                        'Brave',
+                        checked: searchOn && curProv == 'brave',
+                      ),
+                    ],
+                  );
+                },
+              ),
             if (widget.showRetry &&
                 state.retryText != null &&
                 !state.isStreamingInCurrentSession) ...[
@@ -878,7 +887,7 @@ class ChatInputBarState extends State<ChatInputBar> {
                 height: cardHeight,
                 constraints: BoxConstraints(
                   maxHeight: _cardMaxHeight(context),
-                  minHeight: _inputCardMinHeight,
+                  minHeight: _minCardHeight(context),
                 ),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
@@ -921,18 +930,18 @@ class ChatInputBarState extends State<ChatInputBar> {
                                 LogicalKeyboardKey.numpadEnter,
                                 meta: true,
                               ): _insertNewlineAtCursor,
-                            },
-                            const SingleActivator(LogicalKeyboardKey.enter): () {
-                              if (widget.isEnabled) {
-                                _sendMessage();
-                              }
-                            },
-                            const SingleActivator(
-                              LogicalKeyboardKey.numpadEnter,
-                            ): () {
-                              if (widget.isEnabled) {
-                                _sendMessage();
-                              }
+                              const SingleActivator(LogicalKeyboardKey.enter): () {
+                                if (widget.isEnabled) {
+                                  _sendMessage();
+                                }
+                              },
+                              const SingleActivator(
+                                LogicalKeyboardKey.numpadEnter,
+                              ): () {
+                                if (widget.isEnabled) {
+                                  _sendMessage();
+                                }
+                              },
                             },
                           },
                           child: TextField(

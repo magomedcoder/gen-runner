@@ -148,12 +148,46 @@ CREATE TABLE IF NOT EXISTS web_search_settings
     google_search_engine_id TEXT        NOT NULL DEFAULT '',
     yandex_user             TEXT        NOT NULL DEFAULT '',
     yandex_key              TEXT        NOT NULL DEFAULT '',
+    yandex_enabled          BOOLEAN     NOT NULL DEFAULT FALSE,
+    google_enabled          BOOLEAN     NOT NULL DEFAULT FALSE,
+    brave_enabled           BOOLEAN     NOT NULL DEFAULT FALSE,
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 INSERT INTO web_search_settings (id)
 VALUES (1)
 ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS document_rag_chunks
+(
+    id                    BIGSERIAL PRIMARY KEY,
+    chat_session_id       BIGINT      NOT NULL REFERENCES chats (id) ON DELETE CASCADE,
+    user_id               INTEGER     NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    file_id               BIGINT      NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    chunk_index           INTEGER     NOT NULL,
+    text                  TEXT        NOT NULL,
+    metadata              JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    chunk_content_sha256  VARCHAR(64) NOT NULL,
+    source_content_sha256 VARCHAR(64) NOT NULL,
+    pipeline_version      VARCHAR(32) NOT NULL,
+    embedding_model       VARCHAR(512) NOT NULL,
+    embedding_dim         INTEGER     NOT NULL,
+    embedding             BYTEA       NOT NULL,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (file_id, embedding_model, pipeline_version, chunk_index)
+);
+
+CREATE TABLE IF NOT EXISTS file_rag_index
+(
+    file_id               BIGINT PRIMARY KEY REFERENCES files (id) ON DELETE CASCADE,
+    status                VARCHAR(32)  NOT NULL DEFAULT 'pending',
+    last_error            TEXT         NULL,
+    source_content_sha256 VARCHAR(64)  NOT NULL DEFAULT '',
+    pipeline_version      VARCHAR(32)  NOT NULL DEFAULT '',
+    embedding_model       VARCHAR(512) NOT NULL DEFAULT '',
+    chunk_count           INTEGER      NOT NULL DEFAULT 0,
+    updated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
@@ -183,3 +217,5 @@ CREATE INDEX IF NOT EXISTS idx_editor_text_history_created_at ON editor_text_his
 CREATE INDEX IF NOT EXISTS idx_message_edits_message_id_created_at ON message_edits (message_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_message_edits_session_id_created_at ON message_edits (session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_message_edits_kind_created_at ON message_edits (kind, created_at);
+CREATE INDEX IF NOT EXISTS idx_document_rag_chunks_session_user_model ON document_rag_chunks (chat_session_id, user_id, embedding_model);
+CREATE INDEX IF NOT EXISTS idx_document_rag_chunks_file ON document_rag_chunks (file_id);

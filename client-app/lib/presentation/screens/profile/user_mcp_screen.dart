@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gen/core/injector.dart' as di;
 import 'package:gen/core/mcp_connection_config.dart';
 import 'package:gen/core/user_safe_error.dart';
-import 'package:gen/core/ui/app_top_notice.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
 import 'package:gen/domain/entities/mcp_server_entity.dart';
 import 'package:gen/domain/repositories/runners_repository.dart';
 import 'package:gen/presentation/widgets/mcp_connection_json_dialog_section.dart';
@@ -228,12 +228,15 @@ class _UserMcpScreenState extends State<UserMcpScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: AppBar(title: const Text('MCP-серверы')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     if (_loadError != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Мои MCP')),
+        appBar: AppBar(title: const Text('MCP-серверы')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -252,7 +255,7 @@ class _UserMcpScreenState extends State<UserMcpScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Мои MCP-серверы'),
+        title: const Text('MCP-серверы'),
         actions: [
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],

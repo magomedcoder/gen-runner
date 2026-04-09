@@ -5,11 +5,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/layout/responsive.dart';
-import 'package:gen/core/ui/app_top_notice.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
+import 'package:gen/presentation/screens/chat/chat_runner_issue_notice.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_app_bar_title.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_dialogs.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_input_bar.dart';
@@ -251,7 +252,19 @@ class _ChatScreenState extends State<ChatScreen> {
           });
           _prevStateForScroll = state;
         },
-        child: Builder(
+        child: BlocListener<ChatBloc, ChatState>(
+          listenWhen: shouldEmitChatRunnerIssueNotice,
+          listener: (context, state) {
+            final msg = chatRunnerIssueNoticeMessage(state);
+            if (msg != null) {
+              showAppTopNotice(
+                msg,
+                level: chatRunnerIssueNoticeLevel(state),
+                toastAction: AppTopNoticeToastAction.chatReloadRunners,
+              );
+            }
+          },
+          child: Builder(
           builder: (context) {
             final useDrawer = Breakpoints.useDrawerForSessions(context);
             return Scaffold(
@@ -270,7 +283,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 )
                 : null,
               body: SafeArea(
-                top: false,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -431,6 +443,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             );
           },
+        ),
         ),
       ),
     );

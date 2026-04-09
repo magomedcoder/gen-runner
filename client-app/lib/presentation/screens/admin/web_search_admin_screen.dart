@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:gen/core/injector.dart' as di;
-import 'package:gen/core/ui/app_top_notice.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
 import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/domain/entities/web_search_settings.dart';
 import 'package:gen/domain/repositories/runners_repository.dart';
@@ -20,6 +20,9 @@ class _WebSearchAdminScreenState extends State<WebSearchAdminScreen> {
   bool _saving = false;
 
   bool _enabled = false;
+  bool _yandexEnabled = false;
+  bool _googleEnabled = false;
+  bool _braveEnabled = false;
   final _maxResultsCtrl = TextEditingController();
   final _braveCtrl = TextEditingController();
   final _googleKeyCtrl = TextEditingController();
@@ -56,6 +59,9 @@ class _WebSearchAdminScreenState extends State<WebSearchAdminScreen> {
       }
       setState(() {
         _enabled = s.enabled;
+        _yandexEnabled = s.yandexEnabled;
+        _googleEnabled = s.googleEnabled;
+        _braveEnabled = s.braveEnabled;
         _maxResultsCtrl.text = s.maxResults > 0 ? '${s.maxResults}' : '20';
         _braveCtrl.text = s.braveApiKey;
         _googleKeyCtrl.text = s.googleApiKey;
@@ -97,6 +103,9 @@ class _WebSearchAdminScreenState extends State<WebSearchAdminScreen> {
           googleSearchEngineId: _googleCxCtrl.text,
           yandexUser: _yandexUserCtrl.text,
           yandexKey: _yandexKeyCtrl.text,
+          yandexEnabled: _yandexEnabled,
+          googleEnabled: _googleEnabled,
+          braveEnabled: _braveEnabled,
         ),
       );
 
@@ -195,7 +204,10 @@ class _WebSearchAdminScreenState extends State<WebSearchAdminScreen> {
             children: [
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Поиск'),
+                title: const Text('Веб-поиск'),
+                subtitle: const Text(
+                  'Полностью отключает поиск для всех пользователей. Ниже можно отключить отдельные провайдеры.',
+                ),
                 value: _enabled,
                 onChanged: (v) => setState(() => _enabled = v),
               ),
@@ -214,6 +226,13 @@ class _WebSearchAdminScreenState extends State<WebSearchAdminScreen> {
           _sectionCard(
             title: 'Яндекс поиск',
             children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Использовать Яндекс'),
+                value: _yandexEnabled,
+                onChanged: (v) => setState(() => _yandexEnabled = v),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 controller: _yandexUserCtrl,
                 decoration: const InputDecoration(
@@ -235,6 +254,13 @@ class _WebSearchAdminScreenState extends State<WebSearchAdminScreen> {
           _sectionCard(
             title: 'Google поиск',
             children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Использовать Google'),
+                value: _googleEnabled,
+                onChanged: (v) => setState(() => _googleEnabled = v),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 controller: _googleKeyCtrl,
                 decoration: const InputDecoration(
@@ -256,6 +282,13 @@ class _WebSearchAdminScreenState extends State<WebSearchAdminScreen> {
           _sectionCard(
             title: 'Brave поиск',
             children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Использовать Brave'),
+                value: _braveEnabled,
+                onChanged: (v) => setState(() => _braveEnabled = v),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 controller: _braveCtrl,
                 decoration: const InputDecoration(

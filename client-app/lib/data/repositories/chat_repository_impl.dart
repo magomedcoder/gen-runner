@@ -14,6 +14,7 @@ import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/entities/session_file_download.dart';
 import 'package:gen/domain/entities/session_messages_page.dart';
 import 'package:gen/domain/entities/spreadsheet_apply_result.dart';
+import 'package:gen/domain/entities/file_ingestion_status.dart';
 import 'package:gen/domain/repositories/chat_repository.dart';
 
 class ChatRepositoryImpl implements ChatRepository {
@@ -349,6 +350,25 @@ class ChatRepositoryImpl implements ChatRepository {
       Logs().e('ChatRepository: setSelectedRunner', exception: e, stackTrace: st);
       throw ApiFailure(
         userSafeErrorMessage(e, fallback: 'Ошибка сохранения выбранного раннера'),
+      );
+    }
+  }
+
+  @override
+  Future<FileIngestionStatus> getFileIngestionStatus({
+    required int sessionId,
+    required int fileId,
+  }) async {
+    try {
+      return await dataSource.getFileIngestionStatus(
+        sessionId: sessionId,
+        fileId: fileId,
+      );
+    } catch (e, st) {
+      if (e is Failure) rethrow;
+      Logs().e('ChatRepository: getFileIngestionStatus', exception: e, stackTrace: st);
+      throw ApiFailure(
+        userSafeErrorMessage(e, fallback: 'Ошибка статуса индексации'),
       );
     }
   }

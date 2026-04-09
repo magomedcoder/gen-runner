@@ -68,16 +68,18 @@ func voskTopLevelZipPaths(dir string) ([]string, error) {
 
 type ChatHandler struct {
 	chatpb.UnimplementedChatServiceServer
-	cfg         *config.Config
-	chatUseCase *usecase.ChatUseCase
-	authUseCase *usecase.AuthUseCase
+	cfg            *config.Config
+	chatUseCase    *usecase.ChatUseCase
+	authUseCase    *usecase.AuthUseCase
+	documentIngest *usecase.DocumentIngestUseCase
 }
 
-func NewChatHandler(cfg *config.Config, chatUseCase *usecase.ChatUseCase, authUseCase *usecase.AuthUseCase) *ChatHandler {
+func NewChatHandler(cfg *config.Config, chatUseCase *usecase.ChatUseCase, authUseCase *usecase.AuthUseCase, documentIngest *usecase.DocumentIngestUseCase) *ChatHandler {
 	return &ChatHandler{
-		cfg:         cfg,
-		chatUseCase: chatUseCase,
-		authUseCase: authUseCase,
+		cfg:            cfg,
+		chatUseCase:    chatUseCase,
+		authUseCase:    authUseCase,
+		documentIngest: documentIngest,
 	}
 }
 
@@ -113,13 +115,27 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 		return status.Error(codes.InvalidArgument, "укажите текст сообщения или attachment_file_id")
 	}
 
+	var fileRAG *usecase.SendMessageFileRAGOptions
+	if req.GetUseFileRag() || req.GetFileRagTopK() != 0 || strings.TrimSpace(req.GetFileRagEmbedModel()) != "" {
+		fileRAG = &usecase.SendMessageFileRAGOptions{
+			UseFileRAG: req.GetUseFileRag(),
+			TopK:       int(req.GetFileRagTopK()),
+			EmbedModel: strings.TrimSpace(req.GetFileRagEmbedModel()),
+		}
+	}
+
 	var responseChan chan usecase.ChatStreamChunk
 	var sendErr error
-	responseChan, sendErr = c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), userMessage, attachmentFileID)
+	responseChan, sendErr = c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), userMessage, attachmentFileID, fileRAG)
 	if sendErr != nil {
 		logger.E("SendMessage: %v", sendErr)
 		if mapped := statusForModelResolutionError(sendErr); mapped != nil {
 			return mapped
+		}
+
+		if errors.Is(sendErr, domain.ErrRAGNotConfigured) || errors.Is(sendErr, domain.ErrRAGIndexNotReady) ||
+			errors.Is(sendErr, domain.ErrRAGIndexFailed) || errors.Is(sendErr, domain.ErrRAGNoHits) {
+			return status.Error(codes.FailedPrecondition, sendErr.Error())
 		}
 
 		if errors.Is(sendErr, document.ErrUnsupportedAttachmentType) || errors.Is(sendErr, document.ErrInvalidTextEncoding) || errors.Is(sendErr, document.ErrTextExtractionFailed) {
@@ -942,7 +958,7 @@ func (c *ChatHandler) PutSessionFile(ctx context.Context, req *chatpb.PutSession
 			return nil, mapped
 		}
 
-		if errors.Is(err, document.ErrUnsupportedAttachmentType) || errors.Is(err, document.ErrInvalidTextEncoding) {
+		if errors.Is(err, document.ErrUnsupportedAttachmentType) || errors.Is(err, document.ErrInvalidTextEncoding) || errors.Is(err, document.ErrNoExtractableText) {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 		msg := err.Error()
@@ -952,7 +968,9 @@ func (c *ChatHandler) PutSessionFile(ctx context.Context, req *chatpb.PutSession
 			strings.Contains(msg, "превышает"),
 			strings.Contains(msg, "некорректное имя"),
 			strings.Contains(msg, "квота"),
-			strings.Contains(msg, "слишком много"):
+			strings.Contains(msg, "слишком много"),
+			strings.Contains(msg, "проверка документа при загрузке"),
+			strings.Contains(msg, "извлечённый текст слишком длинный"):
 			return nil, status.Error(codes.InvalidArgument, msg)
 		default:
 			return nil, ToStatusError(codes.Internal, err)
@@ -960,6 +978,162 @@ func (c *ChatHandler) PutSessionFile(ctx context.Context, req *chatpb.PutSession
 	}
 
 	return &chatpb.PutSessionFileResponse{FileId: id}, nil
+}
+
+func (c *ChatHandler) IndexSessionFile(ctx context.Context, req *chatpb.IndexSessionFileRequest) (*chatpb.IndexSessionFileResponse, error) {
+	if c.documentIngest == nil {
+		return nil, status.Error(codes.Unavailable, "индексация документов недоступна")
+	}
+
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if req == nil || req.GetSessionId() <= 0 || req.GetFileId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "некорректные session_id или file_id")
+	}
+
+	if err := c.documentIngest.IndexSessionFile(ctx, userID, req.GetSessionId(), req.GetFileId(), strings.TrimSpace(req.GetEmbedModel())); err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) {
+			return nil, status.Error(codes.PermissionDenied, "нет доступа")
+		}
+
+		if mapped := statusForModelResolutionError(err); mapped != nil {
+			return nil, mapped
+		}
+
+		msg := err.Error()
+		if errors.Is(err, document.ErrTextExtractionFailed) || errors.Is(err, document.ErrUnsupportedAttachmentType) {
+			return nil, status.Error(codes.InvalidArgument, msg)
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	return &chatpb.IndexSessionFileResponse{}, nil
+}
+
+func (c *ChatHandler) GetIngestionStatus(ctx context.Context, req *chatpb.GetIngestionStatusRequest) (*chatpb.GetIngestionStatusResponse, error) {
+	if c.documentIngest == nil {
+		return &chatpb.GetIngestionStatusResponse{Status: "unavailable"}, nil
+	}
+
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if req == nil || req.GetSessionId() <= 0 || req.GetFileId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "некорректные session_id или file_id")
+	}
+
+	idx, err := c.documentIngest.GetIngestionStatus(ctx, userID, req.GetSessionId(), req.GetFileId())
+	if err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) {
+			return nil, status.Error(codes.PermissionDenied, "нет доступа")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	out := &chatpb.GetIngestionStatusResponse{}
+	if idx == nil {
+		out.Status = "none"
+		return out, nil
+	}
+
+	out.Status = idx.Status
+	out.LastError = idx.LastError
+	out.ChunkCount = int32(idx.ChunkCount)
+	out.SourceContentSha256 = idx.SourceContentSHA256
+	out.PipelineVersion = idx.PipelineVersion
+	out.EmbeddingModel = idx.EmbeddingModel
+
+	return out, nil
+}
+
+func (c *ChatHandler) DeleteSessionFileIndex(ctx context.Context, req *chatpb.DeleteSessionFileIndexRequest) (*commonpb.Empty, error) {
+	if c.documentIngest == nil {
+		return &commonpb.Empty{}, nil
+	}
+
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if req == nil || req.GetSessionId() <= 0 || req.GetFileId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "некорректные session_id или file_id")
+	}
+
+	if err := c.documentIngest.DeleteSessionFileIndex(ctx, userID, req.GetSessionId(), req.GetFileId()); err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) {
+			return nil, status.Error(codes.PermissionDenied, "нет доступа")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	return &commonpb.Empty{}, nil
+}
+
+func (c *ChatHandler) SearchSessionKnowledge(ctx context.Context, req *chatpb.SearchSessionKnowledgeRequest) (*chatpb.SearchSessionKnowledgeResponse, error) {
+	if c.documentIngest == nil {
+		return nil, status.Error(codes.Unavailable, "поиск по индексу недоступен")
+	}
+
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if req == nil || req.GetSessionId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "некорректный session_id")
+	}
+
+	q := strings.TrimSpace(req.GetQuery())
+	if q == "" {
+		return nil, status.Error(codes.InvalidArgument, "пустой query")
+	}
+
+	topK := int(req.GetTopK())
+	if topK <= 0 {
+		topK = 5
+	}
+
+	if topK > 32 {
+		topK = 32
+	}
+
+	hits, err := c.documentIngest.SearchSessionKnowledge(ctx, userID, req.GetSessionId(), strings.TrimSpace(req.GetEmbedModel()), q, topK, nil)
+	if err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) {
+			return nil, status.Error(codes.PermissionDenied, "нет доступа")
+		}
+
+		if mapped := statusForModelResolutionError(err); mapped != nil {
+			return nil, mapped
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	out := &chatpb.SearchSessionKnowledgeResponse{
+		Hits: make([]*chatpb.RagSearchHit, 0, len(hits)),
+	}
+
+	for _, h := range hits {
+		out.Hits = append(out.Hits, &chatpb.RagSearchHit{
+			ChunkId:    h.DocumentRAGChunk.ID,
+			FileId:     h.DocumentRAGChunk.FileID,
+			ChunkIndex: int32(h.DocumentRAGChunk.ChunkIndex),
+			Score:      h.Score,
+			Text:       h.DocumentRAGChunk.Text,
+		})
+	}
+
+	return out, nil
 }
 
 func (c *ChatHandler) GetSessionFile(ctx context.Context, req *chatpb.GetSessionFileRequest) (*chatpb.GetSessionFileResponse, error) {

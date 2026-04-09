@@ -10,6 +10,7 @@ class AppTheme {
   static const Color _text = Color(0xFFE6EDF3);
   static const Color _textMuted = Color(0xFF9FA6AD);
   static const Color _error = Color(0xFFFFB4AB);
+  static const Color _selectionAccent = Color(0xFF58A6FF);
 
   static ThemeData get dark {
     final scheme = ColorScheme.fromSeed(
@@ -92,6 +93,11 @@ class AppTheme {
       useMaterial3: true,
       fontFamily: 'Inter',
       scaffoldBackgroundColor: _background,
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: _selectionAccent,
+        selectionColor: _selectionAccent.withValues(alpha: 0.35),
+        selectionHandleColor: _selectionAccent,
+      ),
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surfaceContainer,
       ),

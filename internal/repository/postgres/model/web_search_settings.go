@@ -9,6 +9,9 @@ type WebSearchSettings struct {
 	GoogleSearchEngineID string `gorm:"column:google_search_engine_id"`
 	YandexUser           string `gorm:"column:yandex_user"`
 	YandexKey            string `gorm:"column:yandex_key"`
+	YandexEnabled        bool   `gorm:"column:yandex_enabled"`
+	GoogleEnabled        bool   `gorm:"column:google_enabled"`
+	BraveEnabled         bool   `gorm:"column:brave_enabled"`
 }
 
 func (WebSearchSettings) TableName() string {

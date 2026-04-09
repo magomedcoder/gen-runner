@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:gen/presentation/widgets/app_top_notice.dart';
+
 class AppRootTopChrome extends StatelessWidget {
   const AppRootTopChrome({super.key, required this.child});
 
@@ -7,6 +9,6 @@ class AppRootTopChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return child;
+    return AppTopNoticeOverlay(child: child);
   }
 }

@@ -51,6 +51,14 @@ service ChatService {
 
   rpc PutSessionFile(PutSessionFileRequest) returns (PutSessionFileResponse);
 
+  rpc IndexSessionFile(IndexSessionFileRequest) returns (IndexSessionFileResponse);
+
+  rpc GetIngestionStatus(GetIngestionStatusRequest) returns (GetIngestionStatusResponse);
+
+  rpc DeleteSessionFileIndex(DeleteSessionFileIndexRequest) returns (common.Empty);
+
+  rpc SearchSessionKnowledge(SearchSessionKnowledgeRequest) returns (SearchSessionKnowledgeResponse);
+
   rpc GetSessionFile(GetSessionFileRequest) returns (GetSessionFileResponse);
 
   rpc ApplySpreadsheet(SpreadsheetApplyRequest) returns (SpreadsheetApplyResponse);
@@ -101,6 +109,9 @@ message SendMessageRequest {
   int64 session_id = 1;
   string text = 2;
   optional int64 attachment_file_id = 3;
+  bool use_file_rag = 4;
+  int32 file_rag_top_k = 5;
+  string file_rag_embed_model = 6;
 }
 
 message RegenerateAssistantRequest {
@@ -297,6 +308,52 @@ message PutSessionFileRequest {
 
 message PutSessionFileResponse {
   int64 file_id = 1;
+}
+
+message IndexSessionFileRequest {
+  int64 session_id = 1;
+  int64 file_id = 2;
+  string embed_model = 3;
+}
+
+message IndexSessionFileResponse {}
+
+message GetIngestionStatusRequest {
+  int64 session_id = 1;
+  int64 file_id = 2;
+}
+
+message GetIngestionStatusResponse {
+  string status = 1;
+  string last_error = 2;
+  int32 chunk_count = 3;
+  string source_content_sha256 = 4;
+  string pipeline_version = 5;
+  string embedding_model = 6;
+}
+
+message DeleteSessionFileIndexRequest {
+  int64 session_id = 1;
+  int64 file_id = 2;
+}
+
+message SearchSessionKnowledgeRequest {
+  int64 session_id = 1;
+  string query = 2;
+  int32 top_k = 3;
+  string embed_model = 4;
+}
+
+message RagSearchHit {
+  int64 chunk_id = 1;
+  int64 file_id = 2;
+  int32 chunk_index = 3;
+  double score = 4;
+  string text = 5;
+}
+
+message SearchSessionKnowledgeResponse {
+  repeated RagSearchHit hits = 1;
 }
 
 message GetSessionFileRequest {

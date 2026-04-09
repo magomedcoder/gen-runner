@@ -11,6 +11,10 @@ class ChatStarted extends ChatEvent {
   const ChatStarted();
 }
 
+class ChatReconnectAfterConnectionRestored extends ChatEvent {
+  const ChatReconnectAfterConnectionRestored();
+}
+
 class ChatCreateSession extends ChatEvent {
   final String? title;
 
@@ -32,11 +36,12 @@ class ChatLoadSessions extends ChatEvent {
 
 class ChatSelectSession extends ChatEvent {
   final int sessionId;
+  final bool forceReload;
 
-  const ChatSelectSession(this.sessionId);
+  const ChatSelectSession(this.sessionId, {this.forceReload = false});
 
   @override
-  List<Object?> get props => [sessionId];
+  List<Object?> get props => [sessionId, forceReload];
 }
 
 class ChatLoadOlderMessages extends ChatEvent {

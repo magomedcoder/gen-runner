@@ -24,15 +24,20 @@ const MaxEmbeddedAttachmentTextRunes = 48_000
 var ErrUnsupportedAttachmentType = errors.New("неподдерживаемый формат вложения")
 var ErrInvalidTextEncoding = errors.New("текстовый файл должен быть в UTF-8")
 var ErrTextExtractionFailed = errors.New("не удалось извлечь текст из документа")
+var ErrNoExtractableText = errors.New("в документе нет извлекаемого текста")
 
 var supportedExtensions = map[string]struct{}{
-	".txt":  {},
-	".md":   {},
-	".log":  {},
-	".pdf":  {},
-	".docx": {},
-	".xlsx": {},
-	".csv":  {},
+	".txt":   {},
+	".md":    {},
+	".log":   {},
+	".pdf":   {},
+	".docx":  {},
+	".xlsx":  {},
+	".csv":   {},
+	".pptx":  {},
+	".html":  {},
+	".htm":   {},
+	".xhtml": {},
 }
 
 var binaryDocumentExtensions = map[string]struct{}{
@@ -40,6 +45,7 @@ var binaryDocumentExtensions = map[string]struct{}{
 	".docx": {},
 	".xlsx": {},
 	".csv":  {},
+	".pptx": {},
 }
 
 func IsSupportedExtension(filename string) bool {
@@ -83,6 +89,14 @@ func ExtractText(filename string, content []byte) (string, error) {
 		return extractXLSX(content)
 	case ".csv":
 		return extractCSV(content)
+	case ".pptx":
+		return extractPPTX(content)
+	case ".html", ".htm", ".xhtml":
+		text, err := DecodeTextFileToUTF8(content)
+		if err != nil {
+			return "", err
+		}
+		return extractHTML([]byte(text))
 	default:
 		return "", ErrUnsupportedAttachmentType
 	}

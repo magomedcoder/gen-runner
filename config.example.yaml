@@ -19,9 +19,18 @@ jwt:
 
 data_dir: "./data"
 
-# mcp:
-#   http_allow_any: false
-#   http_allow_hosts:
+#mcp:
+#  http_allow_any: false
+#  http_allow_hosts:
 #     - "0.0.0.0"
 
 # attachment_hydrate_parallelism: 16 # Параллельная подготовка вложений в истории для LLM (1...64). 0 = 8
+
+#rag:
+#  chunk_size_runes: 1024
+#  chunk_overlap_runes: 128
+#  embed_batch_size: 32 # размер запроса EmbedBatch, при OOM раннер сам дробится рекурсией
+#  max_chunk_embed_runes: 8192 # обрезка текста чанка перед эмбеддингом
+#  background_index_timeout_seconds: 1800 # фон после PutSessionFile, 0 = 30 мин
+#  llm_context_fallback_tokens: 4096 # если раннер не прислал max_context_tokens, gen подставляет 4096 для усечения истории/RAG, -1 = не подставлять
+#  max_extracted_runes_on_upload: 0 # опционально: отклонять PutSessionFile, если извлечённый текст длиннее (0 = без лимита)

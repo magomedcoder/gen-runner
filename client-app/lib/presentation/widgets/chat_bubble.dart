@@ -10,7 +10,7 @@ import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/core/log/logs.dart';
 import 'package:gen/core/session_file_id_scan.dart';
 import 'package:gen/core/user_safe_error.dart';
-import 'package:gen/core/ui/app_top_notice.dart';
+import 'package:gen/presentation/widgets/app_top_notice.dart';
 import 'package:gen/core/spreadsheet_file_export.dart';
 import 'package:gen/core/user_file_save.dart';
 import 'package:gen/domain/entities/message.dart';

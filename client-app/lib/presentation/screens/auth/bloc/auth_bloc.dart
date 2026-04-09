@@ -96,6 +96,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           isAuthenticated: false,
           user: null,
           error: null,
+          initialAuthCheckComplete: true,
         ),
       );
       return;
@@ -110,6 +111,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           user: null,
           error: null,
           needsUpdate: true,
+          initialAuthCheckComplete: true,
         ),
       );
       return;
@@ -135,6 +137,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
               isAuthenticated: false,
               user: null,
               error: null,
+              initialAuthCheckComplete: true,
             ),
           );
           return;
@@ -147,6 +150,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             isAuthenticated: true,
             user: user,
             error: null,
+            initialAuthCheckComplete: true,
           ),
         );
         return;
@@ -172,6 +176,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           isAuthenticated: false,
           user: null,
           error: null,
+          initialAuthCheckComplete: true,
         ),
       );
     } else {
@@ -187,6 +192,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
                 fallback: 'Не удалось восстановить сессию',
               )
             : null,
+          initialAuthCheckComplete: true,
         ),
       );
     }

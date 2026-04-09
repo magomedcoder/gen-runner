@@ -323,7 +323,7 @@ func (h *RunnerHandler) RunnerResetMemory(ctx context.Context, req *runnerpb.Run
 	}
 	addr := strings.TrimSpace(st.Address)
 	if err := h.pool.ResetMemoryOnRunner(ctx, addr); err != nil {
-		logger.W("RunnerResetMemory: llm-runner: %v", err)
+		logger.W("RunnerResetMemory: gen-runner: %v", err)
 	}
 	h.pool.CloseAddr(addr)
 	logger.I("RunnerResetMemory: id=%d addr=%s", req.GetRunnerId(), addr)
@@ -350,6 +350,9 @@ func (h *RunnerHandler) GetWebSearchSettings(ctx context.Context, _ *commonpb.Em
 			GoogleSearchEngineId: s.GoogleSearchEngineID,
 			YandexUser:           s.YandexUser,
 			YandexKey:            s.YandexKey,
+			YandexEnabled:        s.YandexEnabled,
+			GoogleEnabled:        s.GoogleEnabled,
+			BraveEnabled:         s.BraveEnabled,
 		},
 	}, nil
 }
@@ -364,6 +367,23 @@ func (h *RunnerHandler) UpdateWebSearchSettings(ctx context.Context, req *runner
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
 	}
+	cur, err := h.webSearchSettingsUC.Get(ctx)
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+	ye, ge, be := true, true, true
+	if cur != nil {
+		ye, ge, be = cur.YandexEnabled, cur.GoogleEnabled, cur.BraveEnabled
+	}
+	if req.YandexEnabled != nil {
+		ye = *req.YandexEnabled
+	}
+	if req.GoogleEnabled != nil {
+		ge = *req.GoogleEnabled
+	}
+	if req.BraveEnabled != nil {
+		be = *req.BraveEnabled
+	}
 	s := &domain.WebSearchSettings{
 		Enabled:              req.GetEnabled(),
 		MaxResults:           int(req.GetMaxResults()),
@@ -372,11 +392,28 @@ func (h *RunnerHandler) UpdateWebSearchSettings(ctx context.Context, req *runner
 		GoogleSearchEngineID: req.GetGoogleSearchEngineId(),
 		YandexUser:           req.GetYandexUser(),
 		YandexKey:            req.GetYandexKey(),
+		YandexEnabled:        ye,
+		GoogleEnabled:        ge,
+		BraveEnabled:         be,
 	}
 	if err := h.webSearchSettingsUC.Update(ctx, s); err != nil {
 		return nil, ToStatusError(codes.Internal, err)
 	}
 	return h.GetWebSearchSettings(ctx, &commonpb.Empty{})
+}
+
+func (h *RunnerHandler) GetWebSearchAvailability(ctx context.Context, _ *commonpb.Empty) (*runnerpb.WebSearchAvailabilityResponse, error) {
+	if _, err := GetUserFromContext(ctx, h.authUseCase); err != nil {
+		return nil, err
+	}
+	if h.webSearchSettingsUC == nil {
+		return &runnerpb.WebSearchAvailabilityResponse{GloballyEnabled: false}, nil
+	}
+	s, err := h.webSearchSettingsUC.Get(ctx)
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+	return &runnerpb.WebSearchAvailabilityResponse{GloballyEnabled: s.Enabled}, nil
 }
 
 func runnerAddressFromMetadata(ctx context.Context) (string, error) {
@@ -387,7 +424,7 @@ func runnerAddressFromMetadata(ctx context.Context) (string, error) {
 
 	vals := md.Get(grpcMetadataRunnerAddress)
 	if len(vals) == 0 || strings.TrimSpace(vals[0]) == "" {
-		return "", status.Error(codes.InvalidArgument, "метаданные runner-address обязательны (host:port llm-runner)")
+		return "", status.Error(codes.InvalidArgument, "метаданные runner-address обязательны (host:port gen-runner)")
 	}
 
 	return strings.TrimSpace(vals[0]), nil
