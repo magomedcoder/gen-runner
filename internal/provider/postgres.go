@@ -3,12 +3,12 @@ package provider
 import (
 	"context"
 	"fmt"
+	"github.com/magomedcoder/gen/internal/config"
 	"log"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/magomedcoder/gen/config"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

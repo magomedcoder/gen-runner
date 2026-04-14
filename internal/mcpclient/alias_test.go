@@ -15,7 +15,6 @@ func TestToolAliasParseRoundTrip(t *testing.T) {
 		"  trim_me  ",
 	}
 	for _, name := range cases {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			const sid int64 = 42

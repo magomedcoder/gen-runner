@@ -22,10 +22,10 @@ gen-proto:
 		--go-grpc_out=module=github.com/magomedcoder/gen:. \
 		../gen-runner/llmrunner.proto
 
-	mkdir -p ./lib/generated/grpc_pb
-	protoc --proto_path=../gen/api/proto \
-		--dart_out=grpc:./lib/generated/grpc_pb \
-		../gen/api/proto/*.proto
+	mkdir -p ./client-app/lib/generated/grpc_pb
+	protoc --proto_path=./api/proto \
+		--dart_out=grpc:./client-app/lib/generated/grpc_pb \
+		./api/proto/*.proto
 
 run:
 	go run ./cmd/gen

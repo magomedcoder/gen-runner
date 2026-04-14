@@ -22,10 +22,7 @@ func embedTextsBatches(ctx context.Context, llm embedRunner, model string, texts
 
 	var out [][]float32
 	for i := 0; i < len(texts); i += batchSize {
-		end := i + batchSize
-		if end > len(texts) {
-			end = len(texts)
-		}
+		end := min(i+batchSize, len(texts))
 
 		part, err := embedTextsRecursive(ctx, llm, model, texts[i:end])
 		if err != nil {

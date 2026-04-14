@@ -141,10 +141,7 @@ func shrinkMessagesToApproxTokenBudget(msgs []*domain.Message, maxTokens int) []
 			continue
 		}
 
-		newLen := len(r) * 3 / 4
-		if newLen < 64 {
-			newLen = 64
-		}
+		newLen := max(len(r)*3/4, 64)
 
 		out[idx].Content = string(r[:newLen]) + llmContextTruncationNotice
 	}

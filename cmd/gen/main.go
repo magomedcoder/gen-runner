@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/magomedcoder/gen/internal/config"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/magomedcoder/gen/config"
 	"github.com/magomedcoder/gen/internal/app/di"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc"
@@ -16,7 +16,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	if err := run(ctx, "config.yaml"); err != nil {
+	if err := run(ctx, "./configs/config.yaml"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

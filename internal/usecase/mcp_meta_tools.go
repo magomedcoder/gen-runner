@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/magomedcoder/gen/internal/domain"
@@ -66,13 +67,7 @@ func (c *ChatUseCase) mcpServerForSession(ctx context.Context, sessionID int64, 
 		return nil, fmt.Errorf("MCP отключён для этой сессии")
 	}
 
-	allowed := false
-	for _, id := range settings.MCPServerIDs {
-		if id == serverID {
-			allowed = true
-			break
-		}
-	}
+	allowed := slices.Contains(settings.MCPServerIDs, serverID)
 
 	if !allowed {
 		return nil, fmt.Errorf("MCP-сервер не выбран для сессии")

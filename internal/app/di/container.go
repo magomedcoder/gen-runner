@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/magomedcoder/gen"
+	"github.com/magomedcoder/gen/internal/config"
 	"github.com/magomedcoder/gen/internal/provider"
 	"path/filepath"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
 	"github.com/magomedcoder/gen/api/pb/runnerpb"
 	"github.com/magomedcoder/gen/api/pb/userpb"
-	"github.com/magomedcoder/gen/config"
 	"github.com/magomedcoder/gen/internal/bootstrap"
 	"github.com/magomedcoder/gen/internal/delivery/handler"
 	"github.com/magomedcoder/gen/internal/domain"

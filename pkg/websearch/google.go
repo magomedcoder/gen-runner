@@ -30,10 +30,7 @@ func NewGoogleCSEClient(apiKey, searchEngineID string, maxResults int) *GoogleCS
 		return nil
 	}
 
-	mr := normalizeMaxResults(maxResults)
-	if mr > 10 {
-		mr = 10
-	}
+	mr := min(normalizeMaxResults(maxResults), 10)
 
 	return &GoogleCSEClient{
 		apiKey:   key,

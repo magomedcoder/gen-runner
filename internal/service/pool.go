@@ -123,11 +123,7 @@ func (p *Pool) recordProbeFailure(addr string) {
 
 	prev := p.probeCache[addr]
 	fc := prev.failCount + 1
-	shift := max(fc-1, 0)
-
-	if shift > runnerProbeBackoffShift {
-		shift = runnerProbeBackoffShift
-	}
+	shift := min(max(fc-1, 0), runnerProbeBackoffShift)
 
 	backoff := min(runnerProbeBackoffBase*time.Duration(uint(1)<<uint(shift)), runnerProbeBackoffMax)
 

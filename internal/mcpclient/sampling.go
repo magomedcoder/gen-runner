@@ -114,10 +114,7 @@ func (sr *SamplingRunner) runCompletion(ctx context.Context, msgs []*domain.Mess
 	gp.ResponseFormat = nil
 
 	if maxTokens > 0 {
-		mt := int32(maxTokens)
-		if mt > maxSamplingTokens {
-			mt = maxSamplingTokens
-		}
+		mt := min(int32(maxTokens), maxSamplingTokens)
 
 		gp.MaxTokens = &mt
 	}

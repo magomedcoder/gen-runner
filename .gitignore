@@ -3,4 +3,4 @@ build
 /api/pb/
 .DS_Store
 data
-/config.yaml
+/configs/config.yaml

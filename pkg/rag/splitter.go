@@ -1,6 +1,7 @@
 package rag
 
 import (
+	"maps"
 	"strings"
 	"unicode/utf8"
 )
@@ -109,9 +110,7 @@ func cloneMeta(m map[string]any) map[string]any {
 	}
 
 	cp := make(map[string]any, len(m))
-	for k, v := range m {
-		cp[k] = v
-	}
+	maps.Copy(cp, m)
 
 	return cp
 }

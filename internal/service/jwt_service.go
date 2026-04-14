@@ -3,11 +3,11 @@ package service
 import (
 	"errors"
 	"fmt"
+	"github.com/magomedcoder/gen/internal/config"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/magomedcoder/gen/config"
 	"github.com/magomedcoder/gen/internal/domain"
 	"golang.org/x/crypto/bcrypt"
 )

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -411,13 +412,7 @@ func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int
 		return "", fmt.Errorf("MCP отключён для этой сессии")
 	}
 
-	allowed := false
-	for _, id := range settings.MCPServerIDs {
-		if id == serverID {
-			allowed = true
-			break
-		}
-	}
+	allowed := slices.Contains(settings.MCPServerIDs, serverID)
 
 	if !allowed {
 		return "", fmt.Errorf("этот MCP-сервер не выбран для сессии")
@@ -1606,20 +1601,11 @@ func (c *ChatUseCase) effectiveMaxRAGContextRunes(systemAndHistory []*domain.Mes
 
 	pre := sumApproxTokens(systemAndHistory)
 	const genReserve = 512
-	userOverhead := utf8.RuneCountInString(strings.TrimSpace(userMessage)) / 2
-	if userOverhead < 32 {
-		userOverhead = 32
-	}
+	userOverhead := max(utf8.RuneCountInString(strings.TrimSpace(userMessage))/2, 32)
 
-	ragTok := maxTok - pre - genReserve - userOverhead
-	if ragTok < 120 {
-		ragTok = 120
-	}
+	ragTok := max(maxTok-pre-genReserve-userOverhead, 120)
 
-	runesLimit := ragTok * 2
-	if runesLimit > cap {
-		runesLimit = cap
-	}
+	runesLimit := min(ragTok*2, cap)
 
 	if runesLimit < 200 {
 		runesLimit = 200

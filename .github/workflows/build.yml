@@ -53,8 +53,8 @@ jobs:
 
       - name: Build .deb package
         run: |
-          chmod +x scripts/build-deb.sh
-          scripts/build-deb.sh "client-app/build/linux/x64/release/bundle" "linux-installer/gen-amd64.deb"
+          chmod +x scripts/client-app-build-deb.sh
+          scripts/client-app-build-deb.sh "client-app/build/linux/x64/release/bundle" "linux-installer/gen-amd64.deb"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -97,7 +97,7 @@ jobs:
         run: |
           $tag = "$env:RELEASE_TAG"
           $ver = if ($tag -match '^v(.+)$') { $Matches[1] } else { '1.0.0' }
-          makensis /DAPP_VERSION=$ver scripts/windows-installer.nsi
+          makensis /DAPP_VERSION=$ver scripts/client-app-windows-installer.nsi
 
       - name: Prepare windows-installer artifact
         run: |

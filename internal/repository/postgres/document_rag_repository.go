@@ -44,7 +44,7 @@ func bytesToFloat32Slice(b []byte) ([]float32, error) {
 
 	n := len(b) / 4
 	out := make([]float32, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
 	}
 

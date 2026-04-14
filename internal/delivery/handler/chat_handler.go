@@ -12,7 +12,7 @@ import (
 
 	"github.com/magomedcoder/gen/api/pb/chatpb"
 	"github.com/magomedcoder/gen/api/pb/commonpb"
-	"github.com/magomedcoder/gen/config"
+	"github.com/magomedcoder/gen/internal/config"
 	"github.com/magomedcoder/gen/internal/delivery/mappers"
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/rpcmeta"
