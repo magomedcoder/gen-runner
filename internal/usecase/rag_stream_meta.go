@@ -26,6 +26,7 @@ type ragSourcesWire struct {
 	TopK                int            `json:"top_k,omitempty"`
 	NeighborWindow      int            `json:"neighbor_window,omitempty"`
 	DeepRAGMapCalls     int            `json:"deep_rag_map_calls,omitempty"`
+	DroppedByBudget     int            `json:"dropped_by_budget,omitempty"`
 	FullDocumentExcerpt string         `json:"full_document_excerpt,omitempty"`
 	Chunks              []ragChunkWire `json:"chunks"`
 }
@@ -98,6 +99,7 @@ func buildRAGStreamMetaVector(
 	scored []domain.ScoredDocumentRAGChunk,
 	deepMapCalls int,
 	deepSummaryUsed bool,
+	droppedByBudget int,
 ) (*ragStreamMeta, error) {
 	mode := ragModeVectorRAG
 	if deepSummaryUsed {
@@ -130,11 +132,12 @@ func buildRAGStreamMetaVector(
 	}
 
 	w := ragSourcesWire{
-		Mode:           mode,
-		FileID:         fileID,
-		TopK:           topK,
-		NeighborWindow: neighborWindow,
-		Chunks:         chunks,
+		Mode:            mode,
+		FileID:          fileID,
+		TopK:            topK,
+		NeighborWindow:  neighborWindow,
+		Chunks:          chunks,
+		DroppedByBudget: droppedByBudget,
 	}
 
 	if deepMapCalls > 0 {
@@ -152,6 +155,9 @@ func buildRAGStreamMetaVector(
 	}
 
 	notice := fmt.Sprintf("Контекст документа: %s. Фрагментов в промпте: %d.", label, len(chunks))
+	if droppedByBudget > 0 {
+		notice += fmt.Sprintf(" Отброшено по бюджету: %d.", droppedByBudget)
+	}
 
 	return &ragStreamMeta{
 		Mode:        mode,

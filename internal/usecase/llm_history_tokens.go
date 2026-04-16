@@ -64,7 +64,7 @@ func trimLLMMessagesByApproxTokensWithDropped(msgs []*domain.Message, maxTokens 
 		}
 
 		out := cloneMessageSliceForTrim(msgs)
-		out = shrinkMessagesToApproxTokenBudget(out, maxTokens)
+		out = shrinkMessagesToApproxTokenBudget(out, maxTokens, tailPreserve)
 		return out, true, nil
 	}
 
@@ -116,15 +116,28 @@ func cloneMessageSliceForTrim(msgs []*domain.Message) []*domain.Message {
 	return out
 }
 
-func shrinkMessagesToApproxTokenBudget(msgs []*domain.Message, maxTokens int) []*domain.Message {
+func shrinkMessagesToApproxTokenBudget(msgs []*domain.Message, maxTokens int, preserveTail int) []*domain.Message {
 	if len(msgs) == 0 {
 		return msgs
 	}
 
+	if preserveTail < 0 {
+		preserveTail = 0
+	}
+
+	if preserveTail > len(msgs) {
+		preserveTail = len(msgs)
+	}
+
 	out := cloneMessageSliceForTrim(msgs)
 	for sumApproxTokens(out) > maxTokens {
+		tailStart := len(out) - preserveTail
+		if tailStart < 0 {
+			tailStart = 0
+		}
+
 		idx := -1
-		for i := len(out) - 1; i >= 0; i-- {
+		for i := tailStart - 1; i >= 0; i-- {
 			if out[i] != nil && strings.TrimSpace(out[i].Content) != "" {
 				idx = i
 				break

@@ -42,7 +42,7 @@ func TestTrimLLMMessagesByApproxTokens_disabled(t *testing.T) {
 	}
 }
 
-func TestTrimLLMMessagesByApproxTokens_systemAndOneUserShrinks(t *testing.T) {
+func TestTrimLLMMessagesByApproxTokens_systemAndOneUserKeepsInstruction(t *testing.T) {
 	sys := domain.NewMessage(1, "system prompt text", domain.MessageRoleSystem)
 	u := domain.NewMessage(1, strings.Repeat("ж", 12000), domain.MessageRoleUser)
 	msgs := []*domain.Message{sys, u}
@@ -51,12 +51,8 @@ func TestTrimLLMMessagesByApproxTokens_systemAndOneUserShrinks(t *testing.T) {
 		t.Fatal("ожидалась обрезка при system + одно user (раньше баг: лимит игнорировался)")
 	}
 
-	if sumApproxTokens(out) > 260 {
-		t.Fatalf("после обрезки всё ещё много токенов по оценке: %d", sumApproxTokens(out))
-	}
-
-	if got := utf8.RuneCountInString(out[1].Content); got >= len([]rune(u.Content)) {
-		t.Fatalf("сообщение пользователя не укоротили: runes=%d", got)
+	if got := utf8.RuneCountInString(out[1].Content); got != len([]rune(u.Content)) {
+		t.Fatalf("последняя инструкция пользователя не должна укорачиваться: runes=%d", got)
 	}
 }
 

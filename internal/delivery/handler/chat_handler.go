@@ -109,10 +109,28 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 		v := fid
 		attachmentFileID = &v
 	}
+	attachmentFileIDs := make([]int64, 0, len(req.GetAttachmentFileIds())+1)
+	if attachmentFileID != nil {
+		attachmentFileIDs = append(attachmentFileIDs, *attachmentFileID)
+	}
 
-	if strings.TrimSpace(userMessage) == "" && attachmentFileID == nil {
+	for _, fid := range req.GetAttachmentFileIds() {
+		duplicate := false
+		for _, existing := range attachmentFileIDs {
+			if existing == fid {
+				duplicate = true
+				break
+			}
+		}
+
+		if !duplicate {
+			attachmentFileIDs = append(attachmentFileIDs, fid)
+		}
+	}
+
+	if strings.TrimSpace(userMessage) == "" && len(attachmentFileIDs) == 0 {
 		logger.W("SendMessage: пустой запрос")
-		return status.Error(codes.InvalidArgument, "укажите текст сообщения или attachment_file_id")
+		return status.Error(codes.InvalidArgument, "укажите текст сообщения или attachment_file_id(s)")
 	}
 
 	var fileRAG *usecase.SendMessageFileRAGOptions
@@ -127,7 +145,7 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 
 	var responseChan chan usecase.ChatStreamChunk
 	var sendErr error
-	responseChan, sendErr = c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), userMessage, attachmentFileID, fileRAG)
+	responseChan, sendErr = c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), userMessage, attachmentFileIDs, fileRAG)
 	if sendErr != nil {
 		logger.E("SendMessage: %v", sendErr)
 		if mapped := statusForModelResolutionError(sendErr); mapped != nil {
@@ -144,6 +162,12 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 		}
 
 		if strings.Contains(sendErr.Error(), "вложение") || strings.Contains(sendErr.Error(), "размер вложения") {
+			return status.Error(codes.InvalidArgument, sendErr.Error())
+		}
+		if strings.Contains(sendErr.Error(), "attachment_file_id") ||
+			strings.Contains(sendErr.Error(), "use_file_rag") ||
+			strings.Contains(sendErr.Error(), "file_rag_") ||
+			strings.Contains(sendErr.Error(), "слишком много вложений") {
 			return status.Error(codes.InvalidArgument, sendErr.Error())
 		}
 

@@ -142,27 +142,35 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    final item = details.files.first;
-    if (item is! DropItemFile) {
+    final droppedFiles = <PlatformFile>[];
+    var readFailed = 0;
+    for (final item in details.files) {
+      if (item is! DropItemFile) {
+        continue;
+      }
+
+      try {
+        final bytes = await item.readAsBytes();
+        final name = item.name.isNotEmpty
+            ? item.name
+            : item.path.split(RegExp(r'[/\\]')).last;
+        droppedFiles.add(
+          PlatformFile(name: name, size: bytes.length, bytes: bytes),
+        );
+      } catch (_) {
+        readFailed++;
+      }
+    }
+
+    if (!mounted) {
       return;
     }
 
-    try {
-      final bytes = await item.readAsBytes();
-      final name = item.name.isNotEmpty
-      ? item.name
-      : item.path.split(RegExp(r'[/\\]')).last;
-      if (!mounted) {
-        return;
-      }
-
-      _inputBarKey.currentState?.setDroppedFile(
-        PlatformFile(name: name, size: bytes.length, bytes: bytes),
+    if (droppedFiles.isNotEmpty || readFailed > 0) {
+      _inputBarKey.currentState?.setDroppedFiles(
+        droppedFiles,
+        readFailedBeforeValidation: readFailed,
       );
-    } catch (_) {
-      if (mounted) {
-        showAppTopNotice('Не удалось прочитать файл', error: true);
-      }
     }
   }
 
@@ -184,7 +192,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _handleScrollOnStateChange(ChatState prev, ChatState curr) {
-    final prepended = prev.messages.isNotEmpty && curr.messages.length > prev.messages.length && curr.messages.isNotEmpty && curr.messages.first.id != prev.messages.first.id;
+    final prepended =
+        prev.messages.isNotEmpty &&
+        curr.messages.length > prev.messages.length &&
+        curr.messages.isNotEmpty &&
+        curr.messages.first.id != prev.messages.first.id;
     if (prepended) {
       _preserveScrollAfterPrepend();
       return;
@@ -296,7 +308,9 @@ class _ChatScreenState extends State<ChatScreen> {
                             color: theme.colorScheme.surfaceContainerLow,
                             border: Border(
                               right: BorderSide(
-                                color: theme.dividerColor.withValues(alpha: 0.14),
+                                color: theme.dividerColor.withValues(
+                                  alpha: 0.14,
+                                ),
                                 width: 1,
                               ),
                             ),
@@ -333,7 +347,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                   if (!immersiveEmpty)
                                     Container(
                                       width: double.infinity,
-                                      padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
+                                      padding: const EdgeInsets.fromLTRB(
+                                        4,
+                                        8,
+                                        8,
+                                        8,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: theme.colorScheme.surface,
                                         border: Border(
@@ -347,7 +366,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                         children: [
                                           if (useDrawer)
                                             IconButton(
-                                              icon: const Icon(Icons.menu_rounded),
+                                              icon: const Icon(
+                                                Icons.menu_rounded,
+                                              ),
                                               onPressed: () => _scaffoldKey
                                                   .currentState
                                                   ?.openDrawer(),
@@ -355,17 +376,19 @@ class _ChatScreenState extends State<ChatScreen> {
                                             ),
                                           if (!useDrawer && !_isSidebarExpanded)
                                             IconButton(
-                                              icon: const Icon(Icons.menu_rounded),
+                                              icon: const Icon(
+                                                Icons.menu_rounded,
+                                              ),
                                               onPressed: _toggleSidebar,
                                               tooltip: 'Показать список чатов',
                                             ),
                                           Expanded(
                                             child: BlocBuilder<ChatBloc, ChatState>(
-                                              builder: (context, state) =>ChatAppBarTitle(
-                                                state: state,
-                                                compact: useDrawer,
-                                              ),
-                                            ),
+                                                  builder: (context, state) =>ChatAppBarTitle(
+                                                        state: state,
+                                                        compact: useDrawer,
+                                                      ),
+                                                ),
                                           ),
                                           BlocBuilder<ChatBloc, ChatState>(
                                             builder: (context, state) {
@@ -411,26 +434,34 @@ class _ChatScreenState extends State<ChatScreen> {
                                           onDragEntered: (_) => setState(() => _isDraggingFile = true),
                                           onDragExited: (_) => setState(() => _isDraggingFile = false),
                                           onDragDone: _onFilesDropped,
-                                          onDismissRagDocumentPreview: () => context.read<ChatBloc>().add(const ChatDismissRagDocumentPreview()),
+                                          onDismissRagDocumentPreview: () => context.read<ChatBloc>().add(
+                                            const ChatDismissRagDocumentPreview(),
+                                          ),
                                         ),
                                         if (immersiveEmpty && useDrawer)
                                           Positioned(
                                             top: topPad + 4,
                                             left: 4,
                                             child: IconButton(
-                                              icon: const Icon(Icons.menu_rounded),
+                                              icon: const Icon(
+                                                Icons.menu_rounded,
+                                              ),
                                               onPressed: () => _scaffoldKey
                                                   .currentState
                                                   ?.openDrawer(),
                                               tooltip: 'Список чатов',
                                             ),
                                           ),
-                                        if (immersiveEmpty && !useDrawer && !_isSidebarExpanded)
+                                        if (immersiveEmpty &&
+                                            !useDrawer &&
+                                            !_isSidebarExpanded)
                                           Positioned(
                                             top: topPad + 4,
                                             left: 4,
                                             child: IconButton(
-                                              icon: const Icon(Icons.menu_rounded),
+                                              icon: const Icon(
+                                                Icons.menu_rounded,
+                                              ),
                                               onPressed: _toggleSidebar,
                                               tooltip: 'Показать список чатов',
                                             ),

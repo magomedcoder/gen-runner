@@ -259,7 +259,11 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
           throw ApiFailure('Последнее сообщение должно быть role=user');
         }
 
+        final attachmentFileIds = <int>[...message.attachmentFileIds];
         final fid = message.attachmentFileId;
+        if (attachmentFileIds.isEmpty && fid != null && fid > 0) {
+          attachmentFileIds.add(fid);
+        }
         if (message.attachmentContent != null &&
             message.attachmentContent!.isNotEmpty) {
           throw ApiFailure(
@@ -270,8 +274,11 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
         final request = grpc.SendMessageRequest()
           ..sessionId = Int64(sessionId)
           ..text = message.content;
-        if (fid != null && fid > 0) {
-          request.attachmentFileId = Int64(fid);
+        if (attachmentFileIds.isNotEmpty) {
+          request.attachmentFileId = Int64(attachmentFileIds.first);
+          request.attachmentFileIds.addAll(
+            attachmentFileIds.skip(1).map(Int64.new),
+          );
         }
         if (message.useFileRag) {
           request.useFileRag = true;

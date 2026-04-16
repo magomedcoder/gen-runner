@@ -116,6 +116,7 @@ message SendMessageRequest {
   int32 file_rag_top_k = 5;
   string file_rag_embed_model = 6;
   bool file_rag_force_vector = 7;
+  repeated int64 attachment_file_ids = 8;
 }
 
 message RegenerateAssistantRequest {

@@ -54,18 +54,32 @@ class ChatLoadOlderMessages extends ChatEvent {
 class ChatSendMessage extends ChatEvent {
   final String text;
   final String? attachmentFileName;
+  final List<String> attachmentFileNames;
   final List<int>? attachmentContent;
+  final List<List<int>> attachmentContents;
   final int? attachmentFileId;
+  final List<int> attachmentFileIds;
 
   const ChatSendMessage(
     this.text, {
     this.attachmentFileName,
+    this.attachmentFileNames = const [],
     this.attachmentContent,
+    this.attachmentContents = const [],
     this.attachmentFileId,
+    this.attachmentFileIds = const [],
   });
 
   @override
-  List<Object?> get props => [text, attachmentFileName, attachmentContent, attachmentFileId];
+  List<Object?> get props => [
+    text,
+    attachmentFileName,
+    attachmentFileNames,
+    attachmentContent,
+    attachmentContents,
+    attachmentFileId,
+    attachmentFileIds,
+  ];
 }
 
 class ChatClearError extends ChatEvent {
@@ -148,7 +162,10 @@ class ChatNavigateAssistantMessageRegeneration extends ChatEvent {
   final int assistantMessageId;
   final int delta;
 
-  const ChatNavigateAssistantMessageRegeneration(this.assistantMessageId, this.delta);
+  const ChatNavigateAssistantMessageRegeneration(
+    this.assistantMessageId,
+    this.delta,
+  );
 
   @override
   List<Object?> get props => [assistantMessageId, delta];

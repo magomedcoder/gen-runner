@@ -44,7 +44,7 @@ func TestBuildRAGStreamMetaVector_modes(t *testing.T) {
 		},
 	}
 
-	m, err := buildRAGStreamMetaVector(42, 5, 2, scored, 0, false)
+	m, err := buildRAGStreamMetaVector(42, 5, 2, scored, 0, false, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,6 +62,10 @@ func TestBuildRAGStreamMetaVector_modes(t *testing.T) {
 		t.Fatalf("wire-структура: %+v", w)
 	}
 
+	if w.DroppedByBudget != 1 {
+		t.Fatalf("ожидали dropped_by_budget=1, получено %d", w.DroppedByBudget)
+	}
+
 	if w.Chunks[0].HeadingPath != "Intro › A" || w.Chunks[0].ChunkIndex != 1 {
 		t.Fatalf("чанк: %+v", w.Chunks[0])
 	}
@@ -70,7 +74,7 @@ func TestBuildRAGStreamMetaVector_modes(t *testing.T) {
 		t.Fatalf("выдержка: %q", w.Chunks[0].Excerpt)
 	}
 
-	m2, err := buildRAGStreamMetaVector(1, 3, 0, scored, 2, true)
+	m2, err := buildRAGStreamMetaVector(1, 3, 0, scored, 2, true, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

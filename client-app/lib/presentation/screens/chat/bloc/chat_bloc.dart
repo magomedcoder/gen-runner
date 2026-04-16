@@ -194,7 +194,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     final take = candidates.length > 20
         ? candidates.sublist(candidates.length - 20)
         : candidates;
-    final editsById = Map<int, List<UserMessageEdit>>.from(state.editsByMessageId);
+    final editsById = Map<int, List<UserMessageEdit>>.from(
+      state.editsByMessageId,
+    );
     final cursorById = Map<int, int>.from(state.editCursorByMessageId);
     final editedIds = <int>{...state.editedMessageIds};
 
@@ -202,7 +204,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final existing = editsById[m.id];
       if (existing != null) {
         final preferred = state.editCursorByMessageId[m.id];
-        cursorById[m.id] = preferred ?? (existing.isEmpty ? 0 : existing.length);
+        cursorById[m.id] =
+            preferred ?? (existing.isEmpty ? 0 : existing.length);
         editedIds.add(m.id);
         continue;
       }
@@ -213,7 +216,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           userMessageId: m.id,
         );
 
-        final edits = [...editsRaw]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        final edits = [...editsRaw]
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
         editsById[m.id] = edits;
         final preferred = state.editCursorByMessageId[m.id];
         cursorById[m.id] = preferred ?? (edits.isEmpty ? 0 : edits.length);
@@ -262,7 +266,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     required this.getWebSearchAvailabilityUseCase,
   }) : super(const ChatState()) {
     on<ChatStarted>(_onChatStarted);
-    on<ChatReconnectAfterConnectionRestored>(_onReconnectAfterConnectionRestored);
+    on<ChatReconnectAfterConnectionRestored>(
+      _onReconnectAfterConnectionRestored,
+    );
     on<ChatCreateSession>(_onCreateSession);
     on<ChatLoadSessions>(_onLoadSessions);
     on<ChatSelectSession>(_onSelectSession);
@@ -371,16 +377,21 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         sessionId: sessionId,
         userMessageId: event.userMessageId,
       );
-      final edits = [...editsRaw]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      final edits = [...editsRaw]
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
-      final editsById = Map<int, List<UserMessageEdit>>.from(state.editsByMessageId);
+      final editsById = Map<int, List<UserMessageEdit>>.from(
+        state.editsByMessageId,
+      );
       editsById[event.userMessageId] = edits;
 
       final cursorById = Map<int, int>.from(state.editCursorByMessageId);
       cursorById[event.userMessageId] = edits.isEmpty ? 0 : edits.length;
 
       final pending = state.pendingEditNavDeltaByMessageId[event.userMessageId];
-      final pendingMap = Map<int, int>.from(state.pendingEditNavDeltaByMessageId);
+      final pendingMap = Map<int, int>.from(
+        state.pendingEditNavDeltaByMessageId,
+      );
       pendingMap.remove(event.userMessageId);
 
       if (pending != null && edits.isNotEmpty) {
@@ -650,8 +661,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       createdAt: target.createdAt,
       updatedAt: DateTime.now(),
       attachmentFileName: target.attachmentFileName,
+      attachmentFileNames: target.attachmentFileNames,
       attachmentContent: target.attachmentContent,
       attachmentFileId: target.attachmentFileId,
+      attachmentFileIds: target.attachmentFileIds,
     );
     final prefixMessages = [...state.messages.sublist(0, idx), updatedUser];
 
@@ -1472,12 +1485,34 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     required bool allowReuseLastUserMessage,
   }) async {
     final text = event.text.trim();
-    final hasAttachmentBytes =
+    final attachmentNames = <String>[
+      ...event.attachmentFileNames.where((n) => n.trim().isNotEmpty),
+    ];
+    final attachmentContents = <List<int>>[
+      ...event.attachmentContents.where((bytes) => bytes.isNotEmpty),
+    ];
+    if (attachmentNames.isEmpty &&
         event.attachmentFileName != null &&
+        event.attachmentFileName!.trim().isNotEmpty) {
+      attachmentNames.add(event.attachmentFileName!.trim());
+    }
+    if (attachmentContents.isEmpty &&
         event.attachmentContent != null &&
-        event.attachmentContent!.isNotEmpty;
-    final hasAttachmentById =
-        event.attachmentFileId != null && event.attachmentFileId! > 0;
+        event.attachmentContent!.isNotEmpty) {
+      attachmentContents.add(event.attachmentContent!);
+    }
+    final hasAttachmentBytes =
+        attachmentNames.isNotEmpty &&
+        attachmentNames.length == attachmentContents.length;
+    final attachmentFileIds = <int>[
+      ...event.attachmentFileIds.where((id) => id > 0),
+    ];
+    if (attachmentFileIds.isEmpty &&
+        event.attachmentFileId != null &&
+        event.attachmentFileId! > 0) {
+      attachmentFileIds.add(event.attachmentFileId!);
+    }
+    final hasAttachmentById = attachmentFileIds.isNotEmpty;
     if (text.isEmpty && !hasAttachmentBytes && !hasAttachmentById) {
       return;
     }
@@ -1564,20 +1599,25 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
     }
 
-    var resolvedAttachmentFileId = event.attachmentFileId;
+    final resolvedAttachmentFileIds = <int>[...attachmentFileIds];
     if (hasAttachmentBytes) {
-      final uploadName = event.attachmentFileName!;
-      if (_filenameEligibleForSessionRag(uploadName) && !isClosed) {
-        emit(
-          state.copyWith(ragIngestionUi: RagIngestionUi.uploading(uploadName)),
-        );
-      }
       try {
-        resolvedAttachmentFileId = await putSessionFileUseCase(
-          sessionId: sessionId,
-          filename: uploadName,
-          content: event.attachmentContent!,
-        );
+        for (var i = 0; i < attachmentNames.length; i++) {
+          final uploadName = attachmentNames[i];
+          if (_filenameEligibleForSessionRag(uploadName) && !isClosed) {
+            emit(
+              state.copyWith(
+                ragIngestionUi: RagIngestionUi.uploading(uploadName),
+              ),
+            );
+          }
+          final uploadedFileId = await putSessionFileUseCase(
+            sessionId: sessionId,
+            filename: uploadName,
+            content: attachmentContents[i],
+          );
+          resolvedAttachmentFileIds.add(uploadedFileId);
+        }
       } on Object catch (e) {
         Logs().e('ChatBloc: ошибка загрузки вложения', exception: e);
         requestLogoutIfUnauthorized(e, authBloc);
@@ -1601,22 +1641,24 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
     }
 
-    final fid = resolvedAttachmentFileId;
-    final hasResolvedFile = fid != null && fid > 0;
-    if (text.isEmpty && !hasResolvedFile) {
+    final hasResolvedFiles = resolvedAttachmentFileIds.isNotEmpty;
+    if (text.isEmpty && !hasResolvedFiles) {
       return;
     }
 
     var useFileRag = false;
-    final attachName = event.attachmentFileName;
+    final attachName = attachmentNames.isNotEmpty
+        ? attachmentNames.first
+        : (event.attachmentFileName ?? '');
     final ragEligible =
-        hasResolvedFile &&
-        attachName != null &&
+        hasResolvedFiles &&
+        resolvedAttachmentFileIds.length == 1 &&
+        attachName.isNotEmpty &&
         _filenameEligibleForSessionRag(attachName);
     if (ragEligible) {
       useFileRag = await _waitForSessionFileRagReady(
         sessionId,
-        resolvedAttachmentFileId!,
+        resolvedAttachmentFileIds.first,
         getFileIngestionStatusUseCase,
         onPoll: (s) {
           if (!isClosed) {
@@ -1635,9 +1677,15 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       content: text,
       role: MessageRole.user,
       createdAt: DateTime.now(),
-      attachmentFileName: event.attachmentFileName,
+      attachmentFileName: attachmentNames.isNotEmpty
+          ? attachmentNames.first
+          : null,
+      attachmentFileNames: attachmentNames,
       attachmentContent: null,
-      attachmentFileId: hasResolvedFile ? resolvedAttachmentFileId : null,
+      attachmentFileId: hasResolvedFiles
+          ? resolvedAttachmentFileIds.first
+          : null,
+      attachmentFileIds: resolvedAttachmentFileIds,
       useFileRag: useFileRag,
     );
 
@@ -1647,8 +1695,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final sameUserMessage =
           last.role == MessageRole.user &&
           last.content == text &&
-          last.attachmentFileName == event.attachmentFileName &&
-          last.attachmentFileId == event.attachmentFileId &&
+          last.attachmentFileName == userMessage.attachmentFileName &&
+          last.attachmentFileId == userMessage.attachmentFileId &&
+          last.attachmentFileIds.length ==
+              userMessage.attachmentFileIds.length &&
+          last.attachmentFileIds.every(
+            userMessage.attachmentFileIds.contains,
+          ) &&
           _isSameAttachment(event.attachmentContent, last.attachmentContent);
       if (sameUserMessage) {
         updatedMessages = [...state.messages];
@@ -1832,9 +1885,12 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             error:
                 'Сервер не вернул ответ. Проверьте доступность раннера и попробуйте снова.',
             retryText: event.text,
-            retryAttachmentFileName: event.attachmentFileName,
+            retryAttachmentFileName: userMessage.attachmentFileName,
+            retryAttachmentFileNames: userMessage.attachmentFileNames,
             retryAttachmentContent: null,
-            retryAttachmentFileId: resolvedAttachmentFileId,
+            retryAttachmentContents: const [],
+            retryAttachmentFileId: userMessage.attachmentFileId,
+            retryAttachmentFileIds: userMessage.attachmentFileIds,
             ragPreviewBySessionFile: _ragPreviewAfterClear(state),
             clearRagDocumentPreview: true,
           ),
@@ -1856,9 +1912,12 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             lead: 'Не удалось отправить сообщение',
           ),
           retryText: event.text,
-          retryAttachmentFileName: event.attachmentFileName,
+          retryAttachmentFileName: userMessage.attachmentFileName,
+          retryAttachmentFileNames: userMessage.attachmentFileNames,
           retryAttachmentContent: null,
-          retryAttachmentFileId: resolvedAttachmentFileId,
+          retryAttachmentContents: const [],
+          retryAttachmentFileId: userMessage.attachmentFileId,
+          retryAttachmentFileIds: userMessage.attachmentFileIds,
           ragPreviewBySessionFile: _ragPreviewAfterClear(state),
           clearRagDocumentPreview: true,
         ),
@@ -2421,8 +2480,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     final hasPayload =
         retryText.trim().isNotEmpty ||
         state.retryAttachmentFileName != null ||
+        state.retryAttachmentFileNames.isNotEmpty ||
         state.retryAttachmentContent != null ||
-        state.retryAttachmentFileId != null;
+        state.retryAttachmentContents.isNotEmpty ||
+        state.retryAttachmentFileId != null ||
+        state.retryAttachmentFileIds.isNotEmpty;
     if (!hasPayload) {
       return;
     }
@@ -2430,8 +2492,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       ChatSendMessage(
         retryText,
         attachmentFileName: state.retryAttachmentFileName,
+        attachmentFileNames: state.retryAttachmentFileNames,
         attachmentContent: state.retryAttachmentContent,
+        attachmentContents: state.retryAttachmentContents,
         attachmentFileId: state.retryAttachmentFileId,
+        attachmentFileIds: state.retryAttachmentFileIds,
       ),
       emit,
       allowReuseLastUserMessage: true,
@@ -2853,7 +2918,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   Map<String, RagDocumentPreview> _ragPreviewAfterClear(ChatState s) {
-    final next = Map<String, RagDocumentPreview>.from(s.ragPreviewBySessionFile);
+    final next = Map<String, RagDocumentPreview>.from(
+      s.ragPreviewBySessionFile,
+    );
     final p = s.ragDocumentPreview;
     final sid = s.streamingSessionId ?? s.currentSessionId;
     if (p != null && sid != null && p.fileId > 0) {
@@ -2866,7 +2933,12 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatDismissRagDocumentPreview event,
     Emitter<ChatState> emit,
   ) {
-    emit(state.copyWith(ragPreviewBySessionFile: _ragPreviewAfterClear(state), clearRagDocumentPreview: true));
+    emit(
+      state.copyWith(
+        ragPreviewBySessionFile: _ragPreviewAfterClear(state),
+        clearRagDocumentPreview: true,
+      ),
+    );
   }
 
   Future<void> _onChatStopGeneration(

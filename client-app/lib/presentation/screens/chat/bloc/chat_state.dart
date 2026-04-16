@@ -39,8 +39,11 @@ class ChatState extends Equatable {
   final ChatSessionSettings? sessionSettings;
   final String? retryText;
   final String? retryAttachmentFileName;
+  final List<String> retryAttachmentFileNames;
   final List<int>? retryAttachmentContent;
+  final List<List<int>> retryAttachmentContents;
   final int? retryAttachmentFileId;
+  final List<int> retryAttachmentFileIds;
   final Set<int> editedMessageIds;
   final Map<int, List<UserMessageEdit>> editsByMessageId;
   final Map<int, int> editCursorByMessageId;
@@ -95,8 +98,11 @@ class ChatState extends Equatable {
     this.sessionSettings,
     this.retryText,
     this.retryAttachmentFileName,
+    this.retryAttachmentFileNames = const [],
     this.retryAttachmentContent,
+    this.retryAttachmentContents = const [],
     this.retryAttachmentFileId,
+    this.retryAttachmentFileIds = const [],
     this.editedMessageIds = const {},
     this.editsByMessageId = const {},
     this.editCursorByMessageId = const {},
@@ -149,8 +155,11 @@ class ChatState extends Equatable {
     ChatSessionSettings? sessionSettings,
     String? retryText,
     String? retryAttachmentFileName,
+    List<String>? retryAttachmentFileNames,
     List<int>? retryAttachmentContent,
+    List<List<int>>? retryAttachmentContents,
     int? retryAttachmentFileId,
+    List<int>? retryAttachmentFileIds,
     bool clearRetryPayload = false,
     bool clearToolProgress = false,
     Set<int>? editedMessageIds,
@@ -227,12 +236,21 @@ class ChatState extends Equatable {
       retryAttachmentFileName: clearRetryPayload
           ? null
           : (retryAttachmentFileName ?? this.retryAttachmentFileName),
+      retryAttachmentFileNames: clearRetryPayload
+          ? const []
+          : (retryAttachmentFileNames ?? this.retryAttachmentFileNames),
       retryAttachmentContent: clearRetryPayload
           ? null
           : (retryAttachmentContent ?? this.retryAttachmentContent),
+      retryAttachmentContents: clearRetryPayload
+          ? const []
+          : (retryAttachmentContents ?? this.retryAttachmentContents),
       retryAttachmentFileId: clearRetryPayload
           ? null
           : (retryAttachmentFileId ?? this.retryAttachmentFileId),
+      retryAttachmentFileIds: clearRetryPayload
+          ? const []
+          : (retryAttachmentFileIds ?? this.retryAttachmentFileIds),
       editedMessageIds: editedMessageIds ?? this.editedMessageIds,
       editsByMessageId: editsByMessageId ?? this.editsByMessageId,
       editCursorByMessageId:
@@ -301,8 +319,11 @@ class ChatState extends Equatable {
     sessionSettings,
     retryText,
     retryAttachmentFileName,
+    retryAttachmentFileNames,
     retryAttachmentContent,
+    retryAttachmentContents,
     retryAttachmentFileId,
+    retryAttachmentFileIds,
     editedMessageIds,
     editsByMessageId,
     editCursorByMessageId,
