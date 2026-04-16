@@ -11,8 +11,10 @@ func TestMCPCountersMapIncrements(t *testing.T) {
 	recordCallToolTransportErr()
 	recordCallToolMCPError()
 	recordCallToolOK()
+	recordCallToolRetry()
 	recordListCacheHit()
 	recordListCacheMiss()
+	recordPooledSessionRetry()
 	recordCallToolServer(99, "ok")
 	recordCallToolServer(99, "transport_err")
 
@@ -25,8 +27,16 @@ func TestMCPCountersMapIncrements(t *testing.T) {
 		t.Fatalf("call_tool counters: %v", m)
 	}
 
+	if m["call_tool_retry"] < 1 {
+		t.Fatalf("call_tool_retry counter: %v", m)
+	}
+
 	if m["list_cache_hit"] < 1 || m["list_cache_miss"] < 1 {
 		t.Fatalf("list_cache counters: %v", m)
+	}
+
+	if m["pooled_session_retry"] < 1 {
+		t.Fatalf("pooled_session_retry counter: %v", m)
 	}
 
 	if m["call_tool_server_99_ok"] < 1 || m["call_tool_server_99_transport_err"] < 1 {

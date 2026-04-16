@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"gorm.io/gorm"
 	"path/filepath"
+	"time"
 )
 
 type Container struct {
@@ -93,7 +94,7 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	mcpclient.SetHTTPSessionMaxIdleSec(cfg.MCP.HTTPSessionMaxIdleSeconds)
 
 	if cfg.MCP.HTTPReuseSessions {
-		logger.I("MCP: http_reuse_sessions=true - для sse/streamable одна сессия на сервер (сброс при ошибке, idle и CRUD); tools/call с sampling открывает отдельную сессию")
+		logger.I("MCP: http_reuse_sessions=true - для sse/streamable одна сессия на сервер (сброс при ошибке, idle, CRUD и смене runtime-контекста)")
 	}
 
 	db, err := provider.NewDB(ctx, cfg, cfg.LogLevel)
@@ -113,6 +114,28 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	chatSessionSettingsRepo := postgres.NewChatSessionSettingsRepository(db)
 	webSearchSettingsRepo := postgres.NewWebSearchSettingsRepository(db)
 	mcpServerRepo := postgres.NewMCPServerRepository(db)
+	mcpclient.SetActiveServerCatalogProvider(func() []mcpclient.ActiveServerDescriptor {
+		cctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		list, err := mcpServerRepo.ListActive(cctx)
+		if err != nil {
+			logger.W("MCP SLO catalog provider: %v", err)
+			return nil
+		}
+
+		out := make([]mcpclient.ActiveServerDescriptor, 0, len(list))
+		for _, s := range list {
+			if s == nil || s.ID <= 0 || !s.Enabled {
+				continue
+			}
+			out = append(out, mcpclient.ActiveServerDescriptor{
+				ID:   s.ID,
+				Name: s.Name,
+			})
+		}
+		return out
+	})
 	editorHistoryRepo := postgres.NewEditorHistoryRepository(db)
 	messageRepo := postgres.NewMessageRepository(db)
 	messageEditRepo := postgres.NewMessageEditRepository(db)

@@ -64,6 +64,10 @@ func (fakeMCPServerRepoForMCP) ListForUser(context.Context, int) ([]*domain.MCPS
 	return nil, nil
 }
 
+func (fakeMCPServerRepoForMCP) ListActive(context.Context) ([]*domain.MCPServer, error) {
+	return nil, nil
+}
+
 func (fakeMCPServerRepoForMCP) GetByID(context.Context, int64) (*domain.MCPServer, error) {
 	return nil, nil
 }

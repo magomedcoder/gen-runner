@@ -30,6 +30,14 @@ func (u *MCPServersUseCase) ListForUser(ctx context.Context, userID int) ([]*dom
 	return u.repo.ListForUser(ctx, userID)
 }
 
+func (u *MCPServersUseCase) ListActive(ctx context.Context) ([]*domain.MCPServer, error) {
+	if u.repo == nil {
+		return nil, nil
+	}
+
+	return u.repo.ListActive(ctx)
+}
+
 func (u *MCPServersUseCase) GetGlobal(ctx context.Context, id int64) (*domain.MCPServer, error) {
 	return u.repo.GetGlobalByID(ctx, id)
 }

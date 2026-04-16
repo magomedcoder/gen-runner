@@ -23,6 +23,8 @@ data_dir: "./data"
 mcp:
   http_allow_any: false
   http_allow_hosts: [] # разрешённые имена хостов (и суффиксы *.host) для URL MCP; loopback не нужно дублировать
+  http_reuse_sessions: true # снижает latency tools/call за счёт переиспользования HTTP MCP-сессий
+  # http_session_max_idle_seconds: 180 # idle TTL пула (1...600)
   # stdio_disabled: true # раскомментируйте в продакшене, если используете только HTTP-транспорты
   # stdio_command_prefixes: # непустой список = command должна быть под одним из префиксов пути (после Clean)
   #  - "/opt/mcp-servers"

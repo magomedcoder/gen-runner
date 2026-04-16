@@ -538,70 +538,113 @@ class ChatInputBarState extends State<ChatInputBar> {
     return targetHeight.clamp(minH, maxHeight);
   }
 
+  String _formatAttachmentSize(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
   Widget _buildAttachmentChip(ThemeData theme) {
     if (_selectedFiles.isEmpty) {
       return const SizedBox.shrink();
     }
 
+    final scheme = theme.colorScheme;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
       child: Material(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(10),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 4),
-                child: Text(
-                  'Файлы: ${_selectedFiles.length}/$_maxAttachments',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onPrimaryContainer.withValues(
-                      alpha: 0.88,
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.attach_file_rounded,
+                      size: 14,
+                      color: scheme.onSurfaceVariant,
                     ),
-                  ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Прикреплено: ${_selectedFiles.length}/$_maxAttachments',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Wrap(
                 spacing: 6,
-                runSpacing: 4,
+                runSpacing: 6,
                 children: [
                   for (var i = 0; i < _selectedFiles.length; i++)
                     Container(
-                      constraints: const BoxConstraints(maxWidth: 220),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
+                      constraints: const BoxConstraints(maxWidth: 260),
+                      padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primaryContainer.withValues(
-                          alpha: 0.65,
+                        color: scheme.surface.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.6),
                         ),
-                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.insert_drive_file_rounded,
-                            size: 16,
-                            color: theme.colorScheme.onPrimaryContainer,
-                          ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              _selectedFiles[i].name,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: theme.colorScheme.onPrimaryContainer,
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: scheme.primaryContainer.withValues(
+                                alpha: 0.65,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: Icon(
+                              Icons.insert_drive_file_rounded,
+                              size: 14,
+                              color: scheme.onPrimaryContainer,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _selectedFiles[i].name,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: scheme.onSurface,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 1),
+                                Text(
+                                  _formatAttachmentSize(_selectedFiles[i].size),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           IconButton(
@@ -614,7 +657,7 @@ class ChatInputBarState extends State<ChatInputBar> {
                             icon: Icon(
                               Icons.close_rounded,
                               size: 16,
-                              color: theme.colorScheme.onPrimaryContainer,
+                              color: scheme.onSurfaceVariant,
                             ),
                             onPressed: () => _clearFile(i),
                             tooltip: 'Убрать файл',
@@ -670,19 +713,6 @@ class ChatInputBarState extends State<ChatInputBar> {
                   Icons.attach_file_rounded,
                   color: theme.colorScheme.onSurfaceVariant.withValues(
                     alpha: 0.4,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Text(
-                  '${_selectedFiles.length}/$_maxAttachments',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: 0.7,
-                    ),
                   ),
                 ),
               ),

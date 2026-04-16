@@ -70,6 +70,23 @@ func (r *mcpServerRepository) ListForUser(ctx context.Context, userID int) ([]*d
 	return out, nil
 }
 
+func (r *mcpServerRepository) ListActive(ctx context.Context) ([]*domain.MCPServer, error) {
+	var rows []model.MCPServer
+	if err := r.db.WithContext(ctx).
+		Where("enabled = ?", true).
+		Order("id ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	out := make([]*domain.MCPServer, 0, len(rows))
+	for i := range rows {
+		out = append(out, rowToMCPServer(&rows[i]))
+	}
+
+	return out, nil
+}
+
 func (r *mcpServerRepository) GetByID(ctx context.Context, id int64) (*domain.MCPServer, error) {
 	var m model.MCPServer
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&m).Error

@@ -47,6 +47,20 @@ type httpSessionPool struct {
 	byID map[int64]*pooledServerConn
 }
 
+func poolSessionFingerprint(ctx context.Context, srv *domain.MCPServer) string {
+	base := serverConfigFingerprint(srv)
+	runtime := samplingRuntimeFingerprint(ctx)
+	if runtime == "" {
+		return base
+	}
+
+	return base + "|" + runtime
+}
+
+func shouldRetryPooledSessionError(parentCtx context.Context, err error) bool {
+	return isRetryableTransportError(parentCtx, err)
+}
+
 func (p *httpSessionPool) run(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCache, fn func(context.Context, *mcp.ClientSession) error) error {
 	p.mu.Lock()
 	pc, ok := p.byID[srv.ID]
@@ -59,45 +73,58 @@ func (p *httpSessionPool) run(ctx context.Context, srv *domain.MCPServer, notify
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
 
-	fp := serverConfigFingerprint(srv)
+	fp := poolSessionFingerprint(ctx, srv)
 	maxIdle := time.Duration(httpPoolMaxIdleSec.Load()) * time.Second
-	now := time.Now()
 
-	if pc.session != nil {
-		if pc.fp != fp || now.Sub(pc.lastUsed) > maxIdle {
+	for attempt := 0; attempt < 2; attempt++ {
+		now := time.Now()
+		if pc.session != nil && (pc.fp != fp || now.Sub(pc.lastUsed) > maxIdle) {
 			_ = pc.session.Close()
 			pc.session = nil
 		}
-	}
 
-	opCtx, cancel := context.WithTimeout(ctx, timeoutFor(srv))
-	defer cancel()
+		reusedSession := pc.session != nil
+		opCtx, cancel := context.WithTimeout(ctx, timeoutFor(srv))
 
-	if pc.session == nil {
-		transport, err := transportFor(ctx, srv)
-		if err != nil {
-			return err
+		if pc.session == nil {
+			transport, err := transportFor(ctx, srv)
+			if err != nil {
+				cancel()
+				return err
+			}
+			opts := buildMCPClientOptions(ctx, srv, notify)
+			cli := mcp.NewClient(&mcp.Implementation{Name: "gen", Version: "1.0.0"}, opts)
+			if r := rootsForSession(); len(r) > 0 {
+				cli.AddRoots(r...)
+			}
+			session, err := cli.Connect(opCtx, transport, nil)
+			if err != nil {
+				cancel()
+				return err
+			}
+			pc.session = session
+			pc.fp = fp
 		}
-		opts := buildMCPClientOptions(ctx, srv, notify)
-		cli := mcp.NewClient(&mcp.Implementation{Name: "gen", Version: "1.0.0"}, opts)
-		if r := rootsForSession(); len(r) > 0 {
-			cli.AddRoots(r...)
-		}
-		session, err := cli.Connect(opCtx, transport, nil)
-		if err != nil {
-			return err
-		}
-		pc.session = session
-		pc.fp = fp
-	}
 
-	err := fn(opCtx, pc.session)
-	pc.lastUsed = time.Now()
-	if err != nil {
+		err := fn(opCtx, pc.session)
+		cancel()
+		pc.lastUsed = time.Now()
+		if err == nil {
+			return nil
+		}
+
 		_ = pc.session.Close()
 		pc.session = nil
+
+		if attempt == 0 && reusedSession && shouldRetryPooledSessionError(ctx, err) {
+			recordPooledSessionRetry()
+			continue
+		}
+
+		return err
 	}
-	return err
+
+	return nil
 }
 
 func (p *httpSessionPool) closeServer(id int64) {
@@ -131,9 +158,6 @@ func useHTTPSessionPool(ctx context.Context, srv *domain.MCPServer) bool {
 	}
 	tr := strings.ToLower(strings.TrimSpace(srv.Transport))
 	if tr != "sse" && tr != "streamable" {
-		return false
-	}
-	if samplingClientOptions(ctx) != nil {
 		return false
 	}
 	return true

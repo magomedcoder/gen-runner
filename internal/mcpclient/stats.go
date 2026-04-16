@@ -14,8 +14,10 @@ type mcpRPCStats struct {
 	getPromptOK, getPromptFail         atomic.Uint64
 	callToolOK, callToolFail           atomic.Uint64
 	callToolMCPError                   atomic.Uint64
+	callToolRetry                      atomic.Uint64
 	probeOK, probeFail                 atomic.Uint64
 	listCacheHit, listCacheMiss        atomic.Uint64
+	pooledSessionRetry                 atomic.Uint64
 }
 
 var rpcStats mcpRPCStats
@@ -27,6 +29,12 @@ type callToolServerStat struct {
 }
 
 var callToolByServer sync.Map
+
+type CallToolServerCounters struct {
+	OK           uint64
+	TransportErr uint64
+	MCPError     uint64
+}
 
 func recordCallToolServer(serverID int64, outcome string) {
 	if serverID <= 0 {
@@ -56,6 +64,27 @@ func recordCallToolServer(serverID int64, outcome string) {
 	case "mcp_error":
 		st.mcpError.Add(1)
 	}
+}
+
+func callToolServerCountersSnapshot() map[int64]CallToolServerCounters {
+	out := map[int64]CallToolServerCounters{}
+	callToolByServer.Range(func(k, v any) bool {
+		id, ok := k.(int64)
+		if !ok {
+			return true
+		}
+		st, ok := v.(*callToolServerStat)
+		if !ok || st == nil {
+			return true
+		}
+		out[id] = CallToolServerCounters{
+			OK:           st.ok.Load(),
+			TransportErr: st.transportErr.Load(),
+			MCPError:     st.mcpError.Load(),
+		}
+		return true
+	})
+	return out
 }
 
 func recordListTools(err error) {
@@ -110,6 +139,10 @@ func recordCallToolOK() {
 	rpcStats.callToolOK.Add(1)
 }
 
+func recordCallToolRetry() {
+	rpcStats.callToolRetry.Add(1)
+}
+
 func recordProbe(err error) {
 	if err != nil {
 		rpcStats.probeFail.Add(1)
@@ -126,25 +159,31 @@ func recordListCacheMiss() {
 	rpcStats.listCacheMiss.Add(1)
 }
 
+func recordPooledSessionRetry() {
+	rpcStats.pooledSessionRetry.Add(1)
+}
+
 func MCPCountersMap() map[string]uint64 {
 	out := map[string]uint64{
-		"list_tools_ok":       rpcStats.listToolsOK.Load(),
-		"list_tools_fail":     rpcStats.listToolsFail.Load(),
-		"list_resources_ok":   rpcStats.listResourcesOK.Load(),
-		"list_resources_fail": rpcStats.listResourcesFail.Load(),
-		"list_prompts_ok":     rpcStats.listPromptsOK.Load(),
-		"list_prompts_fail":   rpcStats.listPromptsFail.Load(),
-		"read_resource_ok":    rpcStats.readResourceOK.Load(),
-		"read_resource_fail":  rpcStats.readResourceFail.Load(),
-		"get_prompt_ok":       rpcStats.getPromptOK.Load(),
-		"get_prompt_fail":     rpcStats.getPromptFail.Load(),
-		"call_tool_ok":        rpcStats.callToolOK.Load(),
-		"call_tool_fail":      rpcStats.callToolFail.Load(),
-		"call_tool_mcp_error": rpcStats.callToolMCPError.Load(),
-		"probe_ok":            rpcStats.probeOK.Load(),
-		"probe_fail":          rpcStats.probeFail.Load(),
-		"list_cache_hit":      rpcStats.listCacheHit.Load(),
-		"list_cache_miss":     rpcStats.listCacheMiss.Load(),
+		"list_tools_ok":        rpcStats.listToolsOK.Load(),
+		"list_tools_fail":      rpcStats.listToolsFail.Load(),
+		"list_resources_ok":    rpcStats.listResourcesOK.Load(),
+		"list_resources_fail":  rpcStats.listResourcesFail.Load(),
+		"list_prompts_ok":      rpcStats.listPromptsOK.Load(),
+		"list_prompts_fail":    rpcStats.listPromptsFail.Load(),
+		"read_resource_ok":     rpcStats.readResourceOK.Load(),
+		"read_resource_fail":   rpcStats.readResourceFail.Load(),
+		"get_prompt_ok":        rpcStats.getPromptOK.Load(),
+		"get_prompt_fail":      rpcStats.getPromptFail.Load(),
+		"call_tool_ok":         rpcStats.callToolOK.Load(),
+		"call_tool_fail":       rpcStats.callToolFail.Load(),
+		"call_tool_mcp_error":  rpcStats.callToolMCPError.Load(),
+		"call_tool_retry":      rpcStats.callToolRetry.Load(),
+		"probe_ok":             rpcStats.probeOK.Load(),
+		"probe_fail":           rpcStats.probeFail.Load(),
+		"list_cache_hit":       rpcStats.listCacheHit.Load(),
+		"list_cache_miss":      rpcStats.listCacheMiss.Load(),
+		"pooled_session_retry": rpcStats.pooledSessionRetry.Load(),
 	}
 
 	callToolByServer.Range(func(k, v any) bool {

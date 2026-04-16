@@ -2,6 +2,10 @@ package mcpclient
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"unicode/utf8"
@@ -236,4 +240,58 @@ func samplingClientOptions(ctx context.Context) *mcp.ClientOptions {
 			return runSamplingCreateMessageWithTools(cctx, &runner, req.Params)
 		},
 	}
+}
+
+func samplingRuntimeFingerprint(ctx context.Context) string {
+	if !samplingEnabled.Load() {
+		return ""
+	}
+
+	sr := samplingRunnerFromCtx(ctx)
+	if sr == nil {
+		return ""
+	}
+
+	var maxTokens int32
+	var temperature float32
+	var topP float32
+	if sr.GenParams != nil {
+		if sr.GenParams.MaxTokens != nil {
+			maxTokens = *sr.GenParams.MaxTokens
+		}
+		if sr.GenParams.Temperature != nil {
+			temperature = *sr.GenParams.Temperature
+		}
+		if sr.GenParams.TopP != nil {
+			topP = *sr.GenParams.TopP
+		}
+	}
+
+	payload := struct {
+		SessionID      int64    `json:"session_id"`
+		RunnerAddr     string   `json:"runner_addr"`
+		Model          string   `json:"model"`
+		StopSequences  []string `json:"stop_sequences"`
+		TimeoutSeconds int32    `json:"timeout_seconds"`
+		MaxTokens      int32    `json:"max_tokens"`
+		Temperature    float32  `json:"temperature"`
+		TopP           float32  `json:"top_p"`
+	}{
+		SessionID:      sr.SessionID,
+		RunnerAddr:     strings.TrimSpace(sr.RunnerAddr),
+		Model:          strings.TrimSpace(sr.Model),
+		StopSequences:  append([]string(nil), sr.StopSequences...),
+		TimeoutSeconds: sr.TimeoutSeconds,
+		MaxTokens:      maxTokens,
+		Temperature:    temperature,
+		TopP:           topP,
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Sprintf("sampling:%d:%s:%s", sr.SessionID, strings.TrimSpace(sr.RunnerAddr), strings.TrimSpace(sr.Model))
+	}
+
+	sum := sha256.Sum256(b)
+	return "sampling:" + hex.EncodeToString(sum[:12])
 }

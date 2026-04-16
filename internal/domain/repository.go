@@ -238,6 +238,8 @@ type MCPServerRepository interface {
 
 	ListForUser(ctx context.Context, userID int) ([]*MCPServer, error)
 
+	ListActive(ctx context.Context) ([]*MCPServer, error)
+
 	GetByID(ctx context.Context, id int64) (*MCPServer, error)
 
 	GetByIDAccessible(ctx context.Context, id int64, userID int) (*MCPServer, error)

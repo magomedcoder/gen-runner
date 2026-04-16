@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/magomedcoder/gen/internal/domain"
+	"golang.org/x/sync/singleflight"
 )
 
 const DefaultToolsListCacheTTL = 2 * time.Minute
@@ -36,10 +37,13 @@ type promptsCacheEntry struct {
 }
 
 type ToolsListCache struct {
-	mu             sync.RWMutex
-	toolEntries    map[listCacheKey]toolsCacheEntry
-	resEntries     map[listCacheKey]resourcesCacheEntry
-	promptsEntries map[listCacheKey]promptsCacheEntry
+	mu              sync.RWMutex
+	toolEntries     map[listCacheKey]toolsCacheEntry
+	resEntries      map[listCacheKey]resourcesCacheEntry
+	promptsEntries  map[listCacheKey]promptsCacheEntry
+	toolReqGroup    singleflight.Group
+	resReqGroup     singleflight.Group
+	promptsReqGroup singleflight.Group
 }
 
 func NewToolsListCache() *ToolsListCache {
@@ -51,6 +55,21 @@ func NewToolsListCache() *ToolsListCache {
 }
 
 var toolsListNotifyDefault atomic.Pointer[ToolsListCache]
+var listRequestCoalescingEnabled atomic.Bool
+
+var (
+	listToolsFetcher     = listTools
+	listResourcesFetcher = listResources
+	listPromptsFetcher   = listPrompts
+)
+
+func init() {
+	listRequestCoalescingEnabled.Store(true)
+}
+
+func SetListRequestCoalescing(enabled bool) {
+	listRequestCoalescingEnabled.Store(enabled)
+}
 
 func SetToolsListCacheForNotifications(c *ToolsListCache) {
 	toolsListNotifyDefault.Store(c)
@@ -140,9 +159,33 @@ func (c *ToolsListCache) ListToolsCached(ctx context.Context, srv *domain.MCPSer
 	}
 
 	recordListCacheMiss()
-	tools, err := listTools(ctx, srv, c)
-	if err != nil {
-		return nil, err
+	fetch := func() ([]DeclaredTool, error) {
+		return listToolsFetcher(ctx, srv, c)
+	}
+
+	tools := []DeclaredTool(nil)
+	var err error
+	if listRequestCoalescingEnabled.Load() {
+		v, ferr, _ := c.toolReqGroup.Do(fmt.Sprintf("%d|%s", key.id, key.fp), func() (any, error) {
+			t, e := fetch()
+			if e != nil {
+				return nil, e
+			}
+			return t, nil
+		})
+		if ferr != nil {
+			return nil, ferr
+		}
+		var okCast bool
+		tools, okCast = v.([]DeclaredTool)
+		if !okCast {
+			return nil, errors.New("unexpected coalesced tools payload type")
+		}
+	} else {
+		tools, err = fetch()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	c.mu.Lock()
@@ -197,9 +240,33 @@ func (c *ToolsListCache) ListResourcesCached(ctx context.Context, srv *domain.MC
 	}
 
 	recordListCacheMiss()
-	items, err := listResources(ctx, srv, c)
-	if err != nil {
-		return nil, err
+	fetch := func() ([]DeclaredResource, error) {
+		return listResourcesFetcher(ctx, srv, c)
+	}
+
+	items := []DeclaredResource(nil)
+	if listRequestCoalescingEnabled.Load() {
+		v, err, _ := c.resReqGroup.Do(fmt.Sprintf("%d|%s", key.id, key.fp), func() (any, error) {
+			r, e := fetch()
+			if e != nil {
+				return nil, e
+			}
+			return r, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		var okCast bool
+		items, okCast = v.([]DeclaredResource)
+		if !okCast {
+			return nil, errors.New("unexpected coalesced resources payload type")
+		}
+	} else {
+		var err error
+		items, err = fetch()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	c.mu.Lock()
@@ -250,9 +317,33 @@ func (c *ToolsListCache) ListPromptsCached(ctx context.Context, srv *domain.MCPS
 	}
 
 	recordListCacheMiss()
-	items, err := listPrompts(ctx, srv, c)
-	if err != nil {
-		return nil, err
+	fetch := func() ([]DeclaredPrompt, error) {
+		return listPromptsFetcher(ctx, srv, c)
+	}
+
+	items := []DeclaredPrompt(nil)
+	if listRequestCoalescingEnabled.Load() {
+		v, err, _ := c.promptsReqGroup.Do(fmt.Sprintf("%d|%s", key.id, key.fp), func() (any, error) {
+			p, e := fetch()
+			if e != nil {
+				return nil, e
+			}
+			return p, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		var okCast bool
+		items, okCast = v.([]DeclaredPrompt)
+		if !okCast {
+			return nil, errors.New("unexpected coalesced prompts payload type")
+		}
+	} else {
+		var err error
+		items, err = fetch()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	c.mu.Lock()

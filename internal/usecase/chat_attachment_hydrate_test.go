@@ -375,3 +375,53 @@ func TestHydrateAttachmentsForRunner_prefersShaMatchedExtractedCache(t *testing.
 		t.Fatal("не должны подставлять извлечение с диска при совпадении sha256")
 	}
 }
+
+func TestHydrateAttachmentsForRunner_historicalAttachmentUsesCompactSummaryWithoutUserText(t *testing.T) {
+	dir := t.TempDir()
+	sid := int64(8)
+	sessDir := filepath.Join(dir, strconv.FormatInt(sid, 10))
+	if err := os.MkdirAll(sessDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(sessDir, "77_notes.txt")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", 600)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fid := int64(77)
+	c := &ChatUseCase{
+		fileRepo: mapFileRepo{
+			fid: {
+				Id:          fid,
+				Filename:    "notes.txt",
+				StoragePath: path,
+			},
+		},
+		attachmentsSaveDir: dir,
+	}
+
+	historyWithAttachment := &domain.Message{
+		SessionId:        sid,
+		AttachmentName:   "notes.txt",
+		AttachmentFileID: &fid,
+		Content:          "исторический вопрос",
+	}
+	latestUser := &domain.Message{
+		SessionId: sid,
+		Content:   "текущий вопрос",
+		Role:      domain.MessageRoleUser,
+	}
+
+	if err := c.hydrateAttachmentsForRunner(context.Background(), []*domain.Message{historyWithAttachment, latestUser}); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(historyWithAttachment.Content, "Сообщение пользователя:") {
+		t.Fatalf("историческая гидратация не должна дублировать user-текст: %q", historyWithAttachment.Content)
+	}
+
+	if !strings.Contains(historyWithAttachment.Content, "[attachment_ref: notes.txt]") {
+		t.Fatalf("ожидался compact attachment ref, получено %q", historyWithAttachment.Content)
+	}
+}

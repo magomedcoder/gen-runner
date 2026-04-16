@@ -264,6 +264,12 @@ func withSession(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCa
 	return withEphemeralSession(ctx, srv, notify, fn)
 }
 
+var callToolSessionRunner = withSession
+
+var callToolInvoker = func(ctx context.Context, session *mcp.ClientSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+	return session.CallTool(ctx, params)
+}
+
 func inputSchemaToParametersJSON(schema any) string {
 	if schema == nil {
 		return `{"type":"object","properties":{}}`
@@ -332,33 +338,48 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 
 	var result string
 	var callErr error
-	err := withSession(ctx, srv, nc, func(cctx context.Context, session *mcp.ClientSession) error {
-		var args any
-		if len(arguments) > 0 {
-			if err := json.Unmarshal(arguments, &args); err != nil {
-				return fmt.Errorf("аргументы инструмента: %w", err)
+	attempts := 1
+	if callToolAllowsTransportRetry(mcpToolName) {
+		attempts = 2
+	}
+
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		err = callToolSessionRunner(ctx, srv, nc, func(cctx context.Context, session *mcp.ClientSession) error {
+			var args any
+			if len(arguments) > 0 {
+				if err := json.Unmarshal(arguments, &args); err != nil {
+					return fmt.Errorf("аргументы инструмента: %w", err)
+				}
 			}
-		}
 
-		if args == nil {
-			args = map[string]any{}
-		}
+			if args == nil {
+				args = map[string]any{}
+			}
 
-		res, err := session.CallTool(cctx, &mcp.CallToolParams{
-			Name:      mcpToolName,
-			Arguments: args,
+			res, err := callToolInvoker(cctx, session, &mcp.CallToolParams{
+				Name:      mcpToolName,
+				Arguments: args,
+			})
+			if err != nil {
+				return err
+			}
+
+			result = CallToolResultString(res)
+			if res != nil && res.IsError {
+				callErr = errors.New(strings.TrimSpace(result))
+			}
+
+			return nil
 		})
-		if err != nil {
-			return err
+		if err == nil {
+			break
 		}
-
-		result = CallToolResultString(res)
-		if res != nil && res.IsError {
-			callErr = errors.New(strings.TrimSpace(result))
+		if attempt < attempts-1 && isRetryableTransportError(ctx, err) {
+			recordCallToolRetry()
+			continue
 		}
-
-		return nil
-	})
+	}
 
 	if err != nil {
 		recordCallToolTransportErr()
