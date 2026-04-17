@@ -47,6 +47,7 @@ func WithSamplingRunner(ctx context.Context, sr *SamplingRunner) context.Context
 		return ctx
 	}
 
+	logger.D("MCP sampling: WithSamplingRunner session_id=%d model=%q runner=%q", sr.SessionID, sr.Model, sr.RunnerAddr)
 	return context.WithValue(ctx, samplingRunnerCtxKey{}, sr)
 }
 
@@ -144,9 +145,13 @@ func (sr *SamplingRunner) runCompletion(ctx context.Context, msgs []*domain.Mess
 	}
 
 	text = strings.TrimSpace(text)
-	if utf8.RuneCountInString(text) > maxSamplingReplyRunes {
+	rc := utf8.RuneCountInString(text)
+	if rc > maxSamplingReplyRunes {
 		r := []rune(text)
 		text = string(r[:maxSamplingReplyRunes]) + "\n...(обрезано для MCP sampling)"
+		logger.D("MCP sampling runCompletion: session_id=%d ответ_обрезан runes=%d->%d", sr.SessionID, rc, maxSamplingReplyRunes)
+	} else {
+		logger.D("MCP sampling runCompletion: session_id=%d ответ_runes=%d", sr.SessionID, rc)
 	}
 
 	return text, nil
@@ -182,6 +187,7 @@ func runSamplingCreateMessage(ctx context.Context, sr *SamplingRunner, p *mcp.Cr
 		return nil, err
 	}
 
+	logger.D("MCP sampling/createMessage: session=%d reply_runes=%d", sr.SessionID, utf8.RuneCountInString(text))
 	return &mcp.CreateMessageResult{
 		Content:    &mcp.TextContent{Text: text},
 		Model:      sr.Model,
@@ -205,6 +211,7 @@ func runSamplingCreateMessageWithTools(ctx context.Context, sr *SamplingRunner, 
 		return nil, err
 	}
 
+	logger.D("MCP sampling/createMessage (tools form): session=%d reply_runes=%d", sr.SessionID, utf8.RuneCountInString(text))
 	return &mcp.CreateMessageWithToolsResult{
 		Content:    []mcp.Content{&mcp.TextContent{Text: text}},
 		Model:      sr.Model,
@@ -224,6 +231,7 @@ func samplingClientOptions(ctx context.Context) *mcp.ClientOptions {
 	}
 
 	runner := *sr
+	logger.D("MCP sampling: samplingClientOptions session_id=%d (handlers зарегистрированы)", runner.SessionID)
 	return &mcp.ClientOptions{
 		CreateMessageHandler: func(cctx context.Context, req *mcp.CreateMessageRequest) (*mcp.CreateMessageResult, error) {
 			if req == nil {

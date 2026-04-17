@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/pkg/logger"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -154,10 +155,12 @@ func (c *ToolsListCache) ListToolsCached(ctx context.Context, srv *domain.MCPSer
 	e, ok := c.toolEntries[key]
 	c.mu.RUnlock()
 	if ok && now.Before(e.until) {
+		logger.D("MCP cache ListToolsCached: server_id=%d hit=true tools=%d ttl_осталось≈%s", srv.ID, len(e.tools), e.until.Sub(now).Round(time.Second))
 		recordListCacheHit()
 		return cloneDeclaredTools(e.tools), nil
 	}
 
+	logger.D("MCP cache ListToolsCached: server_id=%d hit=false (fetch)", srv.ID)
 	recordListCacheMiss()
 	fetch := func() ([]DeclaredTool, error) {
 		return listToolsFetcher(ctx, srv, c)
@@ -211,6 +214,7 @@ func (c *ToolsListCache) ListToolsCached(ctx context.Context, srv *domain.MCPSer
 		until: now.Add(ttl),
 	}
 
+	logger.D("MCP cache ListToolsCached: server_id=%d сохранено tools=%d ttl=%s", srv.ID, len(tools), ttl)
 	return cloneDeclaredTools(tools), nil
 }
 
@@ -235,10 +239,12 @@ func (c *ToolsListCache) ListResourcesCached(ctx context.Context, srv *domain.MC
 	e, ok := c.resEntries[key]
 	c.mu.RUnlock()
 	if ok && now.Before(e.until) {
+		logger.D("MCP cache ListResourcesCached: server_id=%d hit=true items=%d", srv.ID, len(e.items))
 		recordListCacheHit()
 		return cloneDeclaredResources(e.items), nil
 	}
 
+	logger.D("MCP cache ListResourcesCached: server_id=%d hit=false (fetch)", srv.ID)
 	recordListCacheMiss()
 	fetch := func() ([]DeclaredResource, error) {
 		return listResourcesFetcher(ctx, srv, c)
@@ -274,20 +280,25 @@ func (c *ToolsListCache) ListResourcesCached(ctx context.Context, srv *domain.MC
 	if c.resEntries == nil {
 		c.resEntries = make(map[listCacheKey]resourcesCacheEntry)
 	}
+
 	for k, v := range c.resEntries {
 		if !now.Before(v.until) {
 			delete(c.resEntries, k)
 		}
 	}
+
 	for k := range c.resEntries {
 		if k.id == srv.ID && k.fp != fp {
 			delete(c.resEntries, k)
 		}
 	}
+
 	c.resEntries[key] = resourcesCacheEntry{
 		items: cloneDeclaredResources(items),
 		until: now.Add(ttl),
 	}
+
+	logger.D("MCP cache ListResourcesCached: server_id=%d сохранено items=%d ttl=%s", srv.ID, len(items), ttl)
 	return cloneDeclaredResources(items), nil
 }
 
@@ -312,10 +323,12 @@ func (c *ToolsListCache) ListPromptsCached(ctx context.Context, srv *domain.MCPS
 	e, ok := c.promptsEntries[key]
 	c.mu.RUnlock()
 	if ok && now.Before(e.until) {
+		logger.D("MCP cache ListPromptsCached: server_id=%d hit=true items=%d", srv.ID, len(e.items))
 		recordListCacheHit()
 		return cloneDeclaredPrompts(e.items), nil
 	}
 
+	logger.D("MCP cache ListPromptsCached: server_id=%d hit=false (fetch)", srv.ID)
 	recordListCacheMiss()
 	fetch := func() ([]DeclaredPrompt, error) {
 		return listPromptsFetcher(ctx, srv, c)
@@ -365,6 +378,7 @@ func (c *ToolsListCache) ListPromptsCached(ctx context.Context, srv *domain.MCPS
 		items: cloneDeclaredPrompts(items),
 		until: now.Add(ttl),
 	}
+	logger.D("MCP cache ListPromptsCached: server_id=%d сохранено items=%d ttl=%s", srv.ID, len(items), ttl)
 	return cloneDeclaredPrompts(items), nil
 }
 
@@ -374,10 +388,15 @@ func (c *ToolsListCache) InvalidateServerTools(id int64) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	n := 0
 	for k := range c.toolEntries {
 		if k.id == id {
 			delete(c.toolEntries, k)
+			n++
 		}
+	}
+	if n > 0 {
+		logger.I("MCP cache invalidate tools: server_id=%d записей=%d", id, n)
 	}
 }
 
@@ -387,10 +406,15 @@ func (c *ToolsListCache) InvalidateServerResources(id int64) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	n := 0
 	for k := range c.resEntries {
 		if k.id == id {
 			delete(c.resEntries, k)
+			n++
 		}
+	}
+	if n > 0 {
+		logger.I("MCP cache invalidate resources: server_id=%d записей=%d", id, n)
 	}
 }
 
@@ -400,10 +424,15 @@ func (c *ToolsListCache) InvalidateServerPrompts(id int64) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	n := 0
 	for k := range c.promptsEntries {
 		if k.id == id {
 			delete(c.promptsEntries, k)
+			n++
 		}
+	}
+	if n > 0 {
+		logger.I("MCP cache invalidate prompts: server_id=%d записей=%d", id, n)
 	}
 }
 
@@ -411,6 +440,7 @@ func (c *ToolsListCache) InvalidateServerID(id int64) {
 	if id <= 0 {
 		return
 	}
+	logger.I("MCP cache InvalidateServerID: server_id=%d (pool_close+cache)", id)
 	closePooledHTTPSession(id)
 	if c == nil {
 		return

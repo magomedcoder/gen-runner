@@ -141,6 +141,7 @@ class ChatMessageList extends StatelessWidget {
                   attachmentFileName: msg.attachmentFileName,
                   attachmentContent: msg.attachmentContent,
                   attachmentFileId: msg.attachmentFileId,
+                  reasoningContent: msg.reasoningContent,
                   useFileRag: msg.useFileRag,
                   fileRagTopK: msg.fileRagTopK,
                   fileRagEmbedModel: msg.fileRagEmbedModel,

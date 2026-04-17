@@ -388,7 +388,7 @@ func (u *DocumentIngestUseCase) SearchSessionKnowledge(ctx context.Context, user
 		out, rwErr := u.rewriteQueryForRAGRetrieval(ctx, sessionID, q, rewriteModel)
 		rewriteMs = time.Since(tRw).Milliseconds()
 		if rwErr != nil {
-			logger.W("DocumentIngest: переформулировка запроса RAG: %v — эмбеддинг без переформулировки", rwErr)
+			logger.W("DocumentIngest: переформулировка запроса RAG: %v - эмбеддинг без переформулировки", rwErr)
 		} else {
 			out = strings.TrimSpace(out)
 			if out != "" && out != q {
@@ -408,7 +408,7 @@ func (u *DocumentIngestUseCase) SearchSessionKnowledge(ctx context.Context, user
 		pseudo, hyErr := u.generateHyDEPseudoDocument(ctx, sessionID, qEmbed, hydeModel)
 		hydeMs = time.Since(tHy).Milliseconds()
 		if hyErr != nil {
-			logger.W("DocumentIngest: RAG HyDE: %v — эмбеддинг исходного запроса", hyErr)
+			logger.W("DocumentIngest: RAG HyDE: %v - эмбеддинг исходного запроса", hyErr)
 		} else if pseudo != "" {
 			qEmbed = pseudo
 		}

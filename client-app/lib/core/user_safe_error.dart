@@ -1,5 +1,7 @@
 import 'package:grpc/grpc.dart';
 import 'package:gen/core/failures.dart';
+import 'package:gen/core/grpc_error_info_reason.dart';
+import 'package:gen/core/grpc_error_reason_message.dart';
 
 String userSafeErrorMessage(
   Object? error, {
@@ -9,19 +11,14 @@ String userSafeErrorMessage(
     return fallback;
   }
   if (error is GrpcError) {
+    final reason = grpcErrorInfoReason(error);
+    final fromReason = messageForGrpcErrorInfoReason(reason);
     final m = error.message?.trim();
     if (m != null && m.isNotEmpty) {
-      switch (error.code) {
-        case StatusCode.invalidArgument:
-        case StatusCode.failedPrecondition:
-        case StatusCode.resourceExhausted:
-        case StatusCode.deadlineExceeded:
-        case StatusCode.unavailable:
-        case StatusCode.permissionDenied:
-          return m;
-        default:
-          break;
-      }
+      return m;
+    }
+    if (fromReason != null && fromReason.isNotEmpty) {
+      return fromReason;
     }
     return 'Ошибка сервера (код ${error.code})';
   }
@@ -33,3 +30,5 @@ String userSafeErrorMessage(
   }
   return fallback;
 }
+
+String? userSafeErrorGrpcReason(Object? error) => error is GrpcError ? grpcErrorInfoReason(error) : null;

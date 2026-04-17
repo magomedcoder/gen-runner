@@ -26,6 +26,14 @@ func TestBuildRAGStreamMetaFullDocument_excerpt(t *testing.T) {
 	if !strings.Contains(w.FullDocumentExcerpt, "hello") {
 		t.Fatalf("выдержка: %q", w.FullDocumentExcerpt)
 	}
+
+	if m.Sources == nil || m.Sources.FileID != 7 || m.Sources.Mode != ragModeFullDocument {
+		t.Fatalf("типизированный payload: %+v", m.Sources)
+	}
+
+	if m.Sources.FullDocumentExcerpt != w.FullDocumentExcerpt {
+		t.Fatalf("payload vs json excerpt: %q vs %q", m.Sources.FullDocumentExcerpt, w.FullDocumentExcerpt)
+	}
 }
 
 func TestBuildRAGStreamMetaVector_modes(t *testing.T) {
@@ -72,6 +80,13 @@ func TestBuildRAGStreamMetaVector_modes(t *testing.T) {
 
 	if w.Chunks[0].Excerpt == "" || !strings.Contains(w.Chunks[0].Excerpt, "preview") {
 		t.Fatalf("выдержка: %q", w.Chunks[0].Excerpt)
+	}
+
+	if m.Sources == nil || m.Sources.FileID != 42 || len(m.Sources.Chunks) != 1 {
+		t.Fatalf("типизированный payload: %+v", m.Sources)
+	}
+	if m.Sources.Chunks[0].HeadingPath != "Intro › A" {
+		t.Fatalf("чанк в payload: %+v", m.Sources.Chunks[0])
 	}
 
 	m2, err := buildRAGStreamMetaVector(1, 3, 0, scored, 2, true, 0)

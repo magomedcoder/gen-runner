@@ -3,12 +3,12 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/magomedcoder/gen/api/pb/chatpb"
 	"github.com/magomedcoder/gen/api/pb/commonpb"
@@ -21,7 +21,6 @@ import (
 	"github.com/magomedcoder/gen/pkg/logger"
 	"github.com/magomedcoder/gen/pkg/spreadsheet"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"gorm.io/gorm"
 )
 
@@ -100,7 +99,7 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 	}
 
 	if req == nil || req.GetSessionId() <= 0 {
-		return status.Error(codes.InvalidArgument, "некорректный session_id")
+		return StatusErrorWithReason(codes.InvalidArgument, "CHAT_INVALID_SESSION_ID", "некорректный session_id")
 	}
 
 	userMessage := req.GetText()
@@ -130,7 +129,7 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 
 	if strings.TrimSpace(userMessage) == "" && len(attachmentFileIDs) == 0 {
 		logger.W("SendMessage: пустой запрос")
-		return status.Error(codes.InvalidArgument, "укажите текст сообщения или attachment_file_id(s)")
+		return StatusErrorWithReason(codes.InvalidArgument, "CHAT_SEND_EMPTY_MESSAGE", "укажите текст сообщения или attachment_file_id(s)")
 	}
 
 	var fileRAG *usecase.SendMessageFileRAGOptions
@@ -152,95 +151,25 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 			return mapped
 		}
 
-		if errors.Is(sendErr, domain.ErrRAGNotConfigured) || errors.Is(sendErr, domain.ErrRAGIndexNotReady) ||
-			errors.Is(sendErr, domain.ErrRAGIndexFailed) || errors.Is(sendErr, domain.ErrRAGNoHits) {
-			return status.Error(codes.FailedPrecondition, sendErr.Error())
-		}
-
-		if errors.Is(sendErr, document.ErrUnsupportedAttachmentType) || errors.Is(sendErr, document.ErrInvalidTextEncoding) || errors.Is(sendErr, document.ErrTextExtractionFailed) {
-			return status.Error(codes.InvalidArgument, sendErr.Error())
+		if mapped := statusForChatSendError(sendErr); mapped != nil {
+			return mapped
 		}
 
 		if strings.Contains(sendErr.Error(), "вложение") || strings.Contains(sendErr.Error(), "размер вложения") {
-			return status.Error(codes.InvalidArgument, sendErr.Error())
+			return StatusErrorWithReason(codes.InvalidArgument, "CHAT_SEND_INVALID_ARGUMENT", sendErr.Error())
 		}
 		if strings.Contains(sendErr.Error(), "attachment_file_id") ||
 			strings.Contains(sendErr.Error(), "use_file_rag") ||
 			strings.Contains(sendErr.Error(), "file_rag_") ||
 			strings.Contains(sendErr.Error(), "слишком много вложений") {
-			return status.Error(codes.InvalidArgument, sendErr.Error())
+			return StatusErrorWithReason(codes.InvalidArgument, "CHAT_SEND_INVALID_ARGUMENT", sendErr.Error())
 		}
 
 		return ToStatusError(codes.Internal, sendErr)
 	}
 	logger.V("SendMessage: стрим ответа запущен session=%d trace_id=%s", req.GetSessionId(), rpcmeta.TraceIDFromContext(ctx))
 
-	createdAt := time.Now().Unix()
-	var lastMsgID int64
-
-	for chunk := range responseChan {
-		if (chunk.Kind == usecase.StreamChunkKindText || chunk.Kind == usecase.StreamChunkKindReasoning) && chunk.MessageID != 0 {
-			lastMsgID = chunk.MessageID
-		}
-
-		respID := chunk.MessageID
-		if respID == 0 {
-			respID = lastMsgID
-		}
-
-		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
-		if chunk.Kind == usecase.StreamChunkKindToolStatus {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
-		} else if chunk.Kind == usecase.StreamChunkKindNotice {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
-		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
-		} else if chunk.Kind == usecase.StreamChunkKindRAGMeta {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_RAG_META
-		}
-
-		role := "assistant"
-		if chunk.Kind == usecase.StreamChunkKindNotice || chunk.Kind == usecase.StreamChunkKindRAGMeta {
-			role = "system"
-		}
-
-		resp := &chatpb.ChatResponse{
-			Id:        respID,
-			Content:   chunk.Text,
-			Role:      role,
-			CreatedAt: createdAt,
-			Done:      false,
-			ChunkKind: pbKind,
-		}
-
-		if chunk.ToolName != "" {
-			tn := chunk.ToolName
-			resp.ToolName = &tn
-		}
-
-		if chunk.RAGMode != "" {
-			rm := chunk.RAGMode
-			resp.RagMode = &rm
-		}
-
-		if chunk.RAGSourcesJSON != "" {
-			rj := chunk.RAGSourcesJSON
-			resp.RagSourcesJson = &rj
-		}
-
-		if err := stream.Send(resp); err != nil {
-			return err
-		}
-	}
-
-	return stream.Send(&chatpb.ChatResponse{
-		Id:        lastMsgID,
-		Content:   "",
-		Role:      "assistant",
-		CreatedAt: createdAt,
-		Done:      true,
-		ChunkKind: chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT,
-	})
+	return streamSendLoop(responseChan, stream.Send)
 }
 
 func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistantRequest, stream chatpb.ChatService_RegenerateAssistantResponseServer) error {
@@ -258,90 +187,21 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 			return mapped
 		}
 
-		if errors.Is(regErr, domain.ErrRegenerateToolsNotSupported) {
-			return status.Error(codes.FailedPrecondition, regErr.Error())
+		if mapped := statusForChatAssistantOpSentinel(regErr); mapped != nil {
+			return mapped
 		}
 
 		if strings.Contains(regErr.Error(), "перегенерировать можно только") ||
 			strings.Contains(regErr.Error(), "не является ответом") ||
 			strings.Contains(regErr.Error(), "не найдено") ||
 			strings.Contains(regErr.Error(), "некорректный assistant_message_id") {
-			return status.Error(codes.InvalidArgument, regErr.Error())
-		}
-
-		if errors.Is(regErr, domain.ErrUnauthorized) {
-			return status.Error(codes.PermissionDenied, regErr.Error())
+			return StatusErrorWithReason(codes.InvalidArgument, "CHAT_REGENERATE_INVALID_ARGUMENT", regErr.Error())
 		}
 
 		return ToStatusError(codes.Internal, regErr)
 	}
 
-	createdAt := time.Now().Unix()
-	var lastMsgID int64
-
-	for chunk := range responseChan {
-		if (chunk.Kind == usecase.StreamChunkKindText || chunk.Kind == usecase.StreamChunkKindReasoning) && chunk.MessageID != 0 {
-			lastMsgID = chunk.MessageID
-		}
-
-		respID := chunk.MessageID
-		if respID == 0 {
-			respID = lastMsgID
-		}
-
-		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
-		if chunk.Kind == usecase.StreamChunkKindToolStatus {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
-		} else if chunk.Kind == usecase.StreamChunkKindNotice {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
-		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
-		} else if chunk.Kind == usecase.StreamChunkKindRAGMeta {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_RAG_META
-		}
-
-		role := "assistant"
-		if chunk.Kind == usecase.StreamChunkKindNotice || chunk.Kind == usecase.StreamChunkKindRAGMeta {
-			role = "system"
-		}
-
-		resp := &chatpb.ChatResponse{
-			Id:        respID,
-			Content:   chunk.Text,
-			Role:      role,
-			CreatedAt: createdAt,
-			Done:      false,
-			ChunkKind: pbKind,
-		}
-
-		if chunk.ToolName != "" {
-			tn := chunk.ToolName
-			resp.ToolName = &tn
-		}
-
-		if chunk.RAGMode != "" {
-			rm := chunk.RAGMode
-			resp.RagMode = &rm
-		}
-
-		if chunk.RAGSourcesJSON != "" {
-			rj := chunk.RAGSourcesJSON
-			resp.RagSourcesJson = &rj
-		}
-
-		if err := stream.Send(resp); err != nil {
-			return err
-		}
-	}
-
-	return stream.Send(&chatpb.ChatResponse{
-		Id:        lastMsgID,
-		Content:   "",
-		Role:      "assistant",
-		CreatedAt: createdAt,
-		Done:      true,
-		ChunkKind: chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT,
-	})
+	return streamSendLoop(responseChan, stream.Send)
 }
 
 func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantRequest, stream chatpb.ChatService_ContinueAssistantResponseServer) error {
@@ -359,8 +219,8 @@ func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantReq
 			return mapped
 		}
 
-		if errors.Is(contErr, domain.ErrRegenerateToolsNotSupported) {
-			return status.Error(codes.FailedPrecondition, contErr.Error())
+		if mapped := statusForChatAssistantOpSentinel(contErr); mapped != nil {
+			return mapped
 		}
 
 		msg := contErr.Error()
@@ -370,82 +230,13 @@ func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantReq
 			strings.Contains(msg, "не найдено") ||
 			strings.Contains(msg, "некорректный assistant_message_id") ||
 			strings.Contains(msg, "только ответ ассистента") {
-			return status.Error(codes.InvalidArgument, msg)
-		}
-
-		if errors.Is(contErr, domain.ErrUnauthorized) {
-			return status.Error(codes.PermissionDenied, contErr.Error())
+			return StatusErrorWithReason(codes.InvalidArgument, "CHAT_CONTINUE_INVALID_ARGUMENT", msg)
 		}
 
 		return ToStatusError(codes.Internal, contErr)
 	}
 
-	createdAt := time.Now().Unix()
-	var lastMsgID int64
-
-	for chunk := range responseChan {
-		if (chunk.Kind == usecase.StreamChunkKindText || chunk.Kind == usecase.StreamChunkKindReasoning) && chunk.MessageID != 0 {
-			lastMsgID = chunk.MessageID
-		}
-
-		respID := chunk.MessageID
-		if respID == 0 {
-			respID = lastMsgID
-		}
-
-		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
-		if chunk.Kind == usecase.StreamChunkKindToolStatus {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
-		} else if chunk.Kind == usecase.StreamChunkKindNotice {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
-		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
-		} else if chunk.Kind == usecase.StreamChunkKindRAGMeta {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_RAG_META
-		}
-
-		role := "assistant"
-		if chunk.Kind == usecase.StreamChunkKindNotice || chunk.Kind == usecase.StreamChunkKindRAGMeta {
-			role = "system"
-		}
-
-		resp := &chatpb.ChatResponse{
-			Id:        respID,
-			Content:   chunk.Text,
-			Role:      role,
-			CreatedAt: createdAt,
-			Done:      false,
-			ChunkKind: pbKind,
-		}
-
-		if chunk.ToolName != "" {
-			tn := chunk.ToolName
-			resp.ToolName = &tn
-		}
-
-		if chunk.RAGMode != "" {
-			rm := chunk.RAGMode
-			resp.RagMode = &rm
-		}
-
-		if chunk.RAGSourcesJSON != "" {
-			rj := chunk.RAGSourcesJSON
-			resp.RagSourcesJson = &rj
-		}
-
-		if err := stream.Send(resp); err != nil {
-			return err
-		}
-	}
-
-	return stream.Send(&chatpb.ChatResponse{
-		Id:        lastMsgID,
-		Content:   "",
-		Role:      "assistant",
-		CreatedAt: createdAt,
-		Done:      true,
-		ChunkKind: chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT,
-	})
+	return streamSendLoop(responseChan, stream.Send)
 }
 
 func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndContinueRequest, stream chatpb.ChatService_EditUserMessageAndContinueServer) error {
@@ -468,86 +259,22 @@ func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndC
 		if mapped := statusForModelResolutionError(editErr); mapped != nil {
 			return mapped
 		}
+		if mapped := statusForChatAssistantOpSentinel(editErr); mapped != nil {
+			return mapped
+		}
 		msg := editErr.Error()
 		switch {
 		case strings.Contains(msg, "некорректный"),
 			strings.Contains(msg, "не может быть пустым"),
 			strings.Contains(msg, "не найдено"),
 			strings.Contains(msg, "редактировать можно только"):
-			return status.Error(codes.InvalidArgument, msg)
-		case errors.Is(editErr, domain.ErrUnauthorized):
-			return status.Error(codes.PermissionDenied, editErr.Error())
+			return StatusErrorWithReason(codes.InvalidArgument, "CHAT_EDIT_INVALID_ARGUMENT", msg)
 		default:
 			return ToStatusError(codes.Internal, editErr)
 		}
 	}
 
-	createdAt := time.Now().Unix()
-	var lastMsgID int64
-
-	for chunk := range responseChan {
-		if (chunk.Kind == usecase.StreamChunkKindText || chunk.Kind == usecase.StreamChunkKindReasoning) && chunk.MessageID != 0 {
-			lastMsgID = chunk.MessageID
-		}
-
-		respID := chunk.MessageID
-		if respID == 0 {
-			respID = lastMsgID
-		}
-
-		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
-		if chunk.Kind == usecase.StreamChunkKindToolStatus {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
-		} else if chunk.Kind == usecase.StreamChunkKindNotice {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
-		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
-		} else if chunk.Kind == usecase.StreamChunkKindRAGMeta {
-			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_RAG_META
-		}
-
-		role := "assistant"
-		if chunk.Kind == usecase.StreamChunkKindNotice || chunk.Kind == usecase.StreamChunkKindRAGMeta {
-			role = "system"
-		}
-
-		resp := &chatpb.ChatResponse{
-			Id:        respID,
-			Content:   chunk.Text,
-			Role:      role,
-			CreatedAt: createdAt,
-			Done:      false,
-			ChunkKind: pbKind,
-		}
-
-		if chunk.ToolName != "" {
-			tn := chunk.ToolName
-			resp.ToolName = &tn
-		}
-
-		if chunk.RAGMode != "" {
-			rm := chunk.RAGMode
-			resp.RagMode = &rm
-		}
-
-		if chunk.RAGSourcesJSON != "" {
-			rj := chunk.RAGSourcesJSON
-			resp.RagSourcesJson = &rj
-		}
-
-		if err := stream.Send(resp); err != nil {
-			return err
-		}
-	}
-
-	return stream.Send(&chatpb.ChatResponse{
-		Id:        lastMsgID,
-		Content:   "",
-		Role:      "assistant",
-		CreatedAt: createdAt,
-		Done:      true,
-		ChunkKind: chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT,
-	})
+	return streamSendLoop(responseChan, stream.Send)
 }
 
 func (c *ChatHandler) GetUserMessageEdits(ctx context.Context, req *chatpb.GetUserMessageEditsRequest) (*chatpb.GetUserMessageEditsResponse, error) {
@@ -556,20 +283,11 @@ func (c *ChatHandler) GetUserMessageEdits(ctx context.Context, req *chatpb.GetUs
 		return nil, err
 	}
 	if req == nil || req.GetSessionId() <= 0 || req.GetUserMessageId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректный запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_INVALID_REQUEST", "некорректный запрос")
 	}
 	rows, getErr := c.chatUseCase.GetUserMessageEdits(ctx, userID, req.GetSessionId(), req.GetUserMessageId())
 	if getErr != nil {
-		msg := getErr.Error()
-		switch {
-		case errors.Is(getErr, domain.ErrUnauthorized):
-			return nil, status.Error(codes.PermissionDenied, "нет доступа к сессии")
-		case strings.Contains(msg, "некорректный"),
-			strings.Contains(msg, "не найдено"):
-			return nil, status.Error(codes.InvalidArgument, msg)
-		default:
-			return nil, ToStatusError(codes.Internal, getErr)
-		}
+		return nil, statusForSessionScopedGetError(getErr)
 	}
 
 	out := &chatpb.GetUserMessageEditsResponse{
@@ -597,7 +315,7 @@ func (c *ChatHandler) GetSessionMessagesForUserMessageVersion(ctx context.Contex
 	}
 
 	if req == nil || req.GetSessionId() <= 0 || req.GetUserMessageId() <= 0 || req.GetVersionIndex() < 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректный запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_INVALID_REQUEST", "некорректный запрос")
 	}
 
 	msgs, getErr := c.chatUseCase.GetSessionMessagesForUserMessageVersion(
@@ -609,16 +327,7 @@ func (c *ChatHandler) GetSessionMessagesForUserMessageVersion(ctx context.Contex
 	)
 
 	if getErr != nil {
-		msg := getErr.Error()
-		switch {
-		case errors.Is(getErr, domain.ErrUnauthorized):
-			return nil, status.Error(codes.PermissionDenied, "нет доступа к сессии")
-		case strings.Contains(msg, "некорректный"),
-			strings.Contains(msg, "не найдено"):
-			return nil, status.Error(codes.InvalidArgument, msg)
-		default:
-			return nil, ToStatusError(codes.Internal, getErr)
-		}
+		return nil, statusForSessionScopedGetError(getErr)
 	}
 
 	out := make([]*chatpb.ChatMessage, 0, len(msgs))
@@ -641,21 +350,12 @@ func (c *ChatHandler) GetAssistantMessageRegenerations(ctx context.Context, req 
 	}
 
 	if req == nil || req.GetSessionId() <= 0 || req.GetAssistantMessageId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректный запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_INVALID_REQUEST", "некорректный запрос")
 	}
 
 	rows, getErr := c.chatUseCase.GetAssistantMessageRegenerations(ctx, userID, req.GetSessionId(), req.GetAssistantMessageId())
 	if getErr != nil {
-		msg := getErr.Error()
-		switch {
-		case errors.Is(getErr, domain.ErrUnauthorized):
-			return nil, status.Error(codes.PermissionDenied, "нет доступа к сессии")
-		case strings.Contains(msg, "некорректный"),
-			strings.Contains(msg, "не найдено"):
-			return nil, status.Error(codes.InvalidArgument, msg)
-		default:
-			return nil, ToStatusError(codes.Internal, getErr)
-		}
+		return nil, statusForSessionScopedGetError(getErr)
 	}
 
 	out := &chatpb.GetAssistantMessageRegenerationsResponse{
@@ -686,7 +386,7 @@ func (c *ChatHandler) GetSessionMessagesForAssistantMessageVersion(ctx context.C
 	}
 
 	if req == nil || req.GetSessionId() <= 0 || req.GetAssistantMessageId() <= 0 || req.GetVersionIndex() < 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректный запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_INVALID_REQUEST", "некорректный запрос")
 	}
 
 	msgs, getErr := c.chatUseCase.GetSessionMessagesForAssistantMessageVersion(
@@ -697,16 +397,7 @@ func (c *ChatHandler) GetSessionMessagesForAssistantMessageVersion(ctx context.C
 		req.GetVersionIndex(),
 	)
 	if getErr != nil {
-		msg := getErr.Error()
-		switch {
-		case errors.Is(getErr, domain.ErrUnauthorized):
-			return nil, status.Error(codes.PermissionDenied, "нет доступа к сессии")
-		case strings.Contains(msg, "некорректный"),
-			strings.Contains(msg, "не найдено"):
-			return nil, status.Error(codes.InvalidArgument, msg)
-		default:
-			return nil, ToStatusError(codes.Internal, getErr)
-		}
+		return nil, statusForSessionScopedGetError(getErr)
 	}
 
 	out := make([]*chatpb.ChatMessage, 0, len(msgs))
@@ -732,12 +423,8 @@ func (c *ChatHandler) CreateSession(ctx context.Context, req *chatpb.CreateSessi
 	session, err := c.chatUseCase.CreateSession(ctx, userID, req.GetTitle())
 	if err != nil {
 		logger.E("CreateSession: %v", err)
-		if errors.Is(err, domain.ErrNoRunners) {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
-		}
-
-		if errors.Is(err, domain.ErrRunnerChatModelNotConfigured) {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		if mapped := statusForCreateSessionError(err); mapped != nil {
+			return nil, mapped
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -955,11 +642,11 @@ func (c *ChatHandler) Embed(ctx context.Context, req *chatpb.EmbedRequest) (*cha
 		return nil, err
 	}
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_EMBED_EMPTY_REQUEST", "пустой запрос")
 	}
 	text := strings.TrimSpace(req.GetText())
 	if text == "" {
-		return nil, status.Error(codes.InvalidArgument, "text не может быть пустым")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_EMBED_EMPTY_TEXT", "text не может быть пустым")
 	}
 
 	vec, err := c.chatUseCase.Embed(ctx, userID, req.GetModel(), text)
@@ -979,18 +666,18 @@ func (c *ChatHandler) EmbedBatch(ctx context.Context, req *chatpb.EmbedBatchRequ
 		return nil, err
 	}
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_EMBED_EMPTY_REQUEST", "пустой запрос")
 	}
 	texts := req.GetTexts()
 	if len(texts) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "texts не может быть пустым")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_EMBED_TEXTS_EMPTY", "texts не может быть пустым")
 	}
 	if len(texts) > maxChatEmbedBatchSize {
-		return nil, status.Errorf(codes.InvalidArgument, "не более %d текстов за один запрос", maxChatEmbedBatchSize)
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_EMBED_BATCH_TOO_LARGE", fmt.Sprintf("не более %d текстов за один запрос", maxChatEmbedBatchSize))
 	}
 	for i, t := range texts {
 		if strings.TrimSpace(t) == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "texts[%d]: пустая строка", i)
+			return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_EMBED_TEXTS_ITEM_EMPTY", fmt.Sprintf("texts[%d]: пустая строка", i))
 		}
 	}
 
@@ -1018,25 +705,25 @@ func (c *ChatHandler) PutSessionFile(ctx context.Context, req *chatpb.PutSession
 	}
 
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_PUT_FILE_EMPTY_REQUEST", "пустой запрос")
 	}
 
 	if req.GetSessionId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректный session_id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_INVALID_SESSION_ID", "некорректный session_id")
 	}
 
 	id, err := c.chatUseCase.PutSessionFile(ctx, userID, req.GetSessionId(), req.GetFilename(), req.GetContent(), req.GetTtlSeconds())
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, status.Error(codes.PermissionDenied, "нет доступа к сессии")
+			return nil, StatusErrorWithReason(codes.PermissionDenied, "CHAT_UNAUTHORIZED", "нет доступа к сессии")
 		}
 
 		if mapped := statusForModelResolutionError(err); mapped != nil {
 			return nil, mapped
 		}
 
-		if errors.Is(err, document.ErrUnsupportedAttachmentType) || errors.Is(err, document.ErrInvalidTextEncoding) || errors.Is(err, document.ErrNoExtractableText) {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+		if mapped := statusForDocumentAttachmentError(err); mapped != nil {
+			return nil, mapped
 		}
 		msg := err.Error()
 		switch {
@@ -1048,7 +735,7 @@ func (c *ChatHandler) PutSessionFile(ctx context.Context, req *chatpb.PutSession
 			strings.Contains(msg, "слишком много"),
 			strings.Contains(msg, "проверка документа при загрузке"),
 			strings.Contains(msg, "извлечённый текст слишком длинный"):
-			return nil, status.Error(codes.InvalidArgument, msg)
+			return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_PUT_FILE_INVALID_ARGUMENT", msg)
 		default:
 			return nil, ToStatusError(codes.Internal, err)
 		}
@@ -1059,7 +746,7 @@ func (c *ChatHandler) PutSessionFile(ctx context.Context, req *chatpb.PutSession
 
 func (c *ChatHandler) IndexSessionFile(ctx context.Context, req *chatpb.IndexSessionFileRequest) (*chatpb.IndexSessionFileResponse, error) {
 	if c.documentIngest == nil {
-		return nil, status.Error(codes.Unavailable, "индексация документов недоступна")
+		return nil, StatusErrorWithReason(codes.Unavailable, "CHAT_INDEXING_UNAVAILABLE", "индексация документов недоступна")
 	}
 
 	userID, err := c.getUserID(ctx)
@@ -1068,21 +755,20 @@ func (c *ChatHandler) IndexSessionFile(ctx context.Context, req *chatpb.IndexSes
 	}
 
 	if req == nil || req.GetSessionId() <= 0 || req.GetFileId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректные session_id или file_id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_SESSION_FILE_IDS_INVALID", "некорректные session_id или file_id")
 	}
 
 	if err := c.documentIngest.IndexSessionFile(ctx, userID, req.GetSessionId(), req.GetFileId(), strings.TrimSpace(req.GetEmbedModel())); err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, status.Error(codes.PermissionDenied, "нет доступа")
+			return nil, StatusErrorWithReason(codes.PermissionDenied, "CHAT_UNAUTHORIZED", "нет доступа")
 		}
 
 		if mapped := statusForModelResolutionError(err); mapped != nil {
 			return nil, mapped
 		}
 
-		msg := err.Error()
-		if errors.Is(err, document.ErrTextExtractionFailed) || errors.Is(err, document.ErrUnsupportedAttachmentType) {
-			return nil, status.Error(codes.InvalidArgument, msg)
+		if mapped := statusForDocumentAttachmentError(err); mapped != nil {
+			return nil, mapped
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -1102,13 +788,13 @@ func (c *ChatHandler) GetIngestionStatus(ctx context.Context, req *chatpb.GetIng
 	}
 
 	if req == nil || req.GetSessionId() <= 0 || req.GetFileId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректные session_id или file_id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_SESSION_FILE_IDS_INVALID", "некорректные session_id или file_id")
 	}
 
 	idx, err := c.documentIngest.GetIngestionStatus(ctx, userID, req.GetSessionId(), req.GetFileId())
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, status.Error(codes.PermissionDenied, "нет доступа")
+			return nil, StatusErrorWithReason(codes.PermissionDenied, "CHAT_UNAUTHORIZED", "нет доступа")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -1141,12 +827,12 @@ func (c *ChatHandler) DeleteSessionFileIndex(ctx context.Context, req *chatpb.De
 	}
 
 	if req == nil || req.GetSessionId() <= 0 || req.GetFileId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректные session_id или file_id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_SESSION_FILE_IDS_INVALID", "некорректные session_id или file_id")
 	}
 
 	if err := c.documentIngest.DeleteSessionFileIndex(ctx, userID, req.GetSessionId(), req.GetFileId()); err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, status.Error(codes.PermissionDenied, "нет доступа")
+			return nil, StatusErrorWithReason(codes.PermissionDenied, "CHAT_UNAUTHORIZED", "нет доступа")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -1157,7 +843,7 @@ func (c *ChatHandler) DeleteSessionFileIndex(ctx context.Context, req *chatpb.De
 
 func (c *ChatHandler) SearchSessionKnowledge(ctx context.Context, req *chatpb.SearchSessionKnowledgeRequest) (*chatpb.SearchSessionKnowledgeResponse, error) {
 	if c.documentIngest == nil {
-		return nil, status.Error(codes.Unavailable, "поиск по индексу недоступен")
+		return nil, StatusErrorWithReason(codes.Unavailable, "CHAT_INDEX_SEARCH_UNAVAILABLE", "поиск по индексу недоступен")
 	}
 
 	userID, err := c.getUserID(ctx)
@@ -1166,12 +852,12 @@ func (c *ChatHandler) SearchSessionKnowledge(ctx context.Context, req *chatpb.Se
 	}
 
 	if req == nil || req.GetSessionId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректный session_id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_INVALID_SESSION_ID", "некорректный session_id")
 	}
 
 	q := strings.TrimSpace(req.GetQuery())
 	if q == "" {
-		return nil, status.Error(codes.InvalidArgument, "пустой query")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_SEARCH_QUERY_EMPTY", "пустой query")
 	}
 
 	topK := int(req.GetTopK())
@@ -1186,7 +872,7 @@ func (c *ChatHandler) SearchSessionKnowledge(ctx context.Context, req *chatpb.Se
 	hits, err := c.documentIngest.SearchSessionKnowledge(ctx, userID, req.GetSessionId(), strings.TrimSpace(req.GetEmbedModel()), q, topK, nil, c.cfg.RAG.EffectiveNeighborChunkWindow())
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, status.Error(codes.PermissionDenied, "нет доступа")
+			return nil, StatusErrorWithReason(codes.PermissionDenied, "CHAT_UNAUTHORIZED", "нет доступа")
 		}
 
 		if mapped := statusForModelResolutionError(err); mapped != nil {
@@ -1220,43 +906,46 @@ func (c *ChatHandler) GetSessionFile(ctx context.Context, req *chatpb.GetSession
 	}
 
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_GET_FILE_EMPTY_REQUEST", "пустой запрос")
 	}
 
 	if req.GetSessionId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректный session_id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_INVALID_SESSION_ID", "некорректный session_id")
 	}
 
 	if req.GetFileId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "некорректный file_id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_INVALID_FILE_ID", "некорректный file_id")
 	}
 
 	name, data, err := c.chatUseCase.GetSessionFile(ctx, userID, req.GetSessionId(), req.GetFileId())
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
-			return nil, status.Error(codes.PermissionDenied, "нет доступа к сессии")
+			return nil, StatusErrorWithReason(codes.PermissionDenied, "CHAT_UNAUTHORIZED", "нет доступа к сессии")
 		}
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, status.Error(codes.NotFound, "файл не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "CHAT_SESSION_FILE_NOT_FOUND", "файл не найден")
 		}
 
 		msg := err.Error()
 		switch {
 		case strings.Contains(msg, "не найден"):
-			return nil, status.Error(codes.NotFound, msg)
+			return nil, StatusErrorWithReason(codes.NotFound, "CHAT_SESSION_FILE_NOT_FOUND", msg)
 		case strings.Contains(msg, "не относится"),
 			strings.Contains(msg, "не принадлежит"),
 			strings.Contains(msg, "истёк"),
 			strings.Contains(msg, "неверный путь"),
 			strings.Contains(msg, "пустой storage_path"):
-			return nil, status.Error(codes.PermissionDenied, msg)
+			return nil, StatusErrorWithReason(codes.PermissionDenied, "CHAT_SESSION_FILE_ACCESS_DENIED", msg)
 		case strings.Contains(msg, "не настроено"),
 			strings.Contains(msg, "превышает"),
 			strings.Contains(msg, "некорректный file_id"):
-			return nil, status.Error(codes.InvalidArgument, msg)
+			return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_GET_FILE_INVALID_ARGUMENT", msg)
 		case errors.Is(err, document.ErrUnsupportedAttachmentType) || errors.Is(err, document.ErrInvalidTextEncoding):
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+			if mapped := statusForDocumentAttachmentError(err); mapped != nil {
+				return nil, mapped
+			}
+			return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_GET_FILE_INVALID_ARGUMENT", err.Error())
 		default:
 			return nil, ToStatusError(codes.Internal, err)
 		}
@@ -1272,7 +961,7 @@ func (c *ChatHandler) ApplySpreadsheet(ctx context.Context, req *chatpb.Spreadsh
 	}
 
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_SPREADSHEET_EMPTY_REQUEST", "пустой запрос")
 	}
 
 	out, preview, exportedCSV, err := c.chatUseCase.ApplySpreadsheet(
@@ -1285,7 +974,7 @@ func (c *ChatHandler) ApplySpreadsheet(ctx context.Context, req *chatpb.Spreadsh
 
 	if err != nil {
 		if errors.Is(err, spreadsheet.ErrInvalidOp) || errors.Is(err, spreadsheet.ErrWorkbookTooLarge) {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+			return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_SPREADSHEET_INVALID_ARGUMENT", err.Error())
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -1305,13 +994,13 @@ func (c *ChatHandler) BuildDocx(ctx context.Context, req *chatpb.DocxBuildReques
 	}
 
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_DOCX_EMPTY_REQUEST", "пустой запрос")
 	}
 
 	out, err := c.chatUseCase.BuildDocx(ctx, req.GetSpecJson())
 	if err != nil {
 		if errors.Is(err, document.ErrDocxBuildInvalidSpec) || errors.Is(err, document.ErrDocxBuildTooLarge) {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+			return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_DOCX_INVALID_ARGUMENT", err.Error())
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -1327,13 +1016,13 @@ func (c *ChatHandler) ApplyMarkdownPatch(ctx context.Context, req *chatpb.Markdo
 	}
 
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_MD_PATCH_EMPTY_REQUEST", "пустой запрос")
 	}
 
 	out, err := c.chatUseCase.ApplyMarkdownPatch(ctx, req.GetBaseText(), req.GetPatchJson())
 	if err != nil {
 		if errors.Is(err, document.ErrMdPatchInvalidSpec) || errors.Is(err, document.ErrMdPatchAmbiguousSubstr) {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+			return nil, StatusErrorWithReason(codes.InvalidArgument, "CHAT_MD_PATCH_INVALID_ARGUMENT", err.Error())
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -1356,23 +1045,23 @@ func (c *ChatHandler) DownloadVoskModel(req *chatpb.VoskModelDownloadRequest, st
 		if err != nil {
 			if os.IsNotExist(err) {
 				logger.W("DownloadVoskModel: нет каталога %s", dir)
-				return status.Errorf(codes.NotFound, "каталог моделей Vosk не найден")
+				return StatusErrorWithReason(codes.NotFound, "CHAT_VOSK_MODEL_DIR_NOT_FOUND", "каталог моделей Vosk не найден")
 			}
 
 			logger.E("DownloadVoskModel: read dir %s: %v", dir, err)
-			return status.Errorf(codes.Internal, "не удалось прочитать каталог моделей")
+			return StatusErrorWithReason(codes.Internal, "CHAT_VOSK_MODEL_DIR_READ_FAILED", "не удалось прочитать каталог моделей")
 		}
 
 		if len(paths) == 0 {
 			logger.W("DownloadVoskModel: в %s нет .zip в корне", dir)
-			return status.Errorf(codes.NotFound, "в каталоге моделей нет файлов .zip (ожидаются только в корне, без подпапок)")
+			return StatusErrorWithReason(codes.NotFound, "CHAT_VOSK_MODEL_ZIP_MISSING", "в каталоге моделей нет файлов .zip (ожидаются только в корне, без подпапок)")
 		}
 
 		zipPath = paths[0]
 		modelID = strings.TrimSuffix(filepath.Base(zipPath), filepath.Ext(zipPath))
 	} else {
 		if strings.Contains(modelID, "..") || strings.ContainsAny(modelID, `/\`) {
-			return status.Error(codes.InvalidArgument, "некорректный model_id")
+			return StatusErrorWithReason(codes.InvalidArgument, "CHAT_VOSK_INVALID_MODEL_ID", "некорректный model_id")
 		}
 		zipPath = filepath.Join(dir, modelID+".zip")
 	}
@@ -1381,10 +1070,10 @@ func (c *ChatHandler) DownloadVoskModel(req *chatpb.VoskModelDownloadRequest, st
 	if err != nil {
 		if os.IsNotExist(err) {
 			logger.W("DownloadVoskModel: нет файла %s", zipPath)
-			return status.Errorf(codes.NotFound, "модель %s не найдена на сервере (ожидается %s)", modelID, zipPath)
+			return StatusErrorWithReason(codes.NotFound, "CHAT_VOSK_MODEL_FILE_NOT_FOUND", fmt.Sprintf("модель %s не найдена на сервере (ожидается %s)", modelID, zipPath))
 		}
 		logger.E("DownloadVoskModel: open %s: %v", zipPath, err)
-		return status.Errorf(codes.Internal, "не удалось открыть архив модели")
+		return StatusErrorWithReason(codes.Internal, "CHAT_VOSK_MODEL_OPEN_FAILED", "не удалось открыть архив модели")
 	}
 	defer f.Close()
 
@@ -1405,7 +1094,7 @@ func (c *ChatHandler) DownloadVoskModel(req *chatpb.VoskModelDownloadRequest, st
 
 		if readErr != nil {
 			logger.E("DownloadVoskModel: read: %v", readErr)
-			return status.Errorf(codes.Internal, "ошибка чтения архива")
+			return StatusErrorWithReason(codes.Internal, "CHAT_VOSK_MODEL_READ_FAILED", "ошибка чтения архива")
 		}
 	}
 }

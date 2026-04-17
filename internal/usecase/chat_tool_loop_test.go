@@ -69,6 +69,23 @@ func TestExtractCohereActionJSON(t *testing.T) {
 	}
 }
 
+func TestParseCohereActionList_legacyNameArguments(t *testing.T) {
+	legacy := `{"name":"apply_spreadsheet","arguments":{"operations_json":"[]"}}`
+	rows, err := parseCohereActionList(legacy)
+	if err != nil || len(rows) != 1 || rows[0].ToolName != "apply_spreadsheet" {
+		t.Fatalf("rows=%+v err=%v", rows, err)
+	}
+}
+
+func TestExtractToolActionBlob_leadingLegacyObject(t *testing.T) {
+	text := `{"name":"build_docx","arguments":{"spec_json":"{}"}}`
+	blob := extractToolActionBlob(text)
+	rows, err := parseCohereActionList(blob)
+	if err != nil || len(rows) != 1 || rows[0].ToolName != "build_docx" {
+		t.Fatalf("blob=%q err=%v rows=%+v", blob, err, rows)
+	}
+}
+
 func TestFilterExecutableToolRows(t *testing.T) {
 	rows := []cohereActionRow{
 		{ToolName: "directly-answer", Parameters: []byte(`{"answer":"привет"}`)},

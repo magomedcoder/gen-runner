@@ -10,7 +10,6 @@ import 'package:gen/core/request_logout_on_unauthorized.dart';
 import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/domain/entities/chat_stream_chunk.dart';
 import 'package:gen/domain/entities/rag_document_preview.dart';
-import 'package:gen/domain/entities/file_ingestion_status.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/rag_ingestion_ui.dart';
 import 'package:gen/domain/entities/runner_info.dart';
@@ -41,7 +40,12 @@ import 'package:gen/domain/usecases/runners/get_runners_status_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_user_runners_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_web_search_availability_usecase.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
+import 'package:gen/presentation/screens/chat/bloc/assistant_chat_stream.dart';
+import 'package:gen/presentation/screens/chat/bloc/assistant_stream_finalize.dart';
+import 'package:gen/presentation/screens/chat/bloc/chat_stream_errors.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
+import 'package:gen/presentation/screens/chat/bloc/session_file_rag_wait.dart';
+import 'package:gen/presentation/screens/chat/bloc/chat_runner_helpers.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/widgets/app_top_notice/bloc/app_top_notice_bloc.dart';
 import 'package:gen/presentation/widgets/app_top_notice/bloc/app_top_notice_event.dart';
@@ -49,86 +53,6 @@ import 'package:gen/presentation/widgets/app_top_notice/bloc/app_top_notice_even
 int _localTempMessageId() => -DateTime.now().microsecondsSinceEpoch;
 
 const int _kMessagePageSize = 40;
-
-String _chatStreamFailureMessage(Object error, {required String lead}) {
-  if (error is Failure) {
-    return '$lead: ${error.message}';
-  }
-
-  final raw = error.toString().trim();
-  if (raw.isEmpty) {
-    return lead;
-  }
-
-  return '$lead. $raw';
-}
-
-String? _chatStreamErrorForState(Object e, {required String lead}) {
-  if (isGrpcUnavailable(e)) {
-    return null;
-  }
-
-  return _chatStreamFailureMessage(e, lead: lead);
-}
-
-bool _filenameEligibleForSessionRag(String name) {
-  final lower = name.toLowerCase();
-  const exts = [
-    '.pdf',
-    '.docx',
-    '.txt',
-    '.md',
-    '.log',
-    '.xlsx',
-    '.csv',
-    '.pptx',
-    '.html',
-    '.htm',
-    '.xhtml',
-  ];
-  for (final e in exts) {
-    if (lower.endsWith(e)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-Future<bool> _waitForSessionFileRagReady(
-  int sessionId,
-  int fileId,
-  GetFileIngestionStatusUseCase getStatus, {
-  void Function(FileIngestionStatus status)? onPoll,
-}) async {
-  const maxWait = Duration(seconds: 90);
-  const step = Duration(milliseconds: 500);
-  final sw = Stopwatch()..start();
-  while (sw.elapsed < maxWait) {
-    try {
-      final s = await getStatus(sessionId: sessionId, fileId: fileId);
-      onPoll?.call(s);
-      if (s.status == 'ready') {
-        return true;
-      }
-
-      if (s.status == 'failed' || s.status == 'unavailable') {
-        return false;
-      }
-    } catch (_) {
-      onPoll?.call(
-        const FileIngestionStatus(
-          status: 'error',
-          lastError: 'Не удалось получить статус индексации',
-        ),
-      );
-      return false;
-    }
-    await Future<void>.delayed(step);
-  }
-
-  onPoll?.call(const FileIngestionStatus(status: 'timeout'));
-  return false;
-}
 
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final AuthBloc authBloc;
@@ -164,6 +88,48 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   int _streamingAssistantMessageId = 0;
 
   List<RunnerInfo> _lastRunnerInfos = const [];
+
+  Future<void> _abortAssistantStreamPipeline({
+    bool resetStreamingMessageId = true,
+  }) async {
+    await _streamSubscription?.cancel();
+    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
+      _streamCompleter!.complete(true);
+    }
+    _streamSubscription = null;
+    _streamCompleter = null;
+    if (resetStreamingMessageId) {
+      _streamingAssistantMessageId = 0;
+    }
+  }
+
+  Future<void> _teardownAssistantStreamPipeline() async {
+    await _streamSubscription?.cancel();
+    _streamSubscription = null;
+    _streamCompleter = null;
+    _streamingAssistantMessageId = 0;
+  }
+
+  ChatState _copyAfterAssistantStreamSuccess({
+    List<Message>? messages,
+    Set<int>? regeneratedAssistantMessageIds,
+  }) {
+    return state.copyWith(
+      messages: messages,
+      regeneratedAssistantMessageIds: regeneratedAssistantMessageIds,
+      isLoading: false,
+      isStreaming: false,
+      clearStreamingSessionId: true,
+      clearStreamingParked: true,
+      currentStreamingText: null,
+      currentStreamingReasoning: null,
+      clearToolProgress: true,
+      clearRetryPayload: true,
+      clearPartialAssistant: true,
+      ragPreviewBySessionFile: _ragPreviewAfterClear(state),
+      clearRagDocumentPreview: true,
+    );
+  }
 
   Future<void> _prefetchEditsForMessages(
     int sessionId,
@@ -312,7 +278,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatUpdateSessionSettings>(_onUpdateSessionSettings);
     on<ChatSetModelReasoning>(_onSetModelReasoning);
     on<ChatSetWebSearch>(_onSetWebSearch);
-    on<ChatSetMcpDraft>(_onSetMcpDraft);
+    on<ChatSetMcp>(_onSetMcp);
   }
 
   void _reportServerUnreachableIfNeeded(Object e) {
@@ -645,14 +611,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       return;
     }
 
-    await _streamSubscription?.cancel();
-    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-      _streamCompleter!.complete(true);
-    }
-
-    _streamSubscription = null;
-    _streamCompleter = null;
-    _streamingAssistantMessageId = 0;
+    await _abortAssistantStreamPipeline();
 
     final updatedUser = Message(
       id: target.id,
@@ -668,8 +627,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     );
     final prefixMessages = [...state.messages.sublist(0, idx), updatedUser];
 
-    var streamingText = '';
-    var streamingReasoning = '';
+    final acc = AssistantStreamAccum();
 
     final edited = <int>{...state.editedMessageIds, target.id};
     emit(
@@ -700,86 +658,21 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         newText,
       );
 
-      _streamSubscription = stream.listen(
-        (chunk) {
-          if (chunk.kind == ChatStreamChunkKind.toolStatus) {
-            final line = chunk.text.trim().isNotEmpty
-                ? chunk.text
-                : (chunk.toolName ?? 'инструмент');
-            if (state.currentSessionId == sessionId) {
-              emit(state.copyWith(toolProgressLabel: line));
+      _streamSubscription = subscribeAssistantChatStream(
+        stream,
+        completer: _streamCompleter!,
+        onChunk: (chunk) => handleAssistantChatStreamChunk(
+          chunk: chunk,
+          emit: emit,
+          currentState: () => state,
+          isCurrentSession: () => state.currentSessionId == sessionId,
+          acc: acc,
+          onAssistantMessageId: (id) {
+            if (id > 0) {
+              _streamingAssistantMessageId = id;
             }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.ragMeta) {
-            if (state.currentSessionId == sessionId) {
-              final preview = RagDocumentPreview.tryParse(
-                summary: chunk.text,
-                sourcesJson: chunk.ragSourcesJson,
-                modeFromStream: chunk.ragMode,
-              );
-              if (preview != null) {
-                emit(
-                  state.copyWith(
-                    ragDocumentPreview: preview,
-                    clearToolProgress: true,
-                  ),
-                );
-              }
-            }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.notice) {
-            final t = chunk.text.trim();
-            if (t.isNotEmpty && state.currentSessionId == sessionId) {
-              emit(state.copyWith(streamNotice: t));
-            }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.reasoning) {
-            if (chunk.messageId > 0) {
-              _streamingAssistantMessageId = chunk.messageId;
-            }
-            streamingReasoning += chunk.text;
-            if (state.currentSessionId == sessionId) {
-              emit(
-                state.copyWith(
-                  currentStreamingReasoning: streamingReasoning.isEmpty
-                      ? null
-                      : streamingReasoning,
-                  clearToolProgress: true,
-                ),
-              );
-            }
-            return;
-          }
-
-          if (chunk.messageId > 0) {
-            _streamingAssistantMessageId = chunk.messageId;
-          }
-
-          streamingText += chunk.text;
-          emit(
-            state.copyWith(
-              currentStreamingText: streamingText,
-              currentStreamingReasoning: streamingReasoning.isEmpty
-                  ? null
-                  : streamingReasoning,
-              clearToolProgress: true,
-            ),
-          );
-        },
-        onDone: () {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.complete(false);
-          }
-        },
-        onError: (e, st) {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.completeError(e, st);
-          }
-        },
-        cancelOnError: false,
+          },
+        ),
       );
 
       final cancelled = await _streamCompleter!.future;
@@ -787,58 +680,23 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         return;
       }
 
-      if (streamingText.isNotEmpty) {
-        final aid = _streamingAssistantMessageId > 0
-            ? _streamingAssistantMessageId
-            : _localTempMessageId();
-        final assistantMessage = Message(
-          id: aid,
-          content: streamingText,
-          role: MessageRole.assistant,
-          createdAt: DateTime.now(),
-          reasoningContent: streamingReasoning.isEmpty
-              ? null
-              : streamingReasoning,
+      final fin = finalizeAssistantStreamAccum(acc);
+      if (fin != null) {
+        final assistantMessage = assistantMessageFromStreamFinal(
+          fin: fin,
+          streamingAssistantMessageId: _streamingAssistantMessageId,
+          fallbackMessageId: _localTempMessageId(),
         );
 
         final merged = [...prefixMessages, assistantMessage];
         if (state.currentSessionId == sessionId) {
-          emit(
-            state.copyWith(
-              messages: merged,
-              isLoading: false,
-              isStreaming: false,
-              clearStreamingSessionId: true,
-              clearStreamingParked: true,
-              currentStreamingText: null,
-              currentStreamingReasoning: null,
-              clearToolProgress: true,
-              clearRetryPayload: true,
-              clearPartialAssistant: true,
-              ragPreviewBySessionFile: _ragPreviewAfterClear(state),
-              clearRagDocumentPreview: true,
-            ),
-          );
+          emit(_copyAfterAssistantStreamSuccess(messages: merged));
           await _resyncSessionMessagesAfterStream(sessionId, emit);
           if (!isClosed && state.currentSessionId == sessionId) {
             add(ChatShowUserMessageEdits(event.userMessageId));
           }
         } else {
-          emit(
-            state.copyWith(
-              isLoading: false,
-              isStreaming: false,
-              clearStreamingSessionId: true,
-              clearStreamingParked: true,
-              currentStreamingText: null,
-              currentStreamingReasoning: null,
-              clearToolProgress: true,
-              clearRetryPayload: true,
-              clearPartialAssistant: true,
-              ragPreviewBySessionFile: _ragPreviewAfterClear(state),
-              clearRagDocumentPreview: true,
-            ),
-          );
+          emit(_copyAfterAssistantStreamSuccess());
         }
       } else {
         emit(
@@ -853,8 +711,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             currentStreamingText: null,
             currentStreamingReasoning: null,
             clearToolProgress: true,
-            error:
-                'Сервер не вернул ответ. Проверьте доступность раннера и попробуйте снова.',
+            error: kChatEmptyAssistantResponseMessage,
             ragPreviewBySessionFile: _ragPreviewAfterClear(state),
             clearRagDocumentPreview: true,
           ),
@@ -871,7 +728,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           clearStreamingSessionId: true,
           clearStreamingParked: true,
           currentStreamingReasoning: null,
-          error: _chatStreamErrorForState(
+          error: chatStreamErrorForState(
             e,
             lead: 'Не удалось отредактировать сообщение',
           ),
@@ -880,52 +737,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         ),
       );
     } finally {
-      await _streamSubscription?.cancel();
-      _streamSubscription = null;
-      _streamCompleter = null;
-      _streamingAssistantMessageId = 0;
+      await _teardownAssistantStreamPipeline();
     }
-  }
-
-  List<String> _extractAvailableRunners(List<RunnerInfo> runners) {
-    final addresses = <String>{
-      for (final runner in runners)
-        if (runner.enabled && runner.address.isNotEmpty) runner.address,
-    };
-    final sorted = addresses.toList()..sort();
-
-    return sorted;
-  }
-
-  Map<String, String> _extractRunnerNames(List<RunnerInfo> runners) {
-    final names = <String, String>{};
-    for (final runner in runners) {
-      if (!runner.enabled || runner.address.isEmpty) {
-        continue;
-      }
-
-      final name = runner.name.trim();
-      names[runner.address] = name.isNotEmpty ? name : runner.address;
-    }
-
-    return names;
-  }
-
-  (bool?, bool?) _runnerHealthForSelection(
-    String? selected,
-    List<RunnerInfo> infos,
-  ) {
-    if (selected == null || selected.isEmpty || infos.isEmpty) {
-      return (null, null);
-    }
-
-    for (final r in infos) {
-      if (r.address == selected) {
-        return (r.enabled, r.connected);
-      }
-    }
-
-    return (null, null);
   }
 
   Future<void> _onChatStarted(
@@ -959,8 +772,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             if (isAdmin) {
               final ri = await getRunnersUseCase();
               runnerInfosSnapshot = ri;
-              runners = _extractAvailableRunners(ri);
-              runnerNames = _extractRunnerNames(ri);
+              runners = extractAvailableRunners(ri);
+              runnerNames = extractRunnerNames(ri);
               if (runners.isNotEmpty && state.selectedRunner == null) {
                 final defaultRunner = await getSelectedRunnerUseCase();
                 if (defaultRunner != null && runners.contains(defaultRunner)) {
@@ -976,8 +789,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               try {
                 final ri = await getUserRunnersUseCase();
                 runnerInfosSnapshot = ri;
-                runners = _extractAvailableRunners(ri);
-                runnerNames = _extractRunnerNames(ri);
+                runners = extractAvailableRunners(ri);
+                runnerNames = extractRunnerNames(ri);
 
                 final saved = await getSelectedRunnerUseCase();
                 if (saved != null &&
@@ -1001,7 +814,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
           _lastRunnerInfos = runnerInfosSnapshot;
           final effectiveSel = selectedRunner ?? state.selectedRunner;
-          final runnerHealth = _runnerHealthForSelection(
+          final runnerHealth = runnerHealthForSelection(
             effectiveSel,
             runnerInfosSnapshot,
           );
@@ -1087,12 +900,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       return;
     }
 
-    await _streamSubscription?.cancel();
-    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-      _streamCompleter!.complete(true);
-    }
-    _streamSubscription = null;
-    _streamCompleter = null;
+    await _abortAssistantStreamPipeline();
 
     emit(
       state.copyWith(
@@ -1163,8 +971,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         if (isAdmin) {
           final ri = await getRunnersUseCase();
           runnerInfosSnapshot = ri;
-          runners = _extractAvailableRunners(ri);
-          runnerNames = _extractRunnerNames(ri);
+          runners = extractAvailableRunners(ri);
+          runnerNames = extractRunnerNames(ri);
           if (runners.isNotEmpty && state.selectedRunner == null) {
             final defaultRunner = await getSelectedRunnerUseCase();
             if (defaultRunner != null && runners.contains(defaultRunner)) {
@@ -1180,8 +988,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           try {
             final ri = await getUserRunnersUseCase();
             runnerInfosSnapshot = ri;
-            runners = _extractAvailableRunners(ri);
-            runnerNames = _extractRunnerNames(ri);
+            runners = extractAvailableRunners(ri);
+            runnerNames = extractRunnerNames(ri);
 
             final saved = await getSelectedRunnerUseCase();
             if (saved != null && saved.isNotEmpty && runners.contains(saved)) {
@@ -1202,7 +1010,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       _lastRunnerInfos = runnerInfosSnapshot;
       final effectiveReconnectSel = selectedRunner ?? state.selectedRunner;
-      final reconnectHealth = _runnerHealthForSelection(
+      final reconnectHealth = runnerHealthForSelection(
         effectiveReconnectSel,
         runnerInfosSnapshot,
       );
@@ -1517,20 +1325,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       return;
     }
 
-    await _streamSubscription?.cancel();
-    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-      _streamCompleter!.complete(true);
-    }
-    _streamSubscription = null;
-    _streamCompleter = null;
-    _streamingAssistantMessageId = 0;
+    await _abortAssistantStreamPipeline();
 
     var sessionId = state.currentSessionId;
     final draftReasoning = state.draftModelReasoningEnabled;
     final draftWebSearch = state.draftWebSearchEnabled;
     final draftWebProv = state.draftWebSearchProvider;
-    final draftMcp = state.draftMcpEnabled;
     final draftMcpIds = state.draftMcpServerIds;
+    final draftMcp = draftMcpIds.isNotEmpty;
     if (sessionId == null) {
       try {
         final session = await createSessionUseCase();
@@ -1604,7 +1406,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       try {
         for (var i = 0; i < attachmentNames.length; i++) {
           final uploadName = attachmentNames[i];
-          if (_filenameEligibleForSessionRag(uploadName) && !isClosed) {
+          if (filenameEligibleForSessionRag(uploadName) && !isClosed) {
             emit(
               state.copyWith(
                 ragIngestionUi: RagIngestionUi.uploading(uploadName),
@@ -1654,9 +1456,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         hasResolvedFiles &&
         resolvedAttachmentFileIds.length == 1 &&
         attachName.isNotEmpty &&
-        _filenameEligibleForSessionRag(attachName);
+        filenameEligibleForSessionRag(attachName);
     if (ragEligible) {
-      useFileRag = await _waitForSessionFileRagReady(
+      useFileRag = await waitForSessionFileRagReady(
         sessionId,
         resolvedAttachmentFileIds.first,
         getFileIngestionStatusUseCase,
@@ -1707,8 +1509,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         updatedMessages = [...state.messages];
       }
     }
-    var streamingText = '';
-    var streamingReasoning = '';
+    final acc = AssistantStreamAccum();
 
     emit(
       state.copyWith(
@@ -1734,84 +1535,21 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     try {
       final stream = sendMessageUseCase(sessionId, updatedMessages.last);
 
-      _streamSubscription = stream.listen(
-        (chunk) {
-          if (chunk.kind == ChatStreamChunkKind.toolStatus) {
-            final line = chunk.text.trim().isNotEmpty
-                ? chunk.text
-                : (chunk.toolName ?? 'инструмент');
-            if (state.currentSessionId == sessionId) {
-              emit(state.copyWith(toolProgressLabel: line));
+      _streamSubscription = subscribeAssistantChatStream(
+        stream,
+        completer: _streamCompleter!,
+        onChunk: (chunk) => handleAssistantChatStreamChunk(
+          chunk: chunk,
+          emit: emit,
+          currentState: () => state,
+          isCurrentSession: () => state.currentSessionId == sessionId,
+          acc: acc,
+          onAssistantMessageId: (id) {
+            if (id > 0) {
+              _streamingAssistantMessageId = id;
             }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.ragMeta) {
-            if (state.currentSessionId == sessionId) {
-              final preview = RagDocumentPreview.tryParse(
-                summary: chunk.text,
-                sourcesJson: chunk.ragSourcesJson,
-                modeFromStream: chunk.ragMode,
-              );
-              if (preview != null) {
-                emit(
-                  state.copyWith(
-                    ragDocumentPreview: preview,
-                    clearToolProgress: true,
-                  ),
-                );
-              }
-            }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.notice) {
-            final t = chunk.text.trim();
-            if (t.isNotEmpty && state.currentSessionId == sessionId) {
-              emit(state.copyWith(streamNotice: t));
-            }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.reasoning) {
-            if (chunk.messageId > 0) {
-              _streamingAssistantMessageId = chunk.messageId;
-            }
-            streamingReasoning += chunk.text;
-            if (state.currentSessionId == sessionId) {
-              emit(
-                state.copyWith(
-                  currentStreamingReasoning: streamingReasoning.isEmpty
-                      ? null
-                      : streamingReasoning,
-                  clearToolProgress: true,
-                ),
-              );
-            }
-            return;
-          }
-          if (chunk.messageId > 0) {
-            _streamingAssistantMessageId = chunk.messageId;
-          }
-          streamingText += chunk.text;
-          emit(
-            state.copyWith(
-              currentStreamingText: streamingText,
-              currentStreamingReasoning: streamingReasoning.isEmpty
-                  ? null
-                  : streamingReasoning,
-              clearToolProgress: true,
-            ),
-          );
-        },
-        onDone: () {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.complete(false);
-          }
-        },
-        onError: (e, st) {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.completeError(e, st);
-          }
-        },
-        cancelOnError: false,
+          },
+        ),
       );
 
       final cancelled = await _streamCompleter!.future;
@@ -1820,56 +1558,21 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         return;
       }
 
-      if (streamingText.isNotEmpty) {
-        final aid = _streamingAssistantMessageId > 0
-            ? _streamingAssistantMessageId
-            : _localTempMessageId();
-        final assistantMessage = Message(
-          id: aid,
-          content: streamingText,
-          role: MessageRole.assistant,
-          createdAt: DateTime.now(),
-          reasoningContent: streamingReasoning.isEmpty
-              ? null
-              : streamingReasoning,
+      final finSend = finalizeAssistantStreamAccum(acc);
+      if (finSend != null) {
+        final assistantMessage = assistantMessageFromStreamFinal(
+          fin: finSend,
+          streamingAssistantMessageId: _streamingAssistantMessageId,
+          fallbackMessageId: _localTempMessageId(),
         );
 
         final allMessages = [...updatedMessages, assistantMessage];
 
         if (state.currentSessionId == sessionId) {
-          emit(
-            state.copyWith(
-              messages: allMessages,
-              isLoading: false,
-              isStreaming: false,
-              clearStreamingSessionId: true,
-              clearStreamingParked: true,
-              currentStreamingText: null,
-              currentStreamingReasoning: null,
-              clearToolProgress: true,
-              clearRetryPayload: true,
-              clearPartialAssistant: true,
-              ragPreviewBySessionFile: _ragPreviewAfterClear(state),
-              clearRagDocumentPreview: true,
-            ),
-          );
+          emit(_copyAfterAssistantStreamSuccess(messages: allMessages));
           await _resyncSessionMessagesAfterStream(sessionId, emit);
         } else {
-          emit(
-            state.copyWith(
-              isLoading: false,
-              isStreaming: false,
-              clearStreamingSessionId: true,
-              clearStreamingParked: true,
-              currentStreamingText: null,
-              currentStreamingReasoning: null,
-              clearToolProgress: true,
-              clearRetryPayload: true,
-              clearPartialAssistant: true,
-              ragPreviewBySessionFile: _ragPreviewAfterClear(state),
-              clearRagDocumentPreview: true,
-            ),
-          );
+          emit(_copyAfterAssistantStreamSuccess());
         }
       } else {
         Logs().w('ChatBloc: пустой ответ от сервера при отправке сообщения');
@@ -1882,8 +1585,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             currentStreamingText: null,
             currentStreamingReasoning: null,
             clearToolProgress: true,
-            error:
-                'Сервер не вернул ответ. Проверьте доступность раннера и попробуйте снова.',
+            error: kChatEmptyAssistantResponseMessage,
             retryText: event.text,
             retryAttachmentFileName: userMessage.attachmentFileName,
             retryAttachmentFileNames: userMessage.attachmentFileNames,
@@ -1907,7 +1609,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           clearStreamingSessionId: true,
           clearStreamingParked: true,
           currentStreamingReasoning: null,
-          error: _chatStreamErrorForState(
+          error: chatStreamErrorForState(
             e,
             lead: 'Не удалось отправить сообщение',
           ),
@@ -1923,10 +1625,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         ),
       );
     } finally {
-      await _streamSubscription?.cancel();
-      _streamSubscription = null;
-      _streamCompleter = null;
-      _streamingAssistantMessageId = 0;
+      await _teardownAssistantStreamPipeline();
     }
   }
 
@@ -1956,18 +1655,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       return;
     }
 
-    await _streamSubscription?.cancel();
-    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-      _streamCompleter!.complete(true);
-    }
-    _streamSubscription = null;
-    _streamCompleter = null;
-    _streamingAssistantMessageId = 0;
+    await _abortAssistantStreamPipeline();
 
     final prefixMessages = state.messages.sublist(0, idx);
     final previousAssistant = target;
-    var streamingText = '';
-    var streamingReasoning = '';
+    final acc = AssistantStreamAccum();
 
     emit(
       state.copyWith(
@@ -1995,84 +1687,21 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         event.assistantMessageId,
       );
 
-      _streamSubscription = stream.listen(
-        (chunk) {
-          if (chunk.kind == ChatStreamChunkKind.toolStatus) {
-            final line = chunk.text.trim().isNotEmpty
-                ? chunk.text
-                : (chunk.toolName ?? 'инструмент');
-            if (state.currentSessionId == sessionId) {
-              emit(state.copyWith(toolProgressLabel: line));
+      _streamSubscription = subscribeAssistantChatStream(
+        stream,
+        completer: _streamCompleter!,
+        onChunk: (chunk) => handleAssistantChatStreamChunk(
+          chunk: chunk,
+          emit: emit,
+          currentState: () => state,
+          isCurrentSession: () => state.currentSessionId == sessionId,
+          acc: acc,
+          onAssistantMessageId: (id) {
+            if (id > 0) {
+              _streamingAssistantMessageId = id;
             }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.ragMeta) {
-            if (state.currentSessionId == sessionId) {
-              final preview = RagDocumentPreview.tryParse(
-                summary: chunk.text,
-                sourcesJson: chunk.ragSourcesJson,
-                modeFromStream: chunk.ragMode,
-              );
-              if (preview != null) {
-                emit(
-                  state.copyWith(
-                    ragDocumentPreview: preview,
-                    clearToolProgress: true,
-                  ),
-                );
-              }
-            }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.notice) {
-            final t = chunk.text.trim();
-            if (t.isNotEmpty && state.currentSessionId == sessionId) {
-              emit(state.copyWith(streamNotice: t));
-            }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.reasoning) {
-            if (chunk.messageId > 0) {
-              _streamingAssistantMessageId = chunk.messageId;
-            }
-            streamingReasoning += chunk.text;
-            if (state.currentSessionId == sessionId) {
-              emit(
-                state.copyWith(
-                  currentStreamingReasoning: streamingReasoning.isEmpty
-                      ? null
-                      : streamingReasoning,
-                  clearToolProgress: true,
-                ),
-              );
-            }
-            return;
-          }
-          if (chunk.messageId > 0) {
-            _streamingAssistantMessageId = chunk.messageId;
-          }
-          streamingText += chunk.text;
-          emit(
-            state.copyWith(
-              currentStreamingText: streamingText,
-              currentStreamingReasoning: streamingReasoning.isEmpty
-                  ? null
-                  : streamingReasoning,
-              clearToolProgress: true,
-            ),
-          );
-        },
-        onDone: () {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.complete(false);
-          }
-        },
-        onError: (e, st) {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.completeError(e, st);
-          }
-        },
-        cancelOnError: false,
+          },
+        ),
       );
 
       final cancelled = await _streamCompleter!.future;
@@ -2081,38 +1710,24 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         return;
       }
 
-      if (streamingText.isNotEmpty) {
-        final aid = _streamingAssistantMessageId > 0
-            ? _streamingAssistantMessageId
-            : event.assistantMessageId;
-        final assistantMessage = Message(
-          id: aid,
-          content: streamingText,
-          role: MessageRole.assistant,
-          createdAt: DateTime.now(),
-          reasoningContent: streamingReasoning.isEmpty
-              ? null
-              : streamingReasoning,
+      final finRegen = finalizeAssistantStreamAccum(acc);
+      if (finRegen != null) {
+        final assistantMessage = assistantMessageFromStreamFinal(
+          fin: finRegen,
+          streamingAssistantMessageId: _streamingAssistantMessageId,
+          fallbackMessageId: event.assistantMessageId,
         );
 
-        final regenerated = <int>{...state.regeneratedAssistantMessageIds, aid};
+        final regenerated = <int>{
+          ...state.regeneratedAssistantMessageIds,
+          assistantMessage.id,
+        };
         final merged = [...prefixMessages, assistantMessage];
         if (state.currentSessionId == sessionId) {
           emit(
-            state.copyWith(
+            _copyAfterAssistantStreamSuccess(
               messages: merged,
               regeneratedAssistantMessageIds: regenerated,
-              isLoading: false,
-              isStreaming: false,
-              clearStreamingSessionId: true,
-              clearStreamingParked: true,
-              currentStreamingText: null,
-              currentStreamingReasoning: null,
-              clearToolProgress: true,
-              clearRetryPayload: true,
-              clearPartialAssistant: true,
-              ragPreviewBySessionFile: _ragPreviewAfterClear(state),
-              clearRagDocumentPreview: true,
             ),
           );
           await _resyncSessionMessagesAfterStream(sessionId, emit);
@@ -2134,19 +1749,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           }
         } else {
           emit(
-            state.copyWith(
+            _copyAfterAssistantStreamSuccess(
               regeneratedAssistantMessageIds: regenerated,
-              isLoading: false,
-              isStreaming: false,
-              clearStreamingSessionId: true,
-              clearStreamingParked: true,
-              currentStreamingText: null,
-              currentStreamingReasoning: null,
-              clearToolProgress: true,
-              clearRetryPayload: true,
-              clearPartialAssistant: true,
-              ragPreviewBySessionFile: _ragPreviewAfterClear(state),
-              clearRagDocumentPreview: true,
             ),
           );
         }
@@ -2164,8 +1768,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             currentStreamingText: null,
             currentStreamingReasoning: null,
             clearToolProgress: true,
-            error:
-                'Сервер не вернул ответ. Проверьте доступность раннера и попробуйте снова.',
+            error: kChatEmptyAssistantResponseMessage,
             ragPreviewBySessionFile: _ragPreviewAfterClear(state),
             clearRagDocumentPreview: true,
           ),
@@ -2185,7 +1788,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           clearStreamingSessionId: true,
           clearStreamingParked: true,
           currentStreamingReasoning: null,
-          error: _chatStreamErrorForState(
+          error: chatStreamErrorForState(
             e,
             lead: 'Не удалось перегенерировать ответ',
           ),
@@ -2194,10 +1797,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         ),
       );
     } finally {
-      await _streamSubscription?.cancel();
-      _streamSubscription = null;
-      _streamCompleter = null;
-      _streamingAssistantMessageId = 0;
+      await _teardownAssistantStreamPipeline();
     }
   }
 
@@ -2227,18 +1827,12 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       return;
     }
 
-    await _streamSubscription?.cancel();
-    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-      _streamCompleter!.complete(true);
-    }
-    _streamSubscription = null;
-    _streamCompleter = null;
-    _streamingAssistantMessageId = 0;
+    await _abortAssistantStreamPipeline();
 
     final prefixMessages = state.messages.sublist(0, idx);
     final previousAssistant = target;
-    var streamingText = previousAssistant.content;
-    var streamingReasoning = previousAssistant.reasoningContent ?? '';
+    final acc = AssistantStreamAccum();
+    seedContinueAccumFromAssistantMessage(acc, previousAssistant);
 
     emit(
       state.copyWith(
@@ -2247,10 +1841,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         isStreaming: true,
         streamingSessionId: sessionId,
         clearStreamingParked: true,
-        currentStreamingText: streamingText,
-        currentStreamingReasoning: streamingReasoning.isEmpty
+        currentStreamingText: acc.rawAssistantText,
+        currentStreamingReasoning: acc.nativeReasoning.isEmpty
             ? null
-            : streamingReasoning,
+            : acc.nativeReasoning,
         clearToolProgress: true,
         error: null,
         clearRetryPayload: true,
@@ -2268,84 +1862,21 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         event.assistantMessageId,
       );
 
-      _streamSubscription = stream.listen(
-        (chunk) {
-          if (chunk.kind == ChatStreamChunkKind.toolStatus) {
-            final line = chunk.text.trim().isNotEmpty
-                ? chunk.text
-                : (chunk.toolName ?? 'инструмент');
-            if (state.currentSessionId == sessionId) {
-              emit(state.copyWith(toolProgressLabel: line));
+      _streamSubscription = subscribeAssistantChatStream(
+        stream,
+        completer: _streamCompleter!,
+        onChunk: (chunk) => handleAssistantChatStreamChunk(
+          chunk: chunk,
+          emit: emit,
+          currentState: () => state,
+          isCurrentSession: () => state.currentSessionId == sessionId,
+          acc: acc,
+          onAssistantMessageId: (id) {
+            if (id > 0) {
+              _streamingAssistantMessageId = id;
             }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.ragMeta) {
-            if (state.currentSessionId == sessionId) {
-              final preview = RagDocumentPreview.tryParse(
-                summary: chunk.text,
-                sourcesJson: chunk.ragSourcesJson,
-                modeFromStream: chunk.ragMode,
-              );
-              if (preview != null) {
-                emit(
-                  state.copyWith(
-                    ragDocumentPreview: preview,
-                    clearToolProgress: true,
-                  ),
-                );
-              }
-            }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.notice) {
-            final t = chunk.text.trim();
-            if (t.isNotEmpty && state.currentSessionId == sessionId) {
-              emit(state.copyWith(streamNotice: t));
-            }
-            return;
-          }
-          if (chunk.kind == ChatStreamChunkKind.reasoning) {
-            if (chunk.messageId > 0) {
-              _streamingAssistantMessageId = chunk.messageId;
-            }
-            streamingReasoning += chunk.text;
-            if (state.currentSessionId == sessionId) {
-              emit(
-                state.copyWith(
-                  currentStreamingReasoning: streamingReasoning.isEmpty
-                      ? null
-                      : streamingReasoning,
-                  clearToolProgress: true,
-                ),
-              );
-            }
-            return;
-          }
-          if (chunk.messageId > 0) {
-            _streamingAssistantMessageId = chunk.messageId;
-          }
-          streamingText += chunk.text;
-          emit(
-            state.copyWith(
-              currentStreamingText: streamingText,
-              currentStreamingReasoning: streamingReasoning.isEmpty
-                  ? null
-                  : streamingReasoning,
-              clearToolProgress: true,
-            ),
-          );
-        },
-        onDone: () {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.complete(false);
-          }
-        },
-        onError: (e, st) {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.completeError(e, st);
-          }
-        },
-        cancelOnError: false,
+          },
+        ),
       );
 
       final cancelled = await _streamCompleter!.future;
@@ -2354,38 +1885,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         return;
       }
 
-      if (streamingText.isNotEmpty) {
-        final aid = _streamingAssistantMessageId > 0
-            ? _streamingAssistantMessageId
-            : event.assistantMessageId;
-        final assistantMessage = Message(
-          id: aid,
-          content: streamingText,
-          role: MessageRole.assistant,
-          createdAt: DateTime.now(),
-          reasoningContent: streamingReasoning.isEmpty
-              ? null
-              : streamingReasoning,
+      final finCont = finalizeAssistantStreamAccum(acc);
+      if (finCont != null) {
+        final assistantMessage = assistantMessageFromStreamFinal(
+          fin: finCont,
+          streamingAssistantMessageId: _streamingAssistantMessageId,
+          fallbackMessageId: event.assistantMessageId,
         );
 
         final merged = [...prefixMessages, assistantMessage];
         if (state.currentSessionId == sessionId) {
-          emit(
-            state.copyWith(
-              messages: merged,
-              isLoading: false,
-              isStreaming: false,
-              clearStreamingSessionId: true,
-              clearStreamingParked: true,
-              currentStreamingText: null,
-              currentStreamingReasoning: null,
-              clearToolProgress: true,
-              clearRetryPayload: true,
-              clearPartialAssistant: true,
-              ragPreviewBySessionFile: _ragPreviewAfterClear(state),
-              clearRagDocumentPreview: true,
-            ),
-          );
+          emit(_copyAfterAssistantStreamSuccess(messages: merged));
           await _resyncSessionMessagesAfterStream(sessionId, emit);
           if (!isClosed &&
               state.currentSessionId == sessionId &&
@@ -2396,21 +1906,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             }
           }
         } else {
-          emit(
-            state.copyWith(
-              isLoading: false,
-              isStreaming: false,
-              clearStreamingSessionId: true,
-              clearStreamingParked: true,
-              currentStreamingText: null,
-              currentStreamingReasoning: null,
-              clearToolProgress: true,
-              clearRetryPayload: true,
-              clearPartialAssistant: true,
-              ragPreviewBySessionFile: _ragPreviewAfterClear(state),
-              clearRagDocumentPreview: true,
-            ),
-          );
+          emit(_copyAfterAssistantStreamSuccess());
         }
       } else {
         Logs().w('ChatBloc: пустой ответ при продолжении');
@@ -2426,8 +1922,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             currentStreamingText: null,
             currentStreamingReasoning: null,
             clearToolProgress: true,
-            error:
-                'Сервер не вернул ответ. Проверьте доступность раннера и попробуйте снова.',
+            error: kChatEmptyAssistantResponseMessage,
             partialAssistantMessageId:
                 state.currentSessionId == sessionId && previousAssistant.id > 0
                 ? previousAssistant.id
@@ -2452,7 +1947,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           clearStreamingParked: true,
           currentStreamingText: null,
           currentStreamingReasoning: null,
-          error: _chatStreamErrorForState(
+          error: chatStreamErrorForState(
             e,
             lead: 'Не удалось продолжить ответ',
           ),
@@ -2465,10 +1960,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         ),
       );
     } finally {
-      await _streamSubscription?.cancel();
-      _streamSubscription = null;
-      _streamCompleter = null;
-      _streamingAssistantMessageId = 0;
+      await _teardownAssistantStreamPipeline();
     }
   }
 
@@ -2664,13 +2156,55 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
   }
 
-  void _onSetMcpDraft(ChatSetMcpDraft event, Emitter<ChatState> emit) {
-    emit(
-      state.copyWith(
-        draftMcpEnabled: event.enabled,
-        draftMcpServerIds: event.serverIds,
-      ),
-    );
+  Future<void> _onSetMcp(ChatSetMcp event, Emitter<ChatState> emit) async {
+    final enabled = event.serverIds.isNotEmpty;
+    final sessionId = state.currentSessionId;
+    if (sessionId == null) {
+      emit(
+        state.copyWith(
+          draftMcpEnabled: enabled,
+          draftMcpServerIds: event.serverIds,
+        ),
+      );
+      return;
+    }
+    final cur = state.sessionSettings;
+    if (cur == null) {
+      return;
+    }
+    try {
+      final settings = await updateSessionSettingsUseCase(
+        sessionId: sessionId,
+        systemPrompt: cur.systemPrompt,
+        stopSequences: cur.stopSequences,
+        timeoutSeconds: cur.timeoutSeconds,
+        temperature: cur.temperature,
+        topK: cur.topK,
+        topP: cur.topP,
+        jsonMode: cur.jsonMode,
+        jsonSchema: cur.jsonSchema,
+        toolsJson: cur.toolsJson,
+        profile: cur.profile,
+        modelReasoningEnabled: cur.modelReasoningEnabled,
+        webSearchEnabled: cur.webSearchEnabled,
+        webSearchProvider: cur.webSearchProvider,
+        mcpEnabled: enabled,
+        mcpServerIds: event.serverIds,
+      );
+      emit(state.copyWith(sessionSettings: settings));
+    } catch (e) {
+      _reportServerUnreachableIfNeeded(e);
+      emit(
+        state.copyWith(
+          error: isGrpcUnavailable(e)
+              ? null
+              : userSafeErrorMessage(
+                  e,
+                  fallback: 'Не удалось сохранить настройки MCP',
+                ),
+        ),
+      );
+    }
   }
 
   Future<void> _onDeleteSession(
@@ -2681,13 +2215,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
     try {
       if (state.streamingSessionId == event.sessionId) {
-        await _streamSubscription?.cancel();
-        if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-          _streamCompleter!.complete(true);
-        }
-        _streamSubscription = null;
-        _streamCompleter = null;
-        _streamingAssistantMessageId = 0;
+        await _abortAssistantStreamPipeline();
       }
 
       await deleteSessionUseCase(event.sessionId);
@@ -2786,8 +2314,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         try {
           final runnerInfos = await getUserRunnersUseCase();
           _lastRunnerInfos = runnerInfos;
-          final runners = _extractAvailableRunners(runnerInfos);
-          final runnerNames = _extractRunnerNames(runnerInfos);
+          final runners = extractAvailableRunners(runnerInfos);
+          final runnerNames = extractRunnerNames(runnerInfos);
           String? selectedRunner = state.selectedRunner;
           if (runners.isNotEmpty &&
               selectedRunner != null &&
@@ -2799,7 +2327,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           }
 
           final effLoad = selectedRunner ?? state.selectedRunner;
-          final loadHealth = _runnerHealthForSelection(effLoad, runnerInfos);
+          final loadHealth = runnerHealthForSelection(effLoad, runnerInfos);
 
           emit(
             state.copyWith(
@@ -2840,8 +2368,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       final runnerInfos = await getRunnersUseCase();
       _lastRunnerInfos = runnerInfos;
-      final runners = _extractAvailableRunners(runnerInfos);
-      final runnerNames = _extractRunnerNames(runnerInfos);
+      final runners = extractAvailableRunners(runnerInfos);
+      final runnerNames = extractRunnerNames(runnerInfos);
       String? selectedRunner = state.selectedRunner;
       if (runners.isNotEmpty && selectedRunner == null) {
         final defaultRunner = await getSelectedRunnerUseCase();
@@ -2865,7 +2393,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
 
       final effLoadAdmin = selectedRunner ?? state.selectedRunner;
-      final loadHealthAdmin = _runnerHealthForSelection(
+      final loadHealthAdmin = runnerHealthForSelection(
         effLoadAdmin,
         runnerInfos,
       );
@@ -2896,7 +2424,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     try {
       await setSelectedRunnerUseCase(event.runner);
     } catch (_) {}
-    final h = _runnerHealthForSelection(event.runner, _lastRunnerInfos);
+    final h = runnerHealthForSelection(event.runner, _lastRunnerInfos);
     emit(
       state.copyWith(
         selectedRunner: event.runner,
@@ -2949,12 +2477,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     final partial = state.currentStreamingText;
     final partialReasoning = state.currentStreamingReasoning;
 
-    await _streamSubscription?.cancel();
-    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-      _streamCompleter!.complete(true);
-    }
-    _streamSubscription = null;
-    _streamCompleter = null;
+    await _abortAssistantStreamPipeline(resetStreamingMessageId: false);
 
     if (partial != null && partial.isNotEmpty && streamSid != null) {
       final aid = _streamingAssistantMessageId > 0
@@ -3043,7 +2566,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
       _streamCompleter!.complete(true);
     }
-
+    _streamSubscription = null;
+    _streamCompleter = null;
+    _streamingAssistantMessageId = 0;
     return super.close();
   }
 }

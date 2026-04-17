@@ -83,7 +83,7 @@ func TestRunActiveContracts(t *testing.T) {
 			}
 
 			return &mcpclient.ServerProbe{
-				ProtocolVersion: "",
+				ProtocolVersion: "0000-00-00",
 			}, nil
 		},
 

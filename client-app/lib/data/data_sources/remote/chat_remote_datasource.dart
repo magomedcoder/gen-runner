@@ -21,6 +21,7 @@ import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/entities/session_messages_page.dart';
 import 'package:gen/domain/entities/spreadsheet_apply_result.dart';
 import 'package:gen/domain/entities/file_ingestion_status.dart';
+import 'package:gen/domain/entities/rag_document_preview.dart';
 import 'package:gen/generated/grpc_pb/chat.pb.dart' as chat_pb;
 import 'package:gen/generated/grpc_pb/common.pb.dart' as common;
 import 'package:gen/generated/grpc_pb/chat.pbgrpc.dart' as grpc;
@@ -30,6 +31,35 @@ void _logGrpcServerMessage(GrpcError e, String context) {
   if (m != null && m.isNotEmpty) {
     Logs().w('ChatRemote: $context [code=${e.code}] $m');
   }
+}
+
+RagSourcesPayloadSnapshot _ragSourcesSnapshotFromProto(
+  chat_pb.RagSourcesPayload p,
+) {
+  final chunks = <RagChunkRef>[];
+  for (final c in p.chunks) {
+    chunks.add(
+      RagChunkRef(
+        chunkIndex: c.chunkIndex,
+        score: c.score,
+        isNeighbor: c.isNeighbor,
+        headingPath: c.headingPath,
+        pdfPageStart: c.pdfPageStart,
+        pdfPageEnd: c.pdfPageEnd,
+        excerpt: c.excerpt,
+      ),
+    );
+  }
+  return RagSourcesPayloadSnapshot(
+    mode: p.mode,
+    fileId: p.fileId.toInt(),
+    topK: p.topK,
+    neighborWindow: p.neighborWindow,
+    deepRagMapCalls: p.deepRagMapCalls,
+    droppedByBudget: p.droppedByBudget,
+    fullDocumentExcerpt: p.fullDocumentExcerpt,
+    chunks: chunks,
+  );
 }
 
 ChatStreamChunk? _streamChunkFromChatResponse(chat_pb.ChatResponse response) {
@@ -49,7 +79,8 @@ ChatStreamChunk? _streamChunkFromChatResponse(chat_pb.ChatResponse response) {
     final hasPayload =
         plain.isNotEmpty ||
         response.hasRagMode() ||
-        response.hasRagSourcesJson();
+        response.hasRagSourcesJson() ||
+        response.hasRagSources();
     if (!hasPayload) {
       return null;
     }
@@ -59,6 +90,9 @@ ChatStreamChunk? _streamChunkFromChatResponse(chat_pb.ChatResponse response) {
       ragMode: response.hasRagMode() ? response.ragMode : null,
       ragSourcesJson: response.hasRagSourcesJson()
           ? response.ragSourcesJson
+          : null,
+      ragSources: response.hasRagSources()
+          ? _ragSourcesSnapshotFromProto(response.ragSources)
           : null,
       messageId: mid,
     );
@@ -94,6 +128,27 @@ ChatStreamChunk? _streamChunkFromChatResponse(chat_pb.ChatResponse response) {
     );
   }
   return null;
+}
+
+void _emitAssistantFinalIfPresent(chat_pb.ChatResponse response, StreamController<ChatStreamChunk> controller) {
+  if (!response.hasAssistantFinal()) {
+    return;
+  }
+
+  final f = response.assistantFinal;
+  final mid = f.assistantMessageId.toInt();
+  controller.add(
+    ChatStreamChunk(
+      kind: ChatStreamChunkKind.assistantFinal,
+      text: '',
+      messageId: mid,
+      assistantFinal: AssistantStreamFinalSnapshot(
+        assistantMessageId: mid,
+        text: f.text,
+        reasoning: f.reasoning,
+      ),
+    ),
+  );
 }
 
 abstract class IChatRemoteDataSource {
@@ -297,6 +352,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
             }
             if (response.done) {
               Logs().i('ChatRemote: sendMessage завершён');
+              _emitAssistantFinalIfPresent(response, controller);
               controller.close();
               return;
             }
@@ -439,6 +495,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
             }
             if (response.done) {
               Logs().i('ChatRemote: regenerateAssistantResponse завершён');
+              _emitAssistantFinalIfPresent(response, controller);
               controller.close();
               return;
             }
@@ -570,6 +627,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
             }
             if (response.done) {
               Logs().i('ChatRemote: continueAssistantResponse завершён');
+              _emitAssistantFinalIfPresent(response, controller);
               controller.close();
               return;
             }
@@ -711,6 +769,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
             if (response.done) {
               Logs().i('ChatRemote: editUserMessageAndContinue завершён');
+              _emitAssistantFinalIfPresent(response, controller);
               controller.close();
               return;
             }

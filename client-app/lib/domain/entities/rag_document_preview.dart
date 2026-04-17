@@ -2,6 +2,40 @@ import 'dart:convert';
 
 import 'package:equatable/equatable.dart';
 
+class RagSourcesPayloadSnapshot extends Equatable {
+  const RagSourcesPayloadSnapshot({
+    required this.mode,
+    required this.fileId,
+    required this.topK,
+    required this.neighborWindow,
+    required this.deepRagMapCalls,
+    required this.droppedByBudget,
+    required this.fullDocumentExcerpt,
+    required this.chunks,
+  });
+
+  final String mode;
+  final int fileId;
+  final int topK;
+  final int neighborWindow;
+  final int deepRagMapCalls;
+  final int droppedByBudget;
+  final String fullDocumentExcerpt;
+  final List<RagChunkRef> chunks;
+
+  @override
+  List<Object?> get props => [
+    mode,
+    fileId,
+    topK,
+    neighborWindow,
+    deepRagMapCalls,
+    droppedByBudget,
+    fullDocumentExcerpt,
+    chunks,
+  ];
+}
+
 class RagChunkRef extends Equatable {
   const RagChunkRef({
     required this.chunkIndex,
@@ -83,11 +117,39 @@ class RagDocumentPreview extends Equatable {
     return false;
   }
 
+  factory RagDocumentPreview.fromPayloadSnapshot({
+    required String summary,
+    String? modeFromStream,
+    required RagSourcesPayloadSnapshot payload,
+  }) {
+    final m = payload.mode.trim().isNotEmpty
+        ? payload.mode.trim()
+        : (modeFromStream ?? '').trim();
+    return RagDocumentPreview(
+      mode: m,
+      summary: summary.trim(),
+      fileId: payload.fileId,
+      fullDocumentExcerpt: payload.fullDocumentExcerpt,
+      topK: payload.topK,
+      neighborWindow: payload.neighborWindow,
+      deepRagMapCalls: payload.deepRagMapCalls,
+      chunks: payload.chunks,
+    );
+  }
+
   static RagDocumentPreview? tryParse({
     required String summary,
     String? sourcesJson,
     String? modeFromStream,
+    RagSourcesPayloadSnapshot? ragSources,
   }) {
+    if (ragSources != null) {
+      return RagDocumentPreview.fromPayloadSnapshot(
+        summary: summary,
+        modeFromStream: modeFromStream,
+        payload: ragSources,
+      );
+    }
     final trimmedSummary = summary.trim();
     final raw = sourcesJson?.trim();
     if (raw == null || raw.isEmpty) {

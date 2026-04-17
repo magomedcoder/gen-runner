@@ -53,14 +53,18 @@ func (fakeSessionSettingsRepoForMCP) Upsert(context.Context, *domain.ChatSession
 }
 
 type fakeMCPServerRepoForMCP struct {
-	accessible func(ctx context.Context, id int64, userID int) (*domain.MCPServer, error)
+	accessible    func(ctx context.Context, id int64, userID int) (*domain.MCPServer, error)
+	listForUserFn func(ctx context.Context, userID int) ([]*domain.MCPServer, error)
 }
 
 func (fakeMCPServerRepoForMCP) ListGlobal(context.Context) ([]*domain.MCPServer, error) {
 	return nil, nil
 }
 
-func (fakeMCPServerRepoForMCP) ListForUser(context.Context, int) ([]*domain.MCPServer, error) {
+func (f fakeMCPServerRepoForMCP) ListForUser(ctx context.Context, userID int) ([]*domain.MCPServer, error) {
+	if f.listForUserFn != nil {
+		return f.listForUserFn(ctx, userID)
+	}
 	return nil, nil
 }
 
@@ -221,6 +225,7 @@ func TestGenMcpGetPromptMissingName(t *testing.T) {
 }
 
 func TestMaybeInjectMCPBuiltinMetaToolsAddsFourTools(t *testing.T) {
+	ctx := context.Background()
 	c := &ChatUseCase{
 		mcpServerRepo: fakeMCPServerRepoForMCP{},
 	}
@@ -232,7 +237,7 @@ func TestMaybeInjectMCPBuiltinMetaToolsAddsFourTools(t *testing.T) {
 		MCPServerIDs: []int64{7},
 	}
 
-	c.maybeInjectMCPBuiltinMetaTools(gp, st)
+	c.maybeInjectMCPBuiltinMetaTools(ctx, gp, st, 1)
 	if len(gp.Tools) != 4 {
 		t.Fatalf("ожидалось 4 инструмента, получено %d", len(gp.Tools))
 	}
@@ -254,7 +259,29 @@ func TestMaybeInjectMCPBuiltinMetaToolsAddsFourTools(t *testing.T) {
 	}
 }
 
+func TestMaybeInjectMCPBuiltinMetaToolsEmptyExplicitDoesNotUseCatalogServers(t *testing.T) {
+	ctx := context.Background()
+	c := &ChatUseCase{
+		mcpServerRepo: fakeMCPServerRepoForMCP{
+			listForUserFn: func(context.Context, int) ([]*domain.MCPServer, error) {
+				return []*domain.MCPServer{
+					{ID: 1, Name: "A", Enabled: true},
+					{ID: 2, Name: "B", Enabled: false},
+					{ID: 3, Name: "C", Enabled: true},
+				}, nil
+			},
+		},
+	}
+	gp := &domain.GenerationParams{Tools: []domain.Tool{}}
+	st := &domain.ChatSessionSettings{MCPEnabled: true, MCPServerIDs: nil}
+	c.maybeInjectMCPBuiltinMetaTools(ctx, gp, st, 42)
+	if len(gp.Tools) != 0 {
+		t.Fatalf("при пустом списке server_id каталог не подставляется: ожидалось 0 инструментов, получено %d", len(gp.Tools))
+	}
+}
+
 func TestMaybeInjectMCPBuiltinMetaToolsNoInjectWhenDisabledOrEmpty(t *testing.T) {
+	ctx := context.Background()
 	c := &ChatUseCase{
 		mcpServerRepo: fakeMCPServerRepoForMCP{},
 	}
@@ -265,10 +292,10 @@ func TestMaybeInjectMCPBuiltinMetaToolsNoInjectWhenDisabledOrEmpty(t *testing.T)
 	}
 
 	gp := &domain.GenerationParams{Tools: append([]domain.Tool(nil), base...)}
-	c.maybeInjectMCPBuiltinMetaTools(gp, &domain.ChatSessionSettings{
+	c.maybeInjectMCPBuiltinMetaTools(ctx, gp, &domain.ChatSessionSettings{
 		MCPEnabled:   false,
 		MCPServerIDs: []int64{1},
-	})
+	}, 1)
 	if len(gp.Tools) != 1 {
 		t.Fatalf("при отключённом MCP: получено %d инструментов", len(gp.Tools))
 	}
@@ -276,26 +303,27 @@ func TestMaybeInjectMCPBuiltinMetaToolsNoInjectWhenDisabledOrEmpty(t *testing.T)
 	gp2 := &domain.GenerationParams{
 		Tools: append([]domain.Tool(nil), base...),
 	}
-	c.maybeInjectMCPBuiltinMetaTools(gp2, &domain.ChatSessionSettings{
+	c.maybeInjectMCPBuiltinMetaTools(ctx, gp2, &domain.ChatSessionSettings{
 		MCPEnabled:   true,
 		MCPServerIDs: nil,
-	})
+	}, 1)
 	if len(gp2.Tools) != 1 {
 		t.Fatalf("пустые id серверов: получено %d инструментов", len(gp2.Tools))
 	}
 
 	gp3 := &domain.GenerationParams{Tools: append([]domain.Tool(nil), base...)}
 	c3 := &ChatUseCase{mcpServerRepo: nil}
-	c3.maybeInjectMCPBuiltinMetaTools(gp3, &domain.ChatSessionSettings{
+	c3.maybeInjectMCPBuiltinMetaTools(ctx, gp3, &domain.ChatSessionSettings{
 		MCPEnabled:   true,
 		MCPServerIDs: []int64{1},
-	})
+	}, 1)
 	if len(gp3.Tools) != 1 {
 		t.Fatalf("nil-репозиторий: получено %d инструментов", len(gp3.Tools))
 	}
 }
 
 func TestMaybeInjectMCPBuiltinMetaToolsSkipsNormalizedDuplicate(t *testing.T) {
+	ctx := context.Background()
 	c := &ChatUseCase{
 		mcpServerRepo: fakeMCPServerRepoForMCP{},
 	}
@@ -310,7 +338,7 @@ func TestMaybeInjectMCPBuiltinMetaToolsSkipsNormalizedDuplicate(t *testing.T) {
 		MCPEnabled:   true,
 		MCPServerIDs: []int64{1},
 	}
-	c.maybeInjectMCPBuiltinMetaTools(gp, st)
+	c.maybeInjectMCPBuiltinMetaTools(ctx, gp, st, 1)
 	if len(gp.Tools) != 4 {
 		t.Fatalf("ожидалось 1 уже заданный + 3 новых = 4, получено %d", len(gp.Tools))
 	}

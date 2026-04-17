@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:gen/core/redacted_thinking_split.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/generated/grpc_pb/chat.pb.dart' as grpc;
 
@@ -23,10 +24,18 @@ abstract class MessageMapper {
 
   static Message fromProto(grpc.ChatMessage proto) {
     final updatedSeconds = proto.updatedAt.toInt();
+    final role = _roleFromProto(proto.role);
+    var content = proto.content;
+    String? reasoningFromTags;
+    if (role == MessageRole.assistant) {
+      final peeled = RedactedThinkingSplit.peel(content);
+      content = peeled.$1;
+      reasoningFromTags = peeled.$2;
+    }
     return Message(
       id: proto.id.toInt(),
-      content: proto.content,
-      role: _roleFromProto(proto.role),
+      content: content,
+      role: role,
       createdAt: _dateTimeFromUnixSeconds(proto.createdAt.toInt()),
       updatedAt: updatedSeconds > 0
           ? _dateTimeFromUnixSeconds(updatedSeconds)
@@ -46,6 +55,7 @@ abstract class MessageMapper {
       attachmentFileIds: proto.hasAttachmentFileId()
           ? [proto.attachmentFileId.toInt()]
           : const [],
+      reasoningContent: reasoningFromTags,
       useFileRag: false,
       fileRagTopK: 0,
       fileRagEmbedModel: '',

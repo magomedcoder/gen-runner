@@ -9,7 +9,6 @@ import (
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type UserHandler struct {
@@ -73,7 +72,7 @@ func (u *UserHandler) EditUser(ctx context.Context, req *userpb.EditUserRequest)
 
 	if _, err := strconv.Atoi(req.Id); err != nil {
 		logger.W("EditUser: неверный id: %s", req.Id)
-		return nil, status.Error(codes.InvalidArgument, "неверный id пользователя")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "USER_INVALID_ID", "неверный id пользователя")
 	}
 
 	user, err := u.userUseCase.EditUser(ctx, req.Id, req.Username, req.Password, req.Name, req.Surname, req.Role)

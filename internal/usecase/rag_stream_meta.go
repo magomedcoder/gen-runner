@@ -41,6 +41,32 @@ type ragChunkWire struct {
 	Excerpt      string  `json:"excerpt,omitempty"`
 }
 
+func (w *ragSourcesWire) toPayload() *RAGSourcesPayload {
+	chunks := make([]RAGChunkPreview, 0, len(w.Chunks))
+	for _, c := range w.Chunks {
+		chunks = append(chunks, RAGChunkPreview{
+			ChunkIndex:   int32(c.ChunkIndex),
+			Score:        c.Score,
+			IsNeighbor:   c.IsNeighbor,
+			HeadingPath:  c.HeadingPath,
+			PdfPageStart: int32(c.PdfPageStart),
+			PdfPageEnd:   int32(c.PdfPageEnd),
+			Excerpt:      c.Excerpt,
+		})
+	}
+
+	return &RAGSourcesPayload{
+		Mode:                w.Mode,
+		FileID:              w.FileID,
+		TopK:                int32(w.TopK),
+		NeighborWindow:      int32(w.NeighborWindow),
+		DeepRAGMapCalls:     int32(w.DeepRAGMapCalls),
+		DroppedByBudget:     int32(w.DroppedByBudget),
+		FullDocumentExcerpt: w.FullDocumentExcerpt,
+		Chunks:              chunks,
+	}
+}
+
 func truncateRAGPreviewText(s string, maxRunes int) string {
 	s = strings.TrimSpace(s)
 	if s == "" || maxRunes <= 0 {
@@ -58,6 +84,7 @@ func truncateRAGPreviewText(s string, maxRunes int) string {
 type ragStreamMeta struct {
 	Mode        string
 	SourcesJSON string
+	Sources     *RAGSourcesPayload
 	ShortNotice string
 }
 
@@ -67,6 +94,7 @@ func (m *ragStreamMeta) asChunk() ChatStreamChunk {
 		Text:           m.ShortNotice,
 		RAGMode:        m.Mode,
 		RAGSourcesJSON: m.SourcesJSON,
+		RAGSources:     m.Sources,
 		MessageID:      0,
 	}
 }
@@ -85,9 +113,12 @@ func buildRAGStreamMetaFullDocument(fileID int64, extractedText string) (*ragStr
 		return nil, err
 	}
 
+	src := w.toPayload()
+
 	return &ragStreamMeta{
 		Mode:        ragModeFullDocument,
 		SourcesJSON: string(js),
+		Sources:     src,
 		ShortNotice: "Контекст документа: полный текст вложения (без векторного поиска).",
 	}, nil
 }
@@ -149,6 +180,8 @@ func buildRAGStreamMetaVector(
 		return nil, err
 	}
 
+	src := w.toPayload()
+
 	label := "быстрый векторный RAG (top-K + соседи)"
 	if mode == ragModeVectorRAGDeep {
 		label = fmt.Sprintf("векторный RAG + сжатие фрагментов (deep), map-вызовов=%d", deepMapCalls)
@@ -162,6 +195,7 @@ func buildRAGStreamMetaVector(
 	return &ragStreamMeta{
 		Mode:        mode,
 		SourcesJSON: string(js),
+		Sources:     src,
 		ShortNotice: notice,
 	}, nil
 }

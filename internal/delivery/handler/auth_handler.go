@@ -9,7 +9,6 @@ import (
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type AuthHandler struct {
@@ -46,7 +45,7 @@ func (a *AuthHandler) RefreshToken(ctx context.Context, req *authpb.RefreshToken
 	accessToken, refreshToken, err := a.authUseCase.RefreshToken(ctx, req.RefreshToken)
 	if err != nil {
 		logger.W("RefreshToken: %v", err)
-		return nil, status.Error(codes.Unauthenticated, err.Error())
+		return nil, StatusErrorWithReason(codes.Unauthenticated, "AUTH_REFRESH_FAILED", err.Error())
 	}
 	logger.I("RefreshToken: успешно")
 
@@ -64,7 +63,7 @@ func (a *AuthHandler) Logout(ctx context.Context, req *authpb.LogoutRequest) (*a
 
 	if err := a.authUseCase.Logout(ctx, user.Id); err != nil {
 		logger.E("Logout: %v", err)
-		return nil, status.Error(codes.Internal, "не удалось выйти из системы")
+		return nil, StatusErrorWithReason(codes.Internal, "AUTH_LOGOUT_FAILED", "не удалось выйти из системы")
 	}
 	logger.I("Logout: user=%d вышел", user.Id)
 

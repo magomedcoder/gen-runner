@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/pkg/logger"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -34,6 +36,15 @@ func ListResources(ctx context.Context, srv *domain.MCPServer) ([]DeclaredResour
 }
 
 func listResources(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCache) ([]DeclaredResource, error) {
+	sid := int64(0)
+	snm := ""
+	if srv != nil {
+		sid = srv.ID
+		snm = strings.TrimSpace(srv.Name)
+	}
+
+	logger.D("MCP listResources: server_id=%d name=%q старт", sid, snm)
+
 	var out []DeclaredResource
 	err := withSession(ctx, srv, notify, func(cctx context.Context, session *mcp.ClientSession) error {
 		var cursor string
@@ -65,6 +76,12 @@ func listResources(ctx context.Context, srv *domain.MCPServer, notify *ToolsList
 		}
 		return nil
 	})
+	if err != nil {
+		logger.W("MCP listResources: server_id=%d name=%q err=%v", sid, snm, err)
+	} else {
+		logger.D("MCP listResources: server_id=%d name=%q всего=%d", sid, snm, len(out))
+	}
+
 	recordListResources(err)
 	return out, err
 }
@@ -74,6 +91,15 @@ func ListPrompts(ctx context.Context, srv *domain.MCPServer) ([]DeclaredPrompt, 
 }
 
 func listPrompts(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCache) ([]DeclaredPrompt, error) {
+	sid := int64(0)
+	snm := ""
+	if srv != nil {
+		sid = srv.ID
+		snm = strings.TrimSpace(srv.Name)
+	}
+
+	logger.D("MCP listPrompts: server_id=%d name=%q старт", sid, snm)
+
 	var out []DeclaredPrompt
 	err := withSession(ctx, srv, notify, func(cctx context.Context, session *mcp.ClientSession) error {
 		var cursor string
@@ -111,6 +137,13 @@ func listPrompts(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCa
 		}
 		return nil
 	})
+
+	if err != nil {
+		logger.W("MCP listPrompts: server_id=%d name=%q err=%v", sid, snm, err)
+	} else {
+		logger.D("MCP listPrompts: server_id=%d name=%q всего=%d", sid, snm, len(out))
+	}
+
 	recordListPrompts(err)
 	return out, err
 }
@@ -126,10 +159,18 @@ type readResourcePartWire struct {
 
 func ReadResourceJSON(ctx context.Context, srv *domain.MCPServer, uri string, notify *ToolsListCache) (string, error) {
 	uri = strings.TrimSpace(uri)
+	sid := int64(0)
+	if srv != nil {
+		sid = srv.ID
+	}
+
 	if uri == "" {
+		logger.W("MCP readResource: server_id=%d пустой uri", sid)
 		recordReadResource(errors.New("пустой uri ресурса"))
 		return "", errors.New("пустой uri ресурса")
 	}
+
+	logger.D("MCP readResource: server_id=%d uri_len=%d", sid, len(uri))
 
 	type wrap struct {
 		URI     string                 `json:"uri"`
@@ -184,29 +225,43 @@ func ReadResourceJSON(ctx context.Context, srv *domain.MCPServer, uri string, no
 		}
 		return nil
 	})
+
 	if err != nil {
+		logger.W("MCP readResource: server_id=%d uri_len=%d err=%v", sid, len(uri), err)
 		recordReadResource(err)
 		return "", err
 	}
 
 	b, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
+		logger.W("MCP readResource: server_id=%d marshal err=%v", sid, err)
 		recordReadResource(err)
 		return "", err
 	}
+
+	logger.D("MCP readResource: server_id=%d parts=%d json_bytes=%d warning=%q", sid, len(payload.Parts), len(b), strings.TrimSpace(payload.Warning))
 	recordReadResource(nil)
 	return string(b), nil
 }
 
 func GetPromptText(ctx context.Context, srv *domain.MCPServer, name string, arguments map[string]string, notify *ToolsListCache) (string, error) {
 	name = strings.TrimSpace(name)
+	sid := int64(0)
+	if srv != nil {
+		sid = srv.ID
+	}
+
 	if name == "" {
+		logger.W("MCP getPrompt: server_id=%d пустое имя", sid)
 		recordGetPrompt(errors.New("пустое имя промпта"))
 		return "", errors.New("пустое имя промпта")
 	}
+
 	if arguments == nil {
 		arguments = map[string]string{}
 	}
+
+	logger.D("MCP getPrompt: server_id=%d name=%q args_keys=%d", sid, name, len(arguments))
 
 	var sb strings.Builder
 	err := withSession(ctx, srv, notify, func(cctx context.Context, session *mcp.ClientSession) error {
@@ -229,12 +284,15 @@ func GetPromptText(ctx context.Context, srv *domain.MCPServer, name string, argu
 		}
 		return nil
 	})
+
 	if err != nil {
+		logger.W("MCP getPrompt: server_id=%d name=%q err=%v", sid, name, err)
 		recordGetPrompt(err)
 		return "", err
 	}
 
 	out := strings.TrimSpace(sb.String())
+	logger.D("MCP getPrompt: server_id=%d name=%q text_runes≈%d", sid, name, utf8.RuneCountInString(out))
 	recordGetPrompt(nil)
 	return TruncateLLMReply(out, MaxMetaToolReplyRunes), nil
 }

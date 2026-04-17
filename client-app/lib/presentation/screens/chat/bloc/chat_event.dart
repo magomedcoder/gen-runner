@@ -286,12 +286,11 @@ class ChatSetWebSearch extends ChatEvent {
   List<Object?> get props => [enabled, provider];
 }
 
-class ChatSetMcpDraft extends ChatEvent {
-  final bool enabled;
+class ChatSetMcp extends ChatEvent {
   final List<int> serverIds;
 
-  const ChatSetMcpDraft({required this.enabled, this.serverIds = const []});
+  const ChatSetMcp({this.serverIds = const []});
 
   @override
-  List<Object?> get props => [enabled, serverIds];
+  List<Object?> get props => [serverIds];
 }

@@ -16,6 +16,7 @@ import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
+import 'package:gen/presentation/screens/chat/widgets/chat_mcp_input_sheet.dart';
 
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({
@@ -55,6 +56,7 @@ class ChatInputBarState extends State<ChatInputBar> {
   static const double _inputCardMinHeightMobile = 124.0;
   static const double _inputCardGrowthStep = 50.0;
   static const double _inputCardMaxWindowFactor = 0.5;
+  static const double _bottomActionsBarHeight = 48.0;
   static const double _roundedCardRadius = 22.0;
   static const EdgeInsets _inputContentPadding = EdgeInsets.fromLTRB(
     16,
@@ -531,11 +533,13 @@ class ChatInputBarState extends State<ChatInputBar> {
         ? 0
         : (_selectedFiles.length <= 2 ? 1 : 2);
     final attachmentExtra = attachmentRows * 36.0;
-    final targetHeight =
+    final textAndAttachmentsHeight =
         minH + attachmentExtra + ((lines - 1) * _inputCardGrowthStep);
     final maxHeight = _cardMaxHeight(context);
 
-    return targetHeight.clamp(minH, maxHeight);
+    final outerHeight = textAndAttachmentsHeight + _bottomActionsBarHeight;
+    final minOuter = minH + _bottomActionsBarHeight;
+    return outerHeight.clamp(minOuter, maxHeight);
   }
 
   String _formatAttachmentSize(int bytes) {
@@ -689,17 +693,20 @@ class ChatInputBarState extends State<ChatInputBar> {
     final canSend =
         (_isComposing || _selectedFiles.isNotEmpty) && widget.isEnabled;
 
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.only(right: 12),
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.12)),
+    return SizedBox(
+      height: _bottomActionsBarHeight,
+      width: double.infinity,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.only(right: 12),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.12)),
+            ),
           ),
-        ),
-        child: Row(
+          child: Row(
           children: [
             if (widget.allowAttachments) ...[
               IconButton(
@@ -889,6 +896,7 @@ class ChatInputBarState extends State<ChatInputBar> {
                   );
                 },
               ),
+            ChatMcpMenuButton(isEnabled: widget.isEnabled),
             if (widget.showRetry &&
                 state.retryText != null &&
                 !state.isStreamingInCurrentSession) ...[
@@ -1025,7 +1033,8 @@ class ChatInputBarState extends State<ChatInputBar> {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   @override

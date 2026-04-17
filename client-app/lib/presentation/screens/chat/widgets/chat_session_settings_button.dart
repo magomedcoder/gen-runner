@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/attachment_settings.dart';
-import 'package:gen/core/injector.dart' as di;
 import 'package:gen/domain/entities/chat_session_settings.dart';
-import 'package:gen/domain/entities/mcp_server_entity.dart';
-import 'package:gen/domain/repositories/runners_repository.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
@@ -62,15 +59,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
 
   void _openSettings(BuildContext context) {
     final current = state.sessionSettings ?? ChatSessionSettings(sessionId: state.currentSessionId ?? 0);
-    final sessionId = state.currentSessionId;
-    final mcpFromServer = state.sessionSettings;
-    var mcpEnabled = mcpFromServer?.mcpEnabled ?? state.draftMcpEnabled;
-    var selectedMcpIds = List<int>.from(
-      mcpFromServer?.mcpServerIds ?? state.draftMcpServerIds,
-    );
-    var mcpServers = <McpServerEntity>[];
-    var mcpLoading = true;
-    var mcpLoadScheduled = false;
 
     final promptController = TextEditingController(text: current.systemPrompt);
     final stopController = TextEditingController(text: current.stopSequences.join('\n'),);
@@ -217,91 +205,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
                             ],
                           );
                         },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _settingsSection(
-                      ctx,
-                      title: 'MCP',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (!mcpLoadScheduled) ...[
-                            Builder(
-                              builder: (bctx) {
-                                mcpLoadScheduled = true;
-                                Future<void>.microtask(() async {
-                                  try {
-                                    final list = await di.sl<RunnersRepository>().listUserMcpServers();
-                                    if (!bctx.mounted) {
-                                      return;
-                                    }
-                                    setStateDialog(() {
-                                      mcpServers = list.where((s) => s.enabled).toList();
-                                      mcpLoading = false;
-                                    });
-                                  } catch (_) {
-                                    if (bctx.mounted) {
-                                      setStateDialog(() => mcpLoading = false);
-                                    }
-                                  }
-                                });
-                                return const SizedBox.shrink();
-                              },
-                            ),
-                          ],
-                          if (mcpLoading) ...[
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 16),
-                              child: Center(child: CircularProgressIndicator()),
-                            ),
-                          ] else if (mcpServers.isEmpty) ...[
-                            Text(
-                              'Нет включённых MCP-серверов',
-                              style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                          SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: const Text('Использовать MCP в этом чате'),
-                            subtitle: const Text('Инструменты выбранных серверов доступны модели'),
-                            value: mcpEnabled,
-                            onChanged: (v) => setStateDialog(() => mcpEnabled = v),
-                          ),
-                          if (mcpEnabled && mcpServers.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Серверы',
-                              style: Theme.of(ctx).textTheme.titleSmall,
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: mcpServers.map((s) {
-                                final sel = selectedMcpIds.contains(s.id);
-                                final label = s.name.trim().isNotEmpty ? s.name : '#${s.id}';
-                                return FilterChip(
-                                  label: Text(label),
-                                  selected: sel,
-                                  onSelected: (on) {
-                                    setStateDialog(() {
-                                      if (on) {
-                                        if (!selectedMcpIds.contains(s.id)) {
-                                          selectedMcpIds = [...selectedMcpIds, s.id];
-                                        }
-                                      } else {
-                                        selectedMcpIds = selectedMcpIds.where((id) => id != s.id).toList();
-                                      }
-                                    });
-                                  },
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                        ],
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -516,12 +419,11 @@ class ChatSessionSettingsButton extends StatelessWidget {
                     .where((e) => e.isNotEmpty)
                     .toList()
                   : current.stopSequences;
-                final mcpIds = List<int>.from(selectedMcpIds);
-                if (sessionId == null) {
-                  context.read<ChatBloc>().add(
-                    ChatSetMcpDraft(enabled: mcpEnabled, serverIds: mcpIds),
-                  );
-                }
+                final blocState = context.read<ChatBloc>().state;
+                final mcpIds = List<int>.from(
+                  blocState.sessionSettings?.mcpServerIds ??
+                      blocState.draftMcpServerIds,
+                );
                 context.read<ChatBloc>().add(
                   ChatUpdateSessionSettings(
                     systemPrompt: promptController.text.trim(),
@@ -537,7 +439,7 @@ class ChatSessionSettingsButton extends StatelessWidget {
                     modelReasoningEnabled: current.modelReasoningEnabled,
                     webSearchEnabled: current.webSearchEnabled,
                     webSearchProvider: current.webSearchProvider,
-                    mcpEnabled: mcpEnabled,
+                    mcpEnabled: mcpIds.isNotEmpty,
                     mcpServerIds: mcpIds,
                   ),
                 );

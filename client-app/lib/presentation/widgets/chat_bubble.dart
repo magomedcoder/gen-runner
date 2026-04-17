@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:gen/core/redacted_thinking_split.dart';
 import 'package:gen/core/docx_file_export.dart';
 import 'package:gen/core/injector.dart';
 import 'package:gen/core/layout/responsive.dart';
@@ -91,32 +92,41 @@ BorderRadius _bubbleRadius(bool isUser) {
 
 class _AssistantReasoningCard extends StatelessWidget {
   const _AssistantReasoningCard({
+    super.key,
     required this.theme,
     required this.text,
     required this.messageTextColor,
-    required this.isStreaming,
     required this.maxWidth,
+    this.embedded = false,
+    this.initiallyExpanded = false,
   });
 
   final ThemeData theme;
   final String text;
   final Color messageTextColor;
-  final bool isStreaming;
   final double maxWidth;
+  final bool embedded;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
     final cs = theme.colorScheme;
     return Container(
-      margin: const EdgeInsets.only(bottom: 8, top: 2),
+      margin: embedded
+          ? EdgeInsets.zero
+          : const EdgeInsets.only(bottom: 8, top: 2),
       constraints: BoxConstraints(maxWidth: maxWidth),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
+        color: embedded
+            ? cs.surfaceContainerLow.withValues(alpha: 0.65)
+            : cs.surfaceContainerLow,
+        borderRadius: embedded ? BorderRadius.zero : BorderRadius.circular(14),
+        border: embedded
+            ? null
+            : Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(13),
+        borderRadius: embedded ? BorderRadius.zero : BorderRadius.circular(13),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -133,7 +143,7 @@ class _AssistantReasoningCard extends StatelessWidget {
                     tilePadding: EdgeInsets.zero,
                     expandedAlignment: Alignment.centerLeft,
                     childrenPadding: const EdgeInsets.only(top: 6),
-                    initiallyExpanded: isStreaming,
+                    initiallyExpanded: initiallyExpanded,
                     collapsedShape: const RoundedRectangleBorder(),
                     shape: const RoundedRectangleBorder(),
                     title: Row(
@@ -147,7 +157,7 @@ class _AssistantReasoningCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Размышление модели',
+                            'Размышление',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -223,18 +233,26 @@ class _ChatBubbleState extends State<ChatBubble> {
   int? _downloadingFileId;
   bool _isEditing = false;
 
-  String _reasoningText() {
+  String _reasoningDisplayText(String? tagFromContent) {
     final live = widget.streamingReasoning;
     if (live != null && live.trim().isNotEmpty) {
-      return live;
+      return live.trim();
     }
+    final stored = widget.message.reasoningContent?.trim() ?? '';
+    final tag = tagFromContent?.trim() ?? '';
+    return RedactedThinkingSplit.combine(stored, tag).trim();
+  }
 
-    final stored = widget.message.reasoningContent;
-    if (stored != null && stored.trim().isNotEmpty) {
-      return stored;
+  static String _copyAssistantClipboard(String visible, String reasoning) {
+    final v = visible.trim();
+    final r = reasoning.trim();
+    if (r.isEmpty) {
+      return v;
     }
-
-    return '';
+    if (v.isEmpty) {
+      return r;
+    }
+    return '$v\n\n---\nРазмышление:\n$r';
   }
 
   Future<void> _downloadSessionFile(int fileId) async {
@@ -334,12 +352,23 @@ class _ChatBubbleState extends State<ChatBubble> {
         ? width * 0.88
         : (Breakpoints.isTablet(context) ? 420.0 : 560.0);
     final semanticsRole = isUser ? 'Ваше сообщение' : 'Ответ ассистента';
-    final hasCopyableText = message.content.trim().isNotEmpty;
+    final peeledAssistant = !isUser
+        ? RedactedThinkingSplit.peel(message.content)
+        : null;
+    final assistantVisible =
+        isUser ? message.content : peeledAssistant!.$1;
+    final tagReasoningFromBody = !isUser ? peeledAssistant!.$2 : null;
+    final reasoningDisplay = !isUser
+        ? _reasoningDisplayText(tagReasoningFromBody)
+        : '';
+    final hasCopyableText = isUser
+        ? message.content.trim().isNotEmpty
+        : (assistantVisible.trim().isNotEmpty || reasoningDisplay.isNotEmpty);
     final editsTotal = widget.editsTotal;
     final editsIndex = widget.editsIndex;
     final showEditNav = widget.showEditNav;
     final sessionFileIds = !isUser && !isStreaming && widget.sessionId != null
-        ? extractSessionFileIdsFromText(message.content)
+        ? extractSessionFileIdsFromText(assistantVisible)
         : const <int>[];
     final attachmentLabel =
         message.attachmentFileName ??
@@ -358,6 +387,8 @@ class _ChatBubbleState extends State<ChatBubble> {
         widget.ragPreviewBySessionFile.containsKey(ragPreviewKey);
     final canOpenRagPreview = ragPreviewKey != null && !isStreaming;
     final messageTextColor = _messageBodyTextColor(theme.colorScheme);
+    final hasAssistantReasoning =
+        !isUser && reasoningDisplay.isNotEmpty;
 
     return Semantics(
       container: true,
@@ -370,249 +401,275 @@ class _ChatBubbleState extends State<ChatBubble> {
               : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!isUser && _reasoningText().trim().isNotEmpty)
-              _AssistantReasoningCard(
-                theme: theme,
-                text: _reasoningText(),
-                messageTextColor: messageTextColor,
-                isStreaming: isStreaming,
-                maxWidth: maxBubbleWidth,
-              ),
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 2),
-              padding: EdgeInsets.symmetric(
-                horizontal: Breakpoints.isMobile(context) ? 12 : 16,
-                vertical: Breakpoints.isMobile(context) ? 10 : 12,
-              ),
-              constraints: BoxConstraints(
-                minWidth: minBubbleWidth,
-                maxWidth: maxBubbleWidth,
-              ),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHigh,
-                borderRadius: _bubbleRadius(isUser),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (attachmentLabel != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: canOpenRagPreview
-                              ? () => _showRagPreviewForAttachment(context)
-                              : null,
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 4,
-                              horizontal: 2,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.insert_drive_file_rounded,
-                                  size: 18,
-                                  color: messageTextColor,
-                                ),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    attachmentLabel,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: messageTextColor,
-                                      decoration: canOpenRagPreview
-                                          ? TextDecoration.underline
-                                          : TextDecoration.none,
-                                      decorationStyle:
-                                          TextDecorationStyle.dotted,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+            ClipRRect(
+              borderRadius: _bubbleRadius(isUser),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                padding: EdgeInsets.symmetric(
+                  horizontal: Breakpoints.isMobile(context) ? 12 : 16,
+                  vertical: Breakpoints.isMobile(context) ? 10 : 12,
+                ),
+                constraints: BoxConstraints(
+                  minWidth: minBubbleWidth,
+                  maxWidth: maxBubbleWidth,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHigh,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (attachmentLabel != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: canOpenRagPreview
+                                ? () => _showRagPreviewForAttachment(context)
+                                : null,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                                horizontal: 2,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.insert_drive_file_rounded,
+                                    size: 18,
+                                    color: messageTextColor,
                                   ),
-                                ),
-                                if (canOpenRagPreview) ...[
-                                  const SizedBox(width: 4),
-                                  Tooltip(
-                                    message: hasRagPreviewStored
-                                        ? 'Как модель видит документ'
-                                        : 'Превью после ответа с RAG',
-                                    child: Icon(
-                                      hasRagPreviewStored
-                                          ? Icons.visibility_outlined
-                                          : Icons.visibility_off_outlined,
-                                      size: 18,
-                                      color: messageTextColor.withValues(
-                                        alpha: 0.75,
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      attachmentLabel,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: messageTextColor,
+                                        decoration: canOpenRagPreview
+                                            ? TextDecoration.underline
+                                            : TextDecoration.none,
+                                        decorationStyle:
+                                            TextDecorationStyle.dotted,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (canOpenRagPreview) ...[
+                                    const SizedBox(width: 4),
+                                    Tooltip(
+                                      message: hasRagPreviewStored
+                                          ? 'Как модель видит документ'
+                                          : 'Превью после ответа с RAG',
+                                      child: Icon(
+                                        hasRagPreviewStored
+                                            ? Icons.visibility_outlined
+                                            : Icons.visibility_off_outlined,
+                                        size: 18,
+                                        color: messageTextColor.withValues(
+                                          alpha: 0.75,
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  if (_isEditing && isUser && !isStreaming)
-                    ChatInputBar(
-                      key: ValueKey('edit-${message.id}-${message.content}'),
-                      isEnabled: widget.onEditSubmit != null,
-                      initialText: message.content,
-                      allowAttachments: false,
-                      showRetry: false,
-                      showStop: false,
-                      clearOnSubmit: false,
-                      roundedCard: true,
-                      onCancel: () {
-                        setState(() => _isEditing = false);
-                      },
-                      onSubmitText: widget.onEditSubmit == null
-                          ? null
-                          : (text) async {
-                              final raw = text;
-                              final trimmed = raw.trim();
+                    if (_isEditing && isUser && !isStreaming)
+                      ChatInputBar(
+                        key: ValueKey('edit-${message.id}-${message.content}'),
+                        isEnabled: widget.onEditSubmit != null,
+                        initialText: message.content,
+                        allowAttachments: false,
+                        showRetry: false,
+                        showStop: false,
+                        clearOnSubmit: false,
+                        roundedCard: true,
+                        onCancel: () {
+                          setState(() => _isEditing = false);
+                        },
+                        onSubmitText: widget.onEditSubmit == null
+                            ? null
+                            : (text) async {
+                                final raw = text;
+                                final trimmed = raw.trim();
 
-                              if (trimmed.isEmpty) {
-                                if (!mounted) {
+                                if (trimmed.isEmpty) {
+                                  if (!mounted) {
+                                    return;
+                                  }
+
+                                  showAppTopNotice(
+                                    'Текст не может быть пустым',
+                                    error: true,
+                                  );
                                   return;
                                 }
 
-                                showAppTopNotice(
-                                  'Текст не может быть пустым',
-                                  error: true,
-                                );
-                                return;
-                              }
-
-                              await widget.onEditSubmit!(trimmed);
-                              if (!mounted) {
-                                return;
-                              }
-                              setState(() => _isEditing = false);
-                            },
-                    )
-                  else if (message.content.isNotEmpty)
-                    isUser
-                        ? SelectableText(
-                            message.content,
-                            style: TextStyle(
-                              color: messageTextColor,
-                              fontSize: 15,
-                              height: 1.5,
-                            ),
-                          )
-                        : _assistantMessageBody(
-                            theme,
-                            messageTextColor,
-                            message.content,
+                                await widget.onEditSubmit!(trimmed);
+                                if (!mounted) {
+                                  return;
+                                }
+                                setState(() => _isEditing = false);
+                              },
+                      )
+                    else if (isUser
+                        ? message.content.isNotEmpty
+                        : (assistantVisible.trim().isNotEmpty ||
+                            reasoningDisplay.isNotEmpty))
+                      isUser
+                          ? SelectableText(
+                              message.content,
+                              style: TextStyle(
+                                color: messageTextColor,
+                                fontSize: 15,
+                                height: 1.5,
+                              ),
+                            )
+                          : (assistantVisible.trim().isNotEmpty
+                              ? _assistantMessageBody(
+                                  theme,
+                                  messageTextColor,
+                                  assistantVisible,
+                                )
+                              : const SizedBox.shrink()),
+                    if (hasAssistantReasoning) ...[
+                      if (assistantVisible.trim().isNotEmpty)
+                        Divider(
+                          height: 20,
+                          thickness: 1,
+                          color: theme.colorScheme.outlineVariant.withValues(
+                            alpha: 0.45,
                           ),
-                  if (isStreaming &&
-                      (widget.streamingStatus?.trim().isNotEmpty ?? false))
-                    Padding(
-                      padding: EdgeInsets.only(
-                        bottom: 8,
-                        top: message.content.isNotEmpty ? 8 : 0,
-                      ),
-                      child: _ToolProgressLine(
-                        text: widget.streamingStatus!.trim(),
+                        ),
+                      _AssistantReasoningCard(
+                        key: ValueKey(
+                          'assistant-reasoning-${message.id}-$isStreaming',
+                        ),
+                        theme: theme,
+                        text: reasoningDisplay,
                         messageTextColor: messageTextColor,
+                        maxWidth: maxBubbleWidth,
+                        embedded: true,
+                        initiallyExpanded: isStreaming,
                       ),
-                    ),
-                  if (isStreaming)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              color: messageTextColor.withValues(alpha: 0.75),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Обрабатываю...',
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 1.2,
-                              color: messageTextColor.withValues(alpha: 0.75),
-                            ),
-                          ),
-                        ],
+                    ],
+                    if (isStreaming &&
+                        (widget.streamingStatus?.trim().isNotEmpty ?? false))
+                      Padding(
+                        padding: EdgeInsets.only(
+                          bottom: 8,
+                          top: (isUser
+                                  ? message.content
+                                  : assistantVisible)
+                              .trim()
+                              .isNotEmpty
+                              ? 8
+                              : 0,
+                        ),
+                        child: _ToolProgressLine(
+                          text: widget.streamingStatus!.trim(),
+                          messageTextColor: messageTextColor,
+                        ),
                       ),
-                    ),
-                  if (sessionFileIds.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Файл можно скачать и открыть во внешней программе.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 1.3,
-                              color: messageTextColor.withValues(alpha: 0.72),
+                    if (isStreaming)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: messageTextColor.withValues(alpha: 0.75),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: [
-                              for (final fid in sessionFileIds)
-                                Tooltip(
-                                  message:
-                                      'Скачать артефакт с сервера (в приложении превью нет)',
-                                  child: TextButton.icon(
-                                    onPressed: _downloadingFileId != null
-                                        ? null
-                                        : () => _downloadSessionFile(fid),
-                                    icon: _downloadingFileId == fid
-                                        ? SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: messageTextColor
-                                                  .withValues(alpha: 0.85),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Обрабатываю...',
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.2,
+                                color: messageTextColor.withValues(alpha: 0.75),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (sessionFileIds.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Файл можно скачать и открыть во внешней программе.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1.3,
+                                color: messageTextColor.withValues(alpha: 0.72),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: [
+                                for (final fid in sessionFileIds)
+                                  Tooltip(
+                                    message:
+                                        'Скачать артефакт с сервера (в приложении превью нет)',
+                                    child: TextButton.icon(
+                                      onPressed: _downloadingFileId != null
+                                          ? null
+                                          : () => _downloadSessionFile(fid),
+                                      icon: _downloadingFileId == fid
+                                          ? SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: messageTextColor
+                                                    .withValues(alpha: 0.85),
+                                              ),
+                                            )
+                                          : Icon(
+                                              Icons.download_rounded,
+                                              size: 18,
+                                              color: theme.colorScheme.primary,
                                             ),
-                                          )
-                                        : Icon(
-                                            Icons.download_rounded,
-                                            size: 18,
-                                            color: theme.colorScheme.primary,
-                                          ),
-                                    label: Text(
-                                      'Файл #$fid',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: theme.colorScheme.primary,
+                                      label: Text(
+                                        'Файл #$fid',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: theme.colorScheme.primary,
+                                        ),
                                       ),
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
                                       ),
-                                      visualDensity: VisualDensity.compact,
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
-                        ],
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
             if (hasCopyableText ||
@@ -670,7 +727,14 @@ class _ChatBubbleState extends State<ChatBubble> {
                         onPressed: hasCopyableText
                             ? () async {
                                 await Clipboard.setData(
-                                  ClipboardData(text: message.content),
+                                  ClipboardData(
+                                    text: isUser
+                                        ? message.content
+                                        : _copyAssistantClipboard(
+                                            assistantVisible,
+                                            reasoningDisplay,
+                                          ),
+                                  ),
                                 );
 
                                 if (!mounted) {

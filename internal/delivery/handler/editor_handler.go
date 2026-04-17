@@ -8,7 +8,6 @@ import (
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type EditorHandler struct {
@@ -45,11 +44,11 @@ func (e *EditorHandler) Transform(ctx context.Context, req *editorpb.TransformRe
 	}
 
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "EDITOR_EMPTY_REQUEST", "пустой запрос")
 	}
 
 	if req.Text == "" {
-		return nil, status.Error(codes.InvalidArgument, "текст не предоставлен")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "EDITOR_TEXT_EMPTY", "текст не предоставлен")
 	}
 
 	ctx = rpcmeta.EnsureTraceInContext(ctx)

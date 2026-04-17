@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/mcpclient"
+	"github.com/magomedcoder/gen/pkg/logger"
 )
 
 func genMcpBuiltinTools() []domain.Tool {
@@ -36,12 +38,18 @@ func genMcpBuiltinTools() []domain.Tool {
 	}
 }
 
-func (c *ChatUseCase) maybeInjectMCPBuiltinMetaTools(genParams *domain.GenerationParams, settings *domain.ChatSessionSettings) {
-	if genParams == nil || settings == nil || !settings.MCPEnabled || len(settings.MCPServerIDs) == 0 || c.mcpServerRepo == nil {
+func (c *ChatUseCase) maybeInjectMCPBuiltinMetaTools(ctx context.Context, genParams *domain.GenerationParams, settings *domain.ChatSessionSettings, userID int) {
+	if genParams == nil || settings == nil || !settings.MCPEnabled || c.mcpServerRepo == nil {
+		return
+	}
+	effective := c.mcpEffectiveServerIDs(ctx, userID, settings)
+	if len(effective) == 0 {
 		return
 	}
 
+	logger.D("MCP meta tools: встраивание gen_mcp_* (серверов в сессии=%d)", len(effective))
 	allowed := allowedToolNameSet(genParams.Tools)
+	added := 0
 	for _, t := range genMcpBuiltinTools() {
 		n := normalizeToolName(t.Name)
 		if _, dup := allowed[n]; dup {
@@ -50,6 +58,10 @@ func (c *ChatUseCase) maybeInjectMCPBuiltinMetaTools(genParams *domain.Generatio
 
 		allowed[n] = struct{}{}
 		genParams.Tools = append(genParams.Tools, t)
+		added++
+	}
+	if added > 0 {
+		logger.I("MCP meta tools: добавлено встроенных инструментов=%d (всего tools=%d)", added, len(genParams.Tools))
 	}
 }
 
@@ -67,15 +79,14 @@ func (c *ChatUseCase) mcpServerForSession(ctx context.Context, sessionID int64, 
 		return nil, fmt.Errorf("MCP отключён для этой сессии")
 	}
 
-	allowed := slices.Contains(settings.MCPServerIDs, serverID)
-
-	if !allowed {
-		return nil, fmt.Errorf("MCP-сервер не выбран для сессии")
-	}
-
 	sess, err := c.sessionRepo.GetById(ctx, sessionID)
 	if err != nil || sess == nil {
 		return nil, fmt.Errorf("сессия не найдена")
+	}
+
+	effective := c.mcpEffectiveServerIDs(ctx, sess.UserId, settings)
+	if !slices.Contains(effective, serverID) {
+		return nil, fmt.Errorf("MCP-сервер не выбран для сессии")
 	}
 
 	srv, err := c.mcpServerRepo.GetByIDAccessible(ctx, serverID, sess.UserId)
@@ -87,10 +98,13 @@ func (c *ChatUseCase) mcpServerForSession(ctx context.Context, sessionID int64, 
 		return nil, fmt.Errorf("MCP-сервер недоступен")
 	}
 
+	logger.D("MCP mcpServerForSession: session_id=%d server_id=%d name=%q transport=%q",
+		sessionID, serverID, strings.TrimSpace(srv.Name), strings.TrimSpace(srv.Transport))
 	return srv, nil
 }
 
 func (c *ChatUseCase) toolGenMcpListResources(ctx context.Context, sessionID int64, params json.RawMessage) (string, error) {
+	logger.D("MCP tool gen_mcp_list_resources: session_id=%d params_bytes=%d", sessionID, len(params))
 	var body struct {
 		ServerID int64 `json:"server_id"`
 	}
@@ -131,10 +145,14 @@ func (c *ChatUseCase) toolGenMcpListResources(ctx context.Context, sessionID int
 	if total > mcpclient.MaxMetaListItems {
 		s += fmt.Sprintf("\n\n[GEN: показано %d из %d ресурсов]", len(list), total)
 	}
-	return mcpclient.TruncateLLMReply(s, mcpclient.MaxMetaToolReplyRunes), nil
+	out := mcpclient.TruncateLLMReply(s, mcpclient.MaxMetaToolReplyRunes)
+	logger.D("MCP tool gen_mcp_list_resources: session_id=%d server_id=%d items=%d reply_runes≈%d",
+		sessionID, body.ServerID, total, utf8.RuneCountInString(out))
+	return out, nil
 }
 
 func (c *ChatUseCase) toolGenMcpReadResource(ctx context.Context, sessionID int64, params json.RawMessage) (string, error) {
+	logger.D("MCP tool gen_mcp_read_resource: session_id=%d params_bytes=%d", sessionID, len(params))
 	var body struct {
 		ServerID int64  `json:"server_id"`
 		URI      string `json:"uri"`
@@ -152,10 +170,17 @@ func (c *ChatUseCase) toolGenMcpReadResource(ctx context.Context, sessionID int6
 		return "", err
 	}
 
-	return mcpclient.ReadResourceJSON(ctx, srv, body.URI, c.mcpToolsListCache)
+	s, err := mcpclient.ReadResourceJSON(ctx, srv, body.URI, c.mcpToolsListCache)
+	if err != nil {
+		return "", err
+	}
+	logger.D("MCP tool gen_mcp_read_resource: session_id=%d server_id=%d uri_len=%d reply_runes≈%d",
+		sessionID, body.ServerID, len(body.URI), utf8.RuneCountInString(s))
+	return s, nil
 }
 
 func (c *ChatUseCase) toolGenMcpListPrompts(ctx context.Context, sessionID int64, params json.RawMessage) (string, error) {
+	logger.D("MCP tool gen_mcp_list_prompts: session_id=%d params_bytes=%d", sessionID, len(params))
 	var body struct {
 		ServerID int64 `json:"server_id"`
 	}
@@ -197,10 +222,14 @@ func (c *ChatUseCase) toolGenMcpListPrompts(ctx context.Context, sessionID int64
 		s += fmt.Sprintf("\n\n[GEN: показано %d из %d промптов]", len(list), total)
 	}
 
-	return mcpclient.TruncateLLMReply(s, mcpclient.MaxMetaToolReplyRunes), nil
+	out := mcpclient.TruncateLLMReply(s, mcpclient.MaxMetaToolReplyRunes)
+	logger.D("MCP tool gen_mcp_list_prompts: session_id=%d server_id=%d prompts=%d reply_runes≈%d",
+		sessionID, body.ServerID, total, utf8.RuneCountInString(out))
+	return out, nil
 }
 
 func (c *ChatUseCase) toolGenMcpGetPrompt(ctx context.Context, sessionID int64, params json.RawMessage) (string, error) {
+	logger.D("MCP tool gen_mcp_get_prompt: session_id=%d params_bytes=%d", sessionID, len(params))
 	var body struct {
 		ServerID  int64             `json:"server_id"`
 		Name      string            `json:"name"`
@@ -220,17 +249,28 @@ func (c *ChatUseCase) toolGenMcpGetPrompt(ctx context.Context, sessionID int64, 
 		return "", err
 	}
 
-	return mcpclient.GetPromptText(ctx, srv, body.Name, body.Arguments, c.mcpToolsListCache)
+	s, err := mcpclient.GetPromptText(ctx, srv, body.Name, body.Arguments, c.mcpToolsListCache)
+	if err != nil {
+		return "", err
+	}
+	logger.D("MCP tool gen_mcp_get_prompt: session_id=%d server_id=%d name=%q reply_runes≈%d",
+		sessionID, body.ServerID, body.Name, utf8.RuneCountInString(s))
+	return s, nil
 }
 
 func (c *ChatUseCase) appendMCPLLMContext(ctx context.Context, msg *domain.Message, settings *domain.ChatSessionSettings, userID int) {
-	if msg == nil || settings == nil || !settings.MCPEnabled || len(settings.MCPServerIDs) == 0 || c.mcpServerRepo == nil {
+	if msg == nil || settings == nil || !settings.MCPEnabled || c.mcpServerRepo == nil {
+		return
+	}
+	effective := c.mcpEffectiveServerIDs(ctx, userID, settings)
+	if len(effective) == 0 {
 		return
 	}
 
+	logger.D("MCP appendMCPLLMContext: user_id=%d разрешённых_server_id=%d", userID, len(effective))
 	var b strings.Builder
 	b.WriteString("[MCP] В этой сессии чата включены внешние инструменты. Разрешённые server_id (используй только их):\n")
-	for _, sid := range settings.MCPServerIDs {
+	for _, sid := range effective {
 		if sid <= 0 {
 			continue
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/magomedcoder/gen/internal/config"
 	"strings"
 	"time"
@@ -18,12 +19,20 @@ import (
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 const grpcMetadataRunnerAddress = "runner-address"
 
 const getRunnersProbeTimeout = 5 * time.Second
+
+func (h *RunnerHandler) validateMCPServerFull(d *domain.MCPServer) error {
+	domain.NormalizeMCPServer(d)
+	if err := domain.ValidateMCPServerStructure(d); err != nil {
+		return err
+	}
+
+	return h.cfg.ValidateMCPServer(d)
+}
 
 type RunnerHandler struct {
 	runnerpb.UnimplementedRunnerServiceServer
@@ -129,13 +138,16 @@ func (h *RunnerHandler) CreateRunner(ctx context.Context, req *runnerpb.CreateRu
 	if err := RequireAdmin(ctx, h.authUseCase); err != nil {
 		return nil, err
 	}
+
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_EMPTY_REQUEST", "пустой запрос")
 	}
+
 	host, port, err := domain.ParseRunnerHostOrHostPort(req.GetHost(), req.GetPort())
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_INVALID_HOST_PORT", err.Error())
 	}
+
 	if _, err := h.runnerRepo.Create(ctx, req.GetName(), host, port, req.GetEnabled(), req.GetSelectedModel()); err != nil {
 		return nil, ToStatusError(codes.Internal, err)
 	}
@@ -151,16 +163,16 @@ func (h *RunnerHandler) UpdateRunner(ctx context.Context, req *runnerpb.UpdateRu
 		return nil, err
 	}
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 	host, port, err := domain.ParseRunnerHostOrHostPort(req.GetHost(), req.GetPort())
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_INVALID_HOST_PORT", err.Error())
 	}
 	prev, err := h.runnerRepo.GetByID(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "раннер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "RUNNER_NOT_FOUND", "раннер не найден")
 		}
 		return nil, ToStatusError(codes.Internal, err)
 	}
@@ -168,7 +180,7 @@ func (h *RunnerHandler) UpdateRunner(ctx context.Context, req *runnerpb.UpdateRu
 	_, err = h.runnerRepo.Update(ctx, req.GetId(), req.GetName(), host, port, req.GetEnabled(), req.GetSelectedModel())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "раннер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "RUNNER_NOT_FOUND", "раннер не найден")
 		}
 		return nil, ToStatusError(codes.Internal, err)
 	}
@@ -191,12 +203,12 @@ func (h *RunnerHandler) DeleteRunner(ctx context.Context, req *runnerpb.DeleteRu
 		return nil, err
 	}
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 	prev, err := h.runnerRepo.GetByID(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "раннер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "RUNNER_NOT_FOUND", "раннер не найден")
 		}
 		return nil, ToStatusError(codes.Internal, err)
 	}
@@ -217,18 +229,18 @@ func (h *RunnerHandler) SetRunnerEnabled(ctx context.Context, req *runnerpb.SetR
 		return nil, err
 	}
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 	before, err := h.runnerRepo.GetByID(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "раннер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "RUNNER_NOT_FOUND", "раннер не найден")
 		}
 		return nil, ToStatusError(codes.Internal, err)
 	}
 	if err := h.runnerRepo.SetEnabled(ctx, req.GetId(), req.GetEnabled()); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "раннер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "RUNNER_NOT_FOUND", "раннер не найден")
 		}
 		return nil, ToStatusError(codes.Internal, err)
 	}
@@ -254,11 +266,11 @@ func (h *RunnerHandler) GetRunnerModels(ctx context.Context, req *runnerpb.GetRu
 		return nil, err
 	}
 	if req == nil || req.GetRunnerId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 	st, ok := h.registry.GetByID(req.GetRunnerId())
 	if !ok || strings.TrimSpace(st.Address) == "" {
-		return nil, status.Error(codes.NotFound, "раннер не найден")
+		return nil, StatusErrorWithReason(codes.NotFound, "RUNNER_NOT_FOUND", "раннер не найден")
 	}
 	models, err := h.pool.GetModelsOnRunner(ctx, st.Address)
 	if err != nil {
@@ -272,18 +284,18 @@ func (h *RunnerHandler) RunnerLoadModel(ctx context.Context, req *runnerpb.Runne
 		return nil, err
 	}
 	if req == nil || req.GetRunnerId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 	model := strings.TrimSpace(req.GetModel())
 	if model == "" {
-		return nil, status.Error(codes.InvalidArgument, "укажите модель")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_MODEL_REQUIRED", "укажите модель")
 	}
 	st, ok := h.registry.GetByID(req.GetRunnerId())
 	if !ok || strings.TrimSpace(st.Address) == "" {
-		return nil, status.Error(codes.NotFound, "раннер не найден")
+		return nil, StatusErrorWithReason(codes.NotFound, "RUNNER_NOT_FOUND", "раннер не найден")
 	}
 	if !st.Enabled {
-		return nil, status.Error(codes.FailedPrecondition, "включите раннер")
+		return nil, StatusErrorWithReason(codes.FailedPrecondition, "RUNNER_MUST_BE_ENABLED", "включите раннер")
 	}
 	if err := h.pool.WarmModelOnRunner(ctx, st.Address, model); err != nil {
 		return nil, ToStatusError(codes.Internal, err)
@@ -297,11 +309,11 @@ func (h *RunnerHandler) RunnerUnloadModel(ctx context.Context, req *runnerpb.Run
 		return nil, err
 	}
 	if req == nil || req.GetRunnerId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 	st, ok := h.registry.GetByID(req.GetRunnerId())
 	if !ok || strings.TrimSpace(st.Address) == "" {
-		return nil, status.Error(codes.NotFound, "раннер не найден")
+		return nil, StatusErrorWithReason(codes.NotFound, "RUNNER_NOT_FOUND", "раннер не найден")
 	}
 	if err := h.pool.UnloadModelOnRunner(ctx, st.Address); err != nil {
 		return nil, ToStatusError(codes.Internal, err)
@@ -315,11 +327,11 @@ func (h *RunnerHandler) RunnerResetMemory(ctx context.Context, req *runnerpb.Run
 		return nil, err
 	}
 	if req == nil || req.GetRunnerId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 	st, ok := h.registry.GetByID(req.GetRunnerId())
 	if !ok || strings.TrimSpace(st.Address) == "" {
-		return nil, status.Error(codes.NotFound, "раннер не найден")
+		return nil, StatusErrorWithReason(codes.NotFound, "RUNNER_NOT_FOUND", "раннер не найден")
 	}
 	addr := strings.TrimSpace(st.Address)
 	if err := h.pool.ResetMemoryOnRunner(ctx, addr); err != nil {
@@ -335,7 +347,7 @@ func (h *RunnerHandler) GetWebSearchSettings(ctx context.Context, _ *commonpb.Em
 		return nil, err
 	}
 	if h.webSearchSettingsUC == nil {
-		return nil, status.Error(codes.Internal, "web search settings unavailable")
+		return nil, StatusErrorWithReason(codes.Internal, "RUNNER_WEB_SEARCH_UNAVAILABLE", "web search settings unavailable")
 	}
 	s, err := h.webSearchSettingsUC.Get(ctx)
 	if err != nil {
@@ -362,10 +374,10 @@ func (h *RunnerHandler) UpdateWebSearchSettings(ctx context.Context, req *runner
 		return nil, err
 	}
 	if h.webSearchSettingsUC == nil {
-		return nil, status.Error(codes.Internal, "web search settings unavailable")
+		return nil, StatusErrorWithReason(codes.Internal, "RUNNER_WEB_SEARCH_UNAVAILABLE", "web search settings unavailable")
 	}
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_EMPTY_REQUEST", "пустой запрос")
 	}
 	cur, err := h.webSearchSettingsUC.Get(ctx)
 	if err != nil {
@@ -419,12 +431,12 @@ func (h *RunnerHandler) GetWebSearchAvailability(ctx context.Context, _ *commonp
 func runnerAddressFromMetadata(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", status.Error(codes.InvalidArgument, "нужны gRPC-метаданные с ключом runner-address")
+		return "", StatusErrorWithReason(codes.InvalidArgument, "RUNNER_METADATA_MISSING", "нужны gRPC-метаданные с ключом runner-address")
 	}
 
 	vals := md.Get(grpcMetadataRunnerAddress)
 	if len(vals) == 0 || strings.TrimSpace(vals[0]) == "" {
-		return "", status.Error(codes.InvalidArgument, "метаданные runner-address обязательны (host:port gen-runner)")
+		return "", StatusErrorWithReason(codes.InvalidArgument, "RUNNER_METADATA_ADDRESS_EMPTY", "метаданные runner-address обязательны (host:port gen-runner)")
 	}
 
 	return strings.TrimSpace(vals[0]), nil
@@ -451,11 +463,11 @@ func (h *RunnerHandler) CheckConnection(ctx context.Context, _ *llmrunnerpb.Empt
 }
 
 func (h *RunnerHandler) RegisterRunnerWithToken(ctx context.Context, _ *llmrunnerpb.RunnerRegisterRequest) (*llmrunnerpb.Empty, error) {
-	return nil, status.Error(codes.FailedPrecondition, "саморегистрация отключена: добавьте раннер в админке (имя, IP, порт)")
+	return nil, StatusErrorWithReason(codes.FailedPrecondition, "RUNNER_SELF_REGISTER_DISABLED_ADD", "саморегистрация отключена: добавьте раннер в админке (имя, IP, порт)")
 }
 
 func (h *RunnerHandler) UnregisterRunnerWithToken(ctx context.Context, _ *llmrunnerpb.RunnerUnregisterRequest) (*llmrunnerpb.Empty, error) {
-	return nil, status.Error(codes.FailedPrecondition, "саморегистрация отключена: удалите раннер в админке")
+	return nil, StatusErrorWithReason(codes.FailedPrecondition, "RUNNER_SELF_REGISTER_DISABLED_REMOVE", "саморегистрация отключена: удалите раннер в админке")
 }
 
 func mapDomainMCPServerToProto(s *domain.MCPServer) *runnerpb.MCPServer {
@@ -501,12 +513,12 @@ func mapDomainMCPServerToProto(s *domain.MCPServer) *runnerpb.MCPServer {
 
 func domainMCPServerFromCreate(req *runnerpb.CreateMCPServerRequest) (*domain.MCPServer, error) {
 	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_EMPTY_REQUEST", "пустой запрос")
 	}
 
 	argsB, err := json.Marshal(req.GetArgs())
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "args: "+err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_ARGS_JSON_INVALID", "args: "+err.Error())
 	}
 
 	env := req.GetEnv()
@@ -516,7 +528,7 @@ func domainMCPServerFromCreate(req *runnerpb.CreateMCPServerRequest) (*domain.MC
 
 	envB, err := json.Marshal(env)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "env: "+err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_ENV_JSON_INVALID", "env: "+err.Error())
 	}
 
 	headers := req.GetHeaders()
@@ -526,7 +538,7 @@ func domainMCPServerFromCreate(req *runnerpb.CreateMCPServerRequest) (*domain.MC
 
 	headersB, err := json.Marshal(headers)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "headers: "+err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_HEADERS_JSON_INVALID", "headers: "+err.Error())
 	}
 
 	return &domain.MCPServer{
@@ -548,7 +560,7 @@ func (h *RunnerHandler) ListMCPServers(ctx context.Context, _ *commonpb.Empty) (
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	list, err := h.mcpServersUC.ListGlobal(ctx)
@@ -570,17 +582,17 @@ func (h *RunnerHandler) GetMCPServer(ctx context.Context, req *runnerpb.GetMCPSe
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 
 	s, err := h.mcpServersUC.GetGlobal(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -595,7 +607,7 @@ func (h *RunnerHandler) CreateMCPServer(ctx context.Context, req *runnerpb.Creat
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	d, err := domainMCPServerFromCreate(req)
@@ -603,8 +615,8 @@ func (h *RunnerHandler) CreateMCPServer(ctx context.Context, req *runnerpb.Creat
 		return nil, err
 	}
 
-	if err := h.cfg.ValidateMCPServer(d); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+	if err := h.validateMCPServerFull(d); err != nil {
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_VALIDATION_INVALID_ARGUMENT", err.Error())
 	}
 
 	s, err := h.mcpServersUC.CreateGlobal(ctx, d)
@@ -629,17 +641,17 @@ func (h *RunnerHandler) UpdateMCPServer(ctx context.Context, req *runnerpb.Updat
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 
 	prev, err := h.mcpServersUC.GetGlobal(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 		return nil, ToStatusError(codes.Internal, err)
 	}
@@ -649,7 +661,7 @@ func (h *RunnerHandler) UpdateMCPServer(ctx context.Context, req *runnerpb.Updat
 	_ = json.Unmarshal([]byte(prev.HeadersJSON), &prevHdr)
 	argsB, err := json.Marshal(req.GetArgs())
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "args: "+err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_ARGS_JSON_INVALID", "args: "+err.Error())
 	}
 
 	env := req.GetEnv()
@@ -660,7 +672,7 @@ func (h *RunnerHandler) UpdateMCPServer(ctx context.Context, req *runnerpb.Updat
 	env = mergeMaskedSecretMaps(env, prevEnv)
 	envB, err := json.Marshal(env)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "env: "+err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_ENV_JSON_INVALID", "env: "+err.Error())
 	}
 
 	headers := req.GetHeaders()
@@ -671,7 +683,7 @@ func (h *RunnerHandler) UpdateMCPServer(ctx context.Context, req *runnerpb.Updat
 	headers = mergeMaskedSecretMaps(headers, prevHdr)
 	headersB, err := json.Marshal(headers)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "headers: "+err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_HEADERS_JSON_INVALID", "headers: "+err.Error())
 	}
 
 	d := &domain.MCPServer{
@@ -687,13 +699,13 @@ func (h *RunnerHandler) UpdateMCPServer(ctx context.Context, req *runnerpb.Updat
 		TimeoutSeconds: req.GetTimeoutSeconds(),
 	}
 
-	if err := h.cfg.ValidateMCPServer(d); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+	if err := h.validateMCPServerFull(d); err != nil {
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_VALIDATION_INVALID_ARGUMENT", err.Error())
 	}
 
 	if err := h.mcpServersUC.UpdateGlobal(ctx, d); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -721,17 +733,17 @@ func (h *RunnerHandler) DeleteMCPServer(ctx context.Context, req *runnerpb.Delet
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 
 	id := req.GetId()
 	if err := h.mcpServersUC.DeleteGlobal(ctx, id); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -749,7 +761,7 @@ func (h *RunnerHandler) ListUserMCPServers(ctx context.Context, _ *commonpb.Empt
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	list, err := h.mcpServersUC.ListForUser(ctx, user.Id)
@@ -772,17 +784,17 @@ func (h *RunnerHandler) GetUserMCPServer(ctx context.Context, req *runnerpb.GetM
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 
 	s, err := h.mcpServersUC.GetForUser(ctx, req.GetId(), user.Id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -798,7 +810,7 @@ func (h *RunnerHandler) CreateUserMCPServer(ctx context.Context, req *runnerpb.C
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	d, err := domainMCPServerFromCreate(req)
@@ -806,8 +818,8 @@ func (h *RunnerHandler) CreateUserMCPServer(ctx context.Context, req *runnerpb.C
 		return nil, err
 	}
 
-	if err := h.cfg.ValidateMCPServer(d); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+	if err := h.validateMCPServerFull(d); err != nil {
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_VALIDATION_INVALID_ARGUMENT", err.Error())
 	}
 
 	if max := h.cfg.MCP.MaxMCPServersPerUser; max > 0 {
@@ -817,8 +829,8 @@ func (h *RunnerHandler) CreateUserMCPServer(ctx context.Context, req *runnerpb.C
 		}
 
 		if n >= int64(max) {
-			return nil, status.Errorf(codes.ResourceExhausted,
-				"достигнут лимит личных MCP-серверов (%d); удалите сервер или увеличьте mcp.max_mcp_servers_per_user", max)
+			return nil, StatusErrorWithReason(codes.ResourceExhausted, "MCP_USER_SERVER_LIMIT_EXCEEDED",
+				fmt.Sprintf("достигнут лимит личных MCP-серверов (%d); удалите сервер или увеличьте mcp.max_mcp_servers_per_user", max))
 		}
 	}
 
@@ -840,24 +852,24 @@ func (h *RunnerHandler) UpdateUserMCPServer(ctx context.Context, req *runnerpb.U
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 
 	prev, err := h.mcpServersUC.GetForUser(ctx, req.GetId(), user.Id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
 	}
 
 	if prev.UserID == nil || *prev.UserID != user.Id {
-		return nil, status.Error(codes.PermissionDenied, "можно редактировать только свои MCP-серверы")
+		return nil, StatusErrorWithReason(codes.PermissionDenied, "MCP_EDIT_OWNED_ONLY", "можно редактировать только свои MCP-серверы")
 	}
 
 	var prevEnv, prevHdr map[string]string
@@ -865,7 +877,7 @@ func (h *RunnerHandler) UpdateUserMCPServer(ctx context.Context, req *runnerpb.U
 	_ = json.Unmarshal([]byte(prev.HeadersJSON), &prevHdr)
 	argsB, err := json.Marshal(req.GetArgs())
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "args: "+err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_ARGS_JSON_INVALID", "args: "+err.Error())
 	}
 
 	env := req.GetEnv()
@@ -876,7 +888,7 @@ func (h *RunnerHandler) UpdateUserMCPServer(ctx context.Context, req *runnerpb.U
 	env = mergeMaskedSecretMaps(env, prevEnv)
 	envB, err := json.Marshal(env)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "env: "+err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_ENV_JSON_INVALID", "env: "+err.Error())
 	}
 
 	headers := req.GetHeaders()
@@ -887,7 +899,7 @@ func (h *RunnerHandler) UpdateUserMCPServer(ctx context.Context, req *runnerpb.U
 	headers = mergeMaskedSecretMaps(headers, prevHdr)
 	headersB, err := json.Marshal(headers)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "headers: "+err.Error())
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_HEADERS_JSON_INVALID", "headers: "+err.Error())
 	}
 
 	d := &domain.MCPServer{
@@ -903,13 +915,13 @@ func (h *RunnerHandler) UpdateUserMCPServer(ctx context.Context, req *runnerpb.U
 		TimeoutSeconds: req.GetTimeoutSeconds(),
 	}
 
-	if err := h.cfg.ValidateMCPServer(d); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+	if err := h.validateMCPServerFull(d); err != nil {
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "MCP_VALIDATION_INVALID_ARGUMENT", err.Error())
 	}
 
 	if err := h.mcpServersUC.UpdateOwned(ctx, d, user.Id); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -933,30 +945,30 @@ func (h *RunnerHandler) DeleteUserMCPServer(ctx context.Context, req *runnerpb.D
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 
 	prev, err := h.mcpServersUC.GetForUser(ctx, req.GetId(), user.Id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
 	}
 
 	if prev.UserID == nil || *prev.UserID != user.Id {
-		return nil, status.Error(codes.PermissionDenied, "можно удалять только свои MCP-серверы")
+		return nil, StatusErrorWithReason(codes.PermissionDenied, "MCP_DELETE_OWNED_ONLY", "можно удалять только свои MCP-серверы")
 	}
 
 	id := req.GetId()
 	if err := h.mcpServersUC.DeleteOwned(ctx, id, user.Id); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -971,10 +983,11 @@ func (h *RunnerHandler) probeMCPServerToResult(ctx context.Context, s *domain.MC
 	if !s.Enabled {
 		return &runnerpb.MCPProbeResult{Ok: false, ErrorMessage: "сервер отключён"}
 	}
-	if err := h.cfg.ValidateMCPServer(s); err != nil {
+	d := *s
+	if err := h.validateMCPServerFull(&d); err != nil {
 		return &runnerpb.MCPProbeResult{Ok: false, ErrorMessage: err.Error()}
 	}
-	pr, err := mcpclient.ProbeServer(ctx, s, h.mcpToolsListCache)
+	pr, err := mcpclient.ProbeServer(ctx, &d, h.mcpToolsListCache)
 	if err != nil {
 		return &runnerpb.MCPProbeResult{Ok: false, ErrorMessage: err.Error()}
 	}
@@ -997,17 +1010,17 @@ func (h *RunnerHandler) ProbeUserMCPServer(ctx context.Context, req *runnerpb.Ge
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 
 	s, err := h.mcpServersUC.GetForUser(ctx, req.GetId(), user.Id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)
@@ -1022,17 +1035,17 @@ func (h *RunnerHandler) ProbeMCPServer(ctx context.Context, req *runnerpb.GetMCP
 	}
 
 	if h.mcpServersUC == nil {
-		return nil, status.Error(codes.Internal, "MCP недоступен")
+		return nil, StatusErrorWithReason(codes.Internal, "MCP_SERVICE_UNAVAILABLE", "MCP недоступен")
 	}
 
 	if req == nil || req.GetId() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+		return nil, StatusErrorWithReason(codes.InvalidArgument, "RUNNER_POSITIVE_ID_REQUIRED", "нужен положительный id")
 	}
 
 	s, err := h.mcpServersUC.GetGlobal(ctx, req.GetId())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+			return nil, StatusErrorWithReason(codes.NotFound, "MCP_SERVER_NOT_FOUND", "MCP-сервер не найден")
 		}
 
 		return nil, ToStatusError(codes.Internal, err)

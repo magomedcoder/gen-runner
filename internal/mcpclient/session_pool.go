@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/pkg/logger"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -79,6 +80,7 @@ func (p *httpSessionPool) run(ctx context.Context, srv *domain.MCPServer, notify
 	for attempt := 0; attempt < 2; attempt++ {
 		now := time.Now()
 		if pc.session != nil && (pc.fp != fp || now.Sub(pc.lastUsed) > maxIdle) {
+			logger.D("MCP http_pool: server_id=%d закрытие сессии (fp_changed=%v idle_expired=%v)", srv.ID, pc.fp != fp, now.Sub(pc.lastUsed) > maxIdle)
 			_ = pc.session.Close()
 			pc.session = nil
 		}
@@ -87,9 +89,11 @@ func (p *httpSessionPool) run(ctx context.Context, srv *domain.MCPServer, notify
 		opCtx, cancel := context.WithTimeout(ctx, timeoutFor(srv))
 
 		if pc.session == nil {
+			logger.D("MCP http_pool: server_id=%d name=%q новое_подключение fp=%.12s…", srv.ID, strings.TrimSpace(srv.Name), fp)
 			transport, err := transportFor(ctx, srv)
 			if err != nil {
 				cancel()
+				logger.W("MCP http_pool: server_id=%d transport err=%v", srv.ID, err)
 				return err
 			}
 			opts := buildMCPClientOptions(ctx, srv, notify)
@@ -100,23 +104,30 @@ func (p *httpSessionPool) run(ctx context.Context, srv *domain.MCPServer, notify
 			session, err := cli.Connect(opCtx, transport, nil)
 			if err != nil {
 				cancel()
+				logger.W("MCP http_pool: server_id=%d connect err=%v", srv.ID, err)
 				return err
 			}
 			pc.session = session
 			pc.fp = fp
+			logger.D("MCP http_pool: server_id=%d connect ok", srv.ID)
+		} else {
+			logger.D("MCP http_pool: server_id=%d reuse_session=true", srv.ID)
 		}
 
 		err := fn(opCtx, pc.session)
 		cancel()
 		pc.lastUsed = time.Now()
 		if err == nil {
+			logger.D("MCP http_pool: server_id=%d операция_ok", srv.ID)
 			return nil
 		}
 
+		logger.W("MCP http_pool: server_id=%d операция_err=%v reused=%v", srv.ID, err, reusedSession)
 		_ = pc.session.Close()
 		pc.session = nil
 
 		if attempt == 0 && reusedSession && shouldRetryPooledSessionError(ctx, err) {
+			logger.D("MCP http_pool: server_id=%d retry_после_ошибки_пула", srv.ID)
 			recordPooledSessionRetry()
 			continue
 		}
@@ -143,6 +154,7 @@ func (p *httpSessionPool) closeServer(id int64) {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
 	if pc.session != nil {
+		logger.D("MCP http_pool closeServer: server_id=%d", id)
 		_ = pc.session.Close()
 		pc.session = nil
 	}

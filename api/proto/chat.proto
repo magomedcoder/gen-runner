@@ -96,6 +96,33 @@ enum StreamChunkKind {
   STREAM_CHUNK_KIND_RAG_META = 4;
 }
 
+message AssistantStreamFinal {
+  int64 assistant_message_id = 1;
+  string text = 2;
+  string reasoning = 3;
+}
+
+message RagChunkPreview {
+  int32 chunk_index = 1;
+  double score = 2;
+  bool is_neighbor = 3;
+  string heading_path = 4;
+  int32 pdf_page_start = 5;
+  int32 pdf_page_end = 6;
+  string excerpt = 7;
+}
+
+message RagSourcesPayload {
+  string mode = 1;
+  int64 file_id = 2;
+  int32 top_k = 3;
+  int32 neighbor_window = 4;
+  int32 deep_rag_map_calls = 5;
+  int32 dropped_by_budget = 6;
+  string full_document_excerpt = 7;
+  repeated RagChunkPreview chunks = 8;
+}
+
 message ChatResponse {
   int64 id = 1;
   string content = 2;
@@ -106,6 +133,8 @@ message ChatResponse {
   optional string tool_name = 7;
   optional string rag_mode = 8;
   optional string rag_sources_json = 9;
+  optional AssistantStreamFinal assistant_final = 10;
+  optional RagSourcesPayload rag_sources = 11;
 }
 
 message SendMessageRequest {

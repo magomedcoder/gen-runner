@@ -8,23 +8,22 @@ import (
 	"github.com/magomedcoder/gen/internal/usecase"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 func extractToken(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", status.Error(codes.Unauthenticated, "метаданные не предоставлены")
+		return "", StatusErrorWithReason(codes.Unauthenticated, "AUTH_METADATA_MISSING", "метаданные не предоставлены")
 	}
 
 	authHeaders := md.Get("authorization")
 	if len(authHeaders) == 0 {
-		return "", status.Error(codes.Unauthenticated, "заголовок авторизации не предоставлен")
+		return "", StatusErrorWithReason(codes.Unauthenticated, "AUTH_AUTHORIZATION_HEADER_MISSING", "заголовок авторизации не предоставлен")
 	}
 
 	authHeader := authHeaders[0]
 	if !strings.HasPrefix(authHeader, "Bearer ") {
-		return "", status.Error(codes.Unauthenticated, "неверный формат заголовка авторизации")
+		return "", StatusErrorWithReason(codes.Unauthenticated, "AUTH_BEARER_FORMAT_INVALID", "неверный формат заголовка авторизации")
 	}
 
 	return strings.TrimPrefix(authHeader, "Bearer "), nil
@@ -38,7 +37,7 @@ func GetUserFromContext(ctx context.Context, authUseCase *usecase.AuthUseCase) (
 
 	user, err := authUseCase.ValidateToken(ctx, token)
 	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, err.Error())
+		return nil, StatusErrorWithReason(codes.Unauthenticated, "AUTH_TOKEN_INVALID", err.Error())
 	}
 
 	return user, nil
@@ -51,7 +50,7 @@ func RequireAdmin(ctx context.Context, authUseCase *usecase.AuthUseCase) error {
 	}
 
 	if user.Role != domain.UserRoleAdmin {
-		return status.Error(codes.PermissionDenied, "доступ разрешён только администратору")
+		return StatusErrorWithReason(codes.PermissionDenied, "AUTH_ADMIN_REQUIRED", "доступ разрешён только администратору")
 	}
 
 	return nil

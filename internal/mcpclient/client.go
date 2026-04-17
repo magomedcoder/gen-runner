@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/pkg/logger"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -107,6 +108,9 @@ func transportFor(ctx context.Context, srv *domain.MCPServer) (mcp.Transport, er
 	}
 
 	tr := strings.ToLower(strings.TrimSpace(srv.Transport))
+
+	logger.D("MCP transport: server_id=%d name=%q transport=%s timeout_sec=%d", srv.ID, strings.TrimSpace(srv.Name), tr, srv.TimeoutSeconds)
+
 	headers, err := parseStringMapJSON(srv.HeadersJSON)
 	if err != nil {
 		return nil, fmt.Errorf("headers_json: %w", err)
@@ -122,6 +126,7 @@ func transportFor(ctx context.Context, srv *domain.MCPServer) (mcp.Transport, er
 		}
 
 		if err := validateStdioPolicy(srv); err != nil {
+			logger.W("MCP transport stdio: server_id=%d policy: %v", srv.ID, err)
 			return nil, err
 		}
 
@@ -137,6 +142,7 @@ func transportFor(ctx context.Context, srv *domain.MCPServer) (mcp.Transport, er
 
 		cmd := exec.CommandContext(ctx, cmdPath, args...)
 		cmd.Env = mergeEnv(os.Environ(), envExtra)
+		logger.D("MCP transport stdio: server_id=%d command=%q args_count=%d env_extra_keys=%d", srv.ID, cmdPath, len(args), len(envExtra))
 		return &mcp.CommandTransport{Command: cmd}, nil
 
 	case "sse":
@@ -146,9 +152,11 @@ func transportFor(ctx context.Context, srv *domain.MCPServer) (mcp.Transport, er
 		}
 
 		if err := validateHTTPMCPURL("sse", raw); err != nil {
+			logger.W("MCP transport sse: server_id=%d url invalid: %v", srv.ID, err)
 			return nil, err
 		}
 
+		logger.D("MCP transport sse: server_id=%d endpoint_host_ok=true", srv.ID)
 		t := &mcp.SSEClientTransport{Endpoint: raw}
 		if hc != nil {
 			t.HTTPClient = hc
@@ -163,9 +171,11 @@ func transportFor(ctx context.Context, srv *domain.MCPServer) (mcp.Transport, er
 		}
 
 		if err := validateHTTPMCPURL("streamable", raw); err != nil {
+			logger.W("MCP transport streamable: server_id=%d url invalid: %v", srv.ID, err)
 			return nil, err
 		}
 
+		logger.D("MCP transport streamable: server_id=%d endpoint_host_ok=true", srv.ID)
 		t := &mcp.StreamableClientTransport{
 			Endpoint:             raw,
 			DisableStandaloneSSE: true,
@@ -177,6 +187,7 @@ func transportFor(ctx context.Context, srv *domain.MCPServer) (mcp.Transport, er
 		return t, nil
 
 	default:
+		logger.W("MCP transport: server_id=%d неизвестный transport %q", srv.ID, tr)
 		return nil, fmt.Errorf("неизвестный transport %q", tr)
 	}
 }
@@ -225,6 +236,9 @@ func buildMCPClientOptions(ctx context.Context, srv *domain.MCPServer, notify *T
 
 	if LogServerMessages() && srv != nil {
 		opts.LoggingMessageHandler = loggingMessageHandlerForServer(strings.TrimSpace(srv.Name), srv.ID)
+		logger.D("MCP client options: server_id=%d roots=%v sampling=%v log_server_messages=true list_changed_handlers=%v", srv.ID, len(rootsForSession()) > 0, samplingClientOptions(ctx) != nil, notify != nil && srv.ID > 0)
+	} else if srv != nil {
+		logger.D("MCP client options: server_id=%d roots=%v sampling=%v log_server_messages=false list_changed_handlers=%v", srv.ID, len(rootsForSession()) > 0, samplingClientOptions(ctx) != nil, notify != nil && srv.ID > 0)
 	}
 
 	return opts
@@ -247,10 +261,14 @@ func withEphemeralSession(ctx context.Context, srv *domain.MCPServer, notify *To
 
 	session, err := cli.Connect(tctx, transport, nil)
 	if err != nil {
+		logger.W("MCP connect (ephemeral): server_id=%d name=%q err=%v", srv.ID, strings.TrimSpace(srv.Name), err)
 		return err
 	}
+
+	logger.D("MCP connect (ephemeral): server_id=%d name=%q ok", srv.ID, strings.TrimSpace(srv.Name))
 	defer func() {
 		_ = session.Close()
+		logger.D("MCP session close (ephemeral): server_id=%d", srv.ID)
 	}()
 
 	return fn(tctx, session)
@@ -258,9 +276,11 @@ func withEphemeralSession(ctx context.Context, srv *domain.MCPServer, notify *To
 
 func withSession(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCache, fn func(context.Context, *mcp.ClientSession) error) error {
 	if useHTTPSessionPool(ctx, srv) {
+		logger.D("MCP withSession: server_id=%d режим=http_pool reuse=%v", srv.ID, httpReuseSessions.Load())
 		return globalHTTPPool.run(ctx, srv, notify, fn)
 	}
 
+	logger.D("MCP withSession: server_id=%d режим=ephemeral", srv.ID)
 	return withEphemeralSession(ctx, srv, notify, fn)
 }
 
@@ -292,6 +312,7 @@ func listTools(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCach
 	err := withSession(ctx, srv, notify, func(cctx context.Context, session *mcp.ClientSession) error {
 		res, err := session.ListTools(cctx, &mcp.ListToolsParams{})
 		if err != nil {
+			logger.W("MCP listTools: server_id=%d name=%q err=%v", srv.ID, strings.TrimSpace(srv.Name), err)
 			return err
 		}
 
@@ -306,6 +327,15 @@ func listTools(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCach
 				ParametersJSON: inputSchemaToParametersJSON(t.InputSchema),
 			})
 		}
+
+		sid := int64(0)
+		snm := ""
+		if srv != nil {
+			sid = srv.ID
+			snm = strings.TrimSpace(srv.Name)
+		}
+
+		logger.D("MCP listTools: server_id=%d name=%q объявлено_инструментов=%d", sid, snm, len(out))
 
 		return nil
 	})
@@ -331,6 +361,8 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 		return "", errors.New("пустое имя инструмента MCP")
 	}
 
+	argBytes := len(arguments)
+
 	var nc *ToolsListCache
 	if len(notify) > 0 {
 		nc = notify[0]
@@ -342,6 +374,8 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 	if callToolAllowsTransportRetry(mcpToolName) {
 		attempts = 2
 	}
+
+	logger.D("MCP CallTool: server_id=%d name=%q tool=%q args_json_bytes=%d attempts_max=%d pool=%v", serverID, strings.TrimSpace(srv.Name), mcpToolName, argBytes, attempts, useHTTPSessionPool(ctx, srv))
 
 	var err error
 	for attempt := 0; attempt < attempts; attempt++ {
@@ -376,23 +410,27 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 			break
 		}
 		if attempt < attempts-1 && isRetryableTransportError(ctx, err) {
+			logger.W("MCP CallTool: server_id=%d tool=%q transport_retry attempt=%d/%d err=%v", serverID, mcpToolName, attempt+1, attempts, err)
 			recordCallToolRetry()
 			continue
 		}
 	}
 
 	if err != nil {
+		logger.W("MCP CallTool: server_id=%d tool=%q итог=transport_err err=%v", serverID, mcpToolName, err)
 		recordCallToolTransportErr()
 		recordCallToolServer(serverID, "transport_err")
 		return "", err
 	}
 
 	if callErr != nil {
+		logger.W("MCP CallTool: server_id=%d tool=%q итог=mcp_is_error длина_ответа=%d", serverID, mcpToolName, len(result))
 		recordCallToolMCPError()
 		recordCallToolServer(serverID, "mcp_error")
 		return result, callErr
 	}
 
+	logger.D("MCP CallTool: server_id=%d tool=%q итог=ok длина_ответа=%d", serverID, mcpToolName, len(result))
 	recordCallToolOK()
 	recordCallToolServer(serverID, "ok")
 	return result, nil
