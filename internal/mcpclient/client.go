@@ -310,22 +310,35 @@ func ListTools(ctx context.Context, srv *domain.MCPServer) ([]DeclaredTool, erro
 func listTools(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCache) ([]DeclaredTool, error) {
 	var out []DeclaredTool
 	err := withSession(ctx, srv, notify, func(cctx context.Context, session *mcp.ClientSession) error {
-		res, err := session.ListTools(cctx, &mcp.ListToolsParams{})
-		if err != nil {
-			logger.W("MCP listTools: server_id=%d name=%q err=%v", srv.ID, strings.TrimSpace(srv.Name), err)
-			return err
-		}
-
-		for _, t := range res.Tools {
-			if t == nil || strings.TrimSpace(t.Name) == "" {
-				continue
+		var cursor string
+		for {
+			params := &mcp.ListToolsParams{}
+			if cursor != "" {
+				params.Cursor = cursor
 			}
 
-			out = append(out, DeclaredTool{
-				Name:           t.Name,
-				Description:    strings.TrimSpace(t.Description),
-				ParametersJSON: inputSchemaToParametersJSON(t.InputSchema),
-			})
+			res, err := session.ListTools(cctx, params)
+			if err != nil {
+				logger.W("MCP listTools: server_id=%d name=%q err=%v", srv.ID, strings.TrimSpace(srv.Name), err)
+				return err
+			}
+
+			for _, t := range res.Tools {
+				if t == nil || strings.TrimSpace(t.Name) == "" {
+					continue
+				}
+
+				out = append(out, DeclaredTool{
+					Name:           t.Name,
+					Description:    strings.TrimSpace(t.Description),
+					ParametersJSON: inputSchemaToParametersJSON(t.InputSchema),
+				})
+			}
+
+			cursor = strings.TrimSpace(res.NextCursor)
+			if cursor == "" {
+				break
+			}
 		}
 
 		sid := int64(0)

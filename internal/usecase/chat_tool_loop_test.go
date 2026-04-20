@@ -77,6 +77,30 @@ func TestParseCohereActionList_legacyNameArguments(t *testing.T) {
 	}
 }
 
+func TestParseCohereActionList_legacyToolArguments(t *testing.T) {
+	legacy := `{"tool":"b24_get_task","arguments":{"task_id":1001}}`
+	rows, err := parseCohereActionList(legacy)
+	if err != nil || len(rows) != 1 || rows[0].ToolName != "b24_get_task" {
+		t.Fatalf("rows=%+v err=%v", rows, err)
+	}
+
+	if string(rows[0].Parameters) != `{"task_id":1001}` {
+		t.Fatalf("unexpected arguments: %s", string(rows[0].Parameters))
+	}
+}
+
+func TestParseCohereActionList_StringifiedArgumentsJSON(t *testing.T) {
+	legacy := `{"tool":"b24_get_task","arguments":"{\"task_id\":1001}"}`
+	rows, err := parseCohereActionList(legacy)
+	if err != nil || len(rows) != 1 || rows[0].ToolName != "b24_get_task" {
+		t.Fatalf("rows=%+v err=%v", rows, err)
+	}
+
+	if string(rows[0].Parameters) != `{"task_id":1001}` {
+		t.Fatalf("unexpected normalized arguments: %s", string(rows[0].Parameters))
+	}
+}
+
 func TestExtractToolActionBlob_leadingLegacyObject(t *testing.T) {
 	text := `{"name":"build_docx","arguments":{"spec_json":"{}"}}`
 	blob := extractToolActionBlob(text)
@@ -163,6 +187,64 @@ func TestStreamToolRoundComplete(t *testing.T) {
 	streamToolRoundComplete(send, 9, true, "raw", "short")
 	if len(chunks) != 1 || chunks[0].MessageID != 9 || chunks[0].Text != "short" {
 		t.Fatalf("stream diff: %+v", chunks)
+	}
+}
+
+func TestMaxToolInvocationRoundsDefaultsAndClamp(t *testing.T) {
+	if got := maxToolInvocationRounds(nil); got != defaultToolLoopRounds {
+		t.Fatalf("default rounds mismatch: got=%d want=%d", got, defaultToolLoopRounds)
+	}
+}
+
+func TestResolveExecutableToolCallsUsesResolvedAliases(t *testing.T) {
+	alias := "mcp_9_h70696e67"
+	gp := &domain.GenerationParams{
+		Tools: []domain.Tool{
+			{Name: alias},
+		},
+	}
+
+	rows := []cohereActionRow{
+		{
+			ToolName:   "ping",
+			Parameters: []byte(`{"x":1}`),
+		},
+	}
+
+	out, err := resolveExecutableToolCalls(gp, rows)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(out) != 1 {
+		t.Fatalf("unexpected calls count: %d", len(out))
+	}
+
+	if out[0].RequestedName != "ping" {
+		t.Fatalf("requested name mismatch: %q", out[0].RequestedName)
+	}
+
+	if out[0].ResolvedName != alias {
+		t.Fatalf("resolved name mismatch: got=%q want=%q", out[0].ResolvedName, alias)
+	}
+}
+
+func TestResolveExecutableToolCallsRejectsUndeclared(t *testing.T) {
+	gp := &domain.GenerationParams{
+		Tools: []domain.Tool{
+			{Name: "web_search"},
+		},
+	}
+
+	_, err := resolveExecutableToolCalls(gp, []cohereActionRow{
+		{
+			ToolName:   "not_declared",
+			Parameters: []byte(`{}`),
+		},
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "не объявлен") {
+		t.Fatalf("expected undeclared error, got: %v", err)
 	}
 }
 

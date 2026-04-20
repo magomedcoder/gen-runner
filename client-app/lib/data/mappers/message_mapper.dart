@@ -17,8 +17,10 @@ abstract class MessageMapper {
         return MessageRole.user;
       case 'assistant':
         return MessageRole.assistant;
+      case 'tool':
+        return MessageRole.tool;
       default:
-        return MessageRole.user;
+        return MessageRole.assistant;
     }
   }
 
@@ -56,6 +58,9 @@ abstract class MessageMapper {
           ? [proto.attachmentFileId.toInt()]
           : const [],
       reasoningContent: reasoningFromTags,
+      toolCallId: proto.hasToolCallId() ? proto.toolCallId : null,
+      toolName: proto.hasToolName() ? proto.toolName : null,
+      toolCallsJson: proto.hasToolCallsJson() ? proto.toolCallsJson : null,
       useFileRag: false,
       fileRagTopK: 0,
       fileRagEmbedModel: '',

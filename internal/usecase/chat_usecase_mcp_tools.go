@@ -33,7 +33,6 @@ func (c *ChatUseCase) maybeInjectWebSearchTool(ctx context.Context, genParams *d
 func (c *ChatUseCase) injectWebSearchAndMCP(ctx context.Context, genParams *domain.GenerationParams, settings *domain.ChatSessionSettings, userID int, sessionID int64) {
 	c.maybeInjectWebSearchTool(ctx, genParams, settings)
 	c.maybeInjectMCPTools(ctx, genParams, settings, userID)
-	c.maybeInjectMCPBuiltinMetaTools(ctx, genParams, settings, userID)
 	logLLMVisibleToolCatalog(sessionID, userID, genParams, settings)
 }
 
@@ -55,7 +54,7 @@ func logLLMVisibleToolCatalog(sessionID int64, userID int, genParams *domain.Gen
 	}
 
 	names := make([]string, 0, n)
-	var nWebSearch, nGenMcp, nMcpAlias, nOther int
+	var nWebSearch, nMcpAlias, nOther int
 	for _, t := range genParams.Tools {
 		raw := strings.TrimSpace(t.Name)
 		if raw == "" {
@@ -67,8 +66,6 @@ func logLLMVisibleToolCatalog(sessionID int64, userID int, genParams *domain.Gen
 		switch {
 		case low == "web_search":
 			nWebSearch++
-		case strings.HasPrefix(low, "gen_mcp_"):
-			nGenMcp++
 		case strings.HasPrefix(low, "mcp_"):
 			nMcpAlias++
 		default:
@@ -92,23 +89,48 @@ func logLLMVisibleToolCatalog(sessionID int64, userID int, genParams *domain.Gen
 		mcpIDs = settings.MCPServerIDs
 	}
 
-	logger.I("LLM tool catalog: session_id=%d user_id=%d count=%d web_search=%d gen_mcp_*=%d mcp_*=%d прочие=%d truncated=%t session web_search=%t mcp=%t mcp_server_ids=%v", sessionID, userID, n, nWebSearch, nGenMcp, nMcpAlias, nOther, truncated, ws, mcp, mcpIDs)
+	logger.I("LLM tool catalog: session_id=%d user_id=%d count=%d web_search=%d mcp_*=%d прочие=%d truncated=%t session web_search=%t mcp=%t mcp_server_ids=%v", sessionID, userID, n, nWebSearch, nMcpAlias, nOther, truncated, ws, mcp, mcpIDs)
 	logger.I("LLM tool catalog: session_id=%d names: %s", sessionID, list)
 }
 
-func (c *ChatUseCase) mcpEffectiveServerIDs(_ context.Context, _ int, settings *domain.ChatSessionSettings) []int64 {
+func (c *ChatUseCase) mcpEffectiveServerIDs(ctx context.Context, userID int, settings *domain.ChatSessionSettings) []int64 {
 	if settings == nil || !settings.MCPEnabled || c.mcpServerRepo == nil {
 		return nil
 	}
 
 	explicit := settings.MCPServerIDs
-	if len(explicit) == 0 {
-		return nil
+	var source []int64
+	if len(explicit) > 0 {
+		source = explicit
+	} else {
+		if userID <= 0 {
+			return nil
+		}
+
+		list, err := c.mcpServerRepo.ListForUser(ctx, userID)
+		if err != nil {
+			logger.W("MCP mcpEffectiveServerIDs: ListForUser user_id=%d: %v", userID, err)
+			return nil
+		}
+
+		for _, srv := range list {
+			if srv == nil || !srv.Enabled || srv.ID <= 0 {
+				continue
+			}
+
+			source = append(source, srv.ID)
+		}
+
+		if len(source) == 0 {
+			return nil
+		}
+
+		logger.D("MCP mcpEffectiveServerIDs: пустой mcp_server_ids — используем все доступные пользователю включённые серверы (count=%d)", len(source))
 	}
 
-	out := make([]int64, 0, len(explicit))
+	out := make([]int64, 0, len(source))
 	seen := map[int64]struct{}{}
-	for _, sid := range explicit {
+	for _, sid := range source {
 		if sid <= 0 {
 			continue
 		}
@@ -210,6 +232,16 @@ func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int
 	}
 
 	logger.D("MCP toolMCP: session_id=%d server_id=%d tool=%q params_json_bytes=%d", sessionID, serverID, mcpToolName, len(params))
+	if p := strings.TrimSpace(string(params)); p != "" {
+		const maxLog = 512
+		if utf8.RuneCountInString(p) > maxLog {
+			r := []rune(p)
+			p = string(r[:maxLog]) + "...(truncated)"
+		}
+
+		logger.D("MCP toolMCP: session_id=%d server_id=%d tool=%q params_preview=%s", sessionID, serverID, mcpToolName, p)
+	}
+
 	settings, err := c.sessionSettingsRepo.GetBySessionID(ctx, sessionID)
 	if err != nil {
 		return "", err
@@ -226,6 +258,7 @@ func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int
 
 	effective := c.mcpEffectiveServerIDs(ctx, sess.UserId, settings)
 	if !slices.Contains(effective, serverID) {
+		logger.W("MCP toolMCP: session_id=%d server_id=%d отклонён: сервер не выбран в сессии; effective=%v", sessionID, serverID, effective)
 		return "", fmt.Errorf("этот MCP-сервер не выбран для сессии")
 	}
 
@@ -235,6 +268,7 @@ func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int
 	}
 
 	if srv == nil || !srv.Enabled {
+		logger.W("MCP toolMCP: session_id=%d server_id=%d недоступен (srv=nil или disabled)", sessionID, serverID)
 		return "", fmt.Errorf("MCP-сервер недоступен")
 	}
 

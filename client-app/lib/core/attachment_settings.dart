@@ -21,6 +21,10 @@ abstract final class AttachmentSettings {
     'docx',
     'xlsx',
     'csv',
+    'pptx',
+    'html',
+    'htm',
+    'xhtml',
   ];
 
   static const List<String> documentBinaryExtensions = [
@@ -28,6 +32,7 @@ abstract final class AttachmentSettings {
     'docx',
     'xlsx',
     'csv',
+    'pptx',
   ];
 
   static bool isBinaryDocument(String filename) {
@@ -51,7 +56,13 @@ abstract final class AttachmentSettings {
     return textFileExtensions.contains(ext);
   }
 
-  static const List<String> textFormatLabels = ['TXT', 'MD', 'LOG'];
+  static const List<String> textFormatLabels = ['TXT', 'MD', 'LOG', 'HTML'];
 
-  static const List<String> documentFormatLabels = ['PDF', 'DOCX', 'XLSX', 'CSV'];
+  static const List<String> documentFormatLabels = [
+    'PDF',
+    'DOCX',
+    'XLSX',
+    'CSV',
+    'PPTX',
+  ];
 }

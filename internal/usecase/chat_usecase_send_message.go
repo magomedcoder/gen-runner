@@ -94,6 +94,23 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	if genParams != nil && len(genParams.Tools) > 0 {
 		return c.sendMessageWithToolLoop(ctx, userId, sessionId, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyNotice, ragStream)
 	}
+	if settings != nil {
+		logger.W("SendMessage: tool-loop disabled session_id=%d tools=%d mcp_enabled=%t mcp_server_ids=%v web_search_enabled=%t",
+			sessionId,
+			func() int {
+				if genParams == nil {
+					return 0
+				}
+
+				return len(genParams.Tools)
+			}(),
+			settings.MCPEnabled,
+			settings.MCPServerIDs,
+			settings.WebSearchEnabled,
+		)
+	} else {
+		logger.W("SendMessage: tool-loop disabled session_id=%d settings=nil tools=0", sessionId)
+	}
 
 	assistantMsg := domain.NewMessage(sessionId, "", domain.MessageRoleAssistant)
 	if err := c.messageRepo.Create(ctx, assistantMsg); err != nil {
@@ -113,8 +130,19 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	clientChan := make(chan ChatStreamChunk, 100)
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				logger.E("SendMessage panic: session_id=%d user_id=%d panic=%v", sessionId, userId, r)
+				select {
+				case <-ctx.Done():
+				case clientChan <- ChatStreamChunk{Kind: StreamChunkKindText, Text: "внутренняя ошибка обработки ответа"}:
+				}
+			}
+		}()
+
+		defer func() {
 			_ = c.messageRepo.UpdateContent(context.Background(), messageID, fullResponse.String())
 		}()
+
 		defer close(clientChan)
 
 		if ragStream != nil {

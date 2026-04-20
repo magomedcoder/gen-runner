@@ -43,7 +43,7 @@ func TestCallToolTransportRetryReducesErrorRateByAtLeast30Percent(t *testing.T) 
 	}
 
 	srv := &domain.MCPServer{ID: 7}
-	tool := "gen_mcp_list_resources"
+	tool := ToolAlias(srv.ID, "list_resources")
 	const total = 20
 	args := json.RawMessage(`{}`)
 

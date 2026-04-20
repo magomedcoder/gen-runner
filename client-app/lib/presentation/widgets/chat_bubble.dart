@@ -90,100 +90,110 @@ BorderRadius _bubbleRadius(bool isUser) {
   );
 }
 
-class _AssistantReasoningCard extends StatelessWidget {
-  const _AssistantReasoningCard({
+class _AssistantReasoningToggleButton extends StatelessWidget {
+  const _AssistantReasoningToggleButton({
+    required this.expanded,
+    required this.onPressed,
+    required this.messageTextColor,
+  });
+
+  final bool expanded;
+  final VoidCallback onPressed;
+  final Color messageTextColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: expanded
+          ? 'Свернуть размышление'
+          : 'Показать размышление',
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints(
+        minWidth: 36,
+        minHeight: 36,
+      ),
+      icon: Icon(
+        expanded ? Icons.expand_less : Icons.expand_more,
+        size: 22,
+        color: messageTextColor.withValues(alpha: 0.55),
+      ),
+    );
+  }
+}
+
+class _AssistantReasoningExpandedPanel extends StatelessWidget {
+  const _AssistantReasoningExpandedPanel({
     super.key,
     required this.theme,
     required this.text,
     required this.messageTextColor,
-    required this.maxWidth,
-    this.embedded = false,
-    this.initiallyExpanded = false,
+    required this.padBefore,
   });
 
   final ThemeData theme;
   final String text;
   final Color messageTextColor;
-  final double maxWidth;
-  final bool embedded;
-  final bool initiallyExpanded;
+
+  final bool padBefore;
 
   @override
   Widget build(BuildContext context) {
     final cs = theme.colorScheme;
-    return Container(
-      margin: embedded
-          ? EdgeInsets.zero
-          : const EdgeInsets.only(bottom: 8, top: 2),
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      decoration: BoxDecoration(
-        color: embedded
-            ? cs.surfaceContainerLow.withValues(alpha: 0.65)
-            : cs.surfaceContainerLow,
-        borderRadius: embedded ? BorderRadius.zero : BorderRadius.circular(14),
-        border: embedded
-            ? null
-            : Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
+    final bodyStyle = TextStyle(
+      fontSize: 13,
+      height: 1.45,
+      color: messageTextColor.withValues(alpha: 0.78),
+      fontFamily: 'monospace',
+    );
+
+    return Padding(
+      padding: EdgeInsets.only(
+        top: padBefore ? 8 : 0,
+        bottom: 1,
       ),
-      child: ClipRRect(
-        borderRadius: embedded ? BorderRadius.zero : BorderRadius.circular(13),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ColoredBox(
-              color: cs.tertiary.withValues(alpha: 0.9),
-              child: const SizedBox(width: 4),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-                child: Theme(
-                  data: theme.copyWith(dividerColor: Colors.transparent),
-                  child: ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    expandedAlignment: Alignment.centerLeft,
-                    childrenPadding: const EdgeInsets.only(top: 6),
-                    initiallyExpanded: initiallyExpanded,
-                    collapsedShape: const RoundedRectangleBorder(),
-                    shape: const RoundedRectangleBorder(),
-                    title: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.psychology_outlined,
-                          size: 20,
-                          color: cs.tertiary,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Размышление',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: messageTextColor.withValues(alpha: 0.88),
-                              height: 1.25,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    children: [
-                      SelectableText(
-                        text,
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.45,
-                          color: messageTextColor.withValues(alpha: 0.76),
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ],
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.42),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: cs.outlineVariant.withValues(alpha: 0.45),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.psychology_outlined,
+                    size: 16,
+                    color: cs.tertiary,
                   ),
-                ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Размышление',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: messageTextColor.withValues(alpha: 0.82),
+                      height: 1.15,
+                      letterSpacing: 0.08,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              SelectableText(
+                text,
+                style: bodyStyle,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -232,6 +242,25 @@ class _ChatBubbleState extends State<ChatBubble> {
   bool _justCopied = false;
   int? _downloadingFileId;
   bool _isEditing = false;
+  bool _reasoningExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _reasoningExpanded = widget.isStreaming;
+  }
+
+  @override
+  void didUpdateWidget(ChatBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.message.id != oldWidget.message.id) {
+      _reasoningExpanded = widget.isStreaming;
+    } else if (!oldWidget.isStreaming && widget.isStreaming) {
+      _reasoningExpanded = true;
+    } else if (oldWidget.isStreaming && !widget.isStreaming) {
+      _reasoningExpanded = false;
+    }
+  }
 
   String _reasoningDisplayText(String? tagFromContent) {
     final live = widget.streamingReasoning;
@@ -241,6 +270,63 @@ class _ChatBubbleState extends State<ChatBubble> {
     final stored = widget.message.reasoningContent?.trim() ?? '';
     final tag = tagFromContent?.trim() ?? '';
     return RedactedThinkingSplit.combine(stored, tag).trim();
+  }
+
+  Widget _assistantMessageAndReasoningToggle({
+    required ThemeData theme,
+    required Color messageTextColor,
+    required String assistantVisible,
+    required bool hasAssistantReasoning,
+    required String reasoningDisplay,
+    required int messageId,
+  }) {
+    final hasBody = assistantVisible.trim().isNotEmpty;
+    if (!hasAssistantReasoning) {
+      return hasBody
+          ? _assistantMessageBody(
+              theme,
+              messageTextColor,
+              assistantVisible,
+            )
+          : const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_reasoningExpanded)
+          _AssistantReasoningExpandedPanel(
+            key: ValueKey('assistant-reasoning-$messageId'),
+            theme: theme,
+            text: reasoningDisplay,
+            messageTextColor: messageTextColor,
+            padBefore: false,
+          ),
+        if (_reasoningExpanded) const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: hasBody
+                  ? _assistantMessageBody(
+                      theme,
+                      messageTextColor,
+                      assistantVisible,
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 2),
+            _AssistantReasoningToggleButton(
+              expanded: _reasoningExpanded,
+              messageTextColor: messageTextColor,
+              onPressed: () {
+                setState(() => _reasoningExpanded = !_reasoningExpanded);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   static String _copyAssistantClipboard(String visible, String reasoning) {
@@ -345,20 +431,27 @@ class _ChatBubbleState extends State<ChatBubble> {
     final message = widget.message;
     final isStreaming = widget.isStreaming;
     final isUser = message.role == MessageRole.user;
+    final isAssistant = message.role == MessageRole.assistant;
+    final isTool = message.role == MessageRole.tool;
     final theme = Theme.of(context);
     final width = Breakpoints.width(context);
     const minBubbleWidth = 64.0;
     final maxBubbleWidth = Breakpoints.isMobile(context)
         ? width * 0.88
         : (Breakpoints.isTablet(context) ? 420.0 : 560.0);
-    final semanticsRole = isUser ? 'Ваше сообщение' : 'Ответ ассистента';
-    final peeledAssistant = !isUser
+    final semanticsRole = switch (message.role) {
+      MessageRole.user => 'Ваше сообщение',
+      MessageRole.assistant => 'Ответ ассистента',
+      MessageRole.tool => 'Результат инструмента',
+    };
+    final peeledAssistant = isAssistant
         ? RedactedThinkingSplit.peel(message.content)
         : null;
-    final assistantVisible =
-        isUser ? message.content : peeledAssistant!.$1;
-    final tagReasoningFromBody = !isUser ? peeledAssistant!.$2 : null;
-    final reasoningDisplay = !isUser
+    final assistantVisible = isAssistant
+        ? peeledAssistant!.$1
+        : message.content;
+    final tagReasoningFromBody = isAssistant ? peeledAssistant!.$2 : null;
+    final reasoningDisplay = isAssistant
         ? _reasoningDisplayText(tagReasoningFromBody)
         : '';
     final hasCopyableText = isUser
@@ -367,7 +460,7 @@ class _ChatBubbleState extends State<ChatBubble> {
     final editsTotal = widget.editsTotal;
     final editsIndex = widget.editsIndex;
     final showEditNav = widget.showEditNav;
-    final sessionFileIds = !isUser && !isStreaming && widget.sessionId != null
+    final sessionFileIds = isAssistant && !isStreaming && widget.sessionId != null
         ? extractSessionFileIdsFromText(assistantVisible)
         : const <int>[];
     final attachmentLabel =
@@ -388,7 +481,7 @@ class _ChatBubbleState extends State<ChatBubble> {
     final canOpenRagPreview = ragPreviewKey != null && !isStreaming;
     final messageTextColor = _messageBodyTextColor(theme.colorScheme);
     final hasAssistantReasoning =
-        !isUser && reasoningDisplay.isNotEmpty;
+        isAssistant && reasoningDisplay.isNotEmpty;
 
     return Semantics(
       container: true,
@@ -533,44 +626,33 @@ class _ChatBubbleState extends State<ChatBubble> {
                                 height: 1.5,
                               ),
                             )
-                          : (assistantVisible.trim().isNotEmpty
-                              ? _assistantMessageBody(
-                                  theme,
-                                  messageTextColor,
-                                  assistantVisible,
-                                )
-                              : const SizedBox.shrink()),
-                    if (hasAssistantReasoning) ...[
-                      if (assistantVisible.trim().isNotEmpty)
-                        Divider(
-                          height: 20,
-                          thickness: 1,
-                          color: theme.colorScheme.outlineVariant.withValues(
-                            alpha: 0.45,
-                          ),
-                        ),
-                      _AssistantReasoningCard(
-                        key: ValueKey(
-                          'assistant-reasoning-${message.id}-$isStreaming',
-                        ),
-                        theme: theme,
-                        text: reasoningDisplay,
-                        messageTextColor: messageTextColor,
-                        maxWidth: maxBubbleWidth,
-                        embedded: true,
-                        initiallyExpanded: isStreaming,
-                      ),
-                    ],
+                          : (isAssistant
+                                ? _assistantMessageAndReasoningToggle(
+                              theme: theme,
+                              messageTextColor: messageTextColor,
+                              assistantVisible: assistantVisible,
+                              hasAssistantReasoning: hasAssistantReasoning,
+                              reasoningDisplay: reasoningDisplay,
+                              messageId: message.id,
+                            )
+                                : SelectableText(
+                                    assistantVisible,
+                                    style: TextStyle(
+                                      color: messageTextColor,
+                                      fontSize: 14,
+                                      height: 1.45,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  )),
                     if (isStreaming &&
                         (widget.streamingStatus?.trim().isNotEmpty ?? false))
                       Padding(
                         padding: EdgeInsets.only(
                           bottom: 8,
                           top: (isUser
-                                  ? message.content
-                                  : assistantVisible)
-                              .trim()
-                              .isNotEmpty
+                                  ? message.content.trim().isNotEmpty
+                                  : (assistantVisible.trim().isNotEmpty ||
+                                      reasoningDisplay.isNotEmpty))
                               ? 8
                               : 0,
                         ),
@@ -813,6 +895,18 @@ class _ChatBubbleState extends State<ChatBubble> {
                         constraints: const BoxConstraints(
                           minWidth: 32,
                           minHeight: 32,
+                        ),
+                      ),
+                    if (isTool && message.toolName != null && message.toolName!.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: Text(
+                          message.toolName!.trim(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                            fontStyle: FontStyle.italic,
+                          ),
                         ),
                       ),
                   ],

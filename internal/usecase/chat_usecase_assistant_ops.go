@@ -101,6 +101,15 @@ func (c *ChatUseCase) RegenerateAssistantResponse(ctx context.Context, userId in
 	clientChan := make(chan ChatStreamChunk, 100)
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				logger.E("RegenerateAssistantResponse panic: session_id=%d user_id=%d panic=%v", sessionId, userId, r)
+				select {
+				case <-ctx.Done():
+				case clientChan <- ChatStreamChunk{Kind: StreamChunkKindText, Text: "внутренняя ошибка обработки ответа"}:
+				}
+			}
+		}()
+		defer func() {
 			newContent := fullResponse.String()
 			_ = c.messageRepo.UpdateContent(context.Background(), messageID, newContent)
 			if c.assistantRegenRepo != nil && strings.TrimSpace(oldContent) != "" && strings.TrimSpace(newContent) != "" {
@@ -225,6 +234,15 @@ func (c *ChatUseCase) ContinueAssistantResponse(ctx context.Context, userId int,
 	clientChan := make(chan ChatStreamChunk, 100)
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				logger.E("ContinueAssistantResponse panic: session_id=%d user_id=%d panic=%v", sessionId, userId, r)
+				select {
+				case <-ctx.Done():
+				case clientChan <- ChatStreamChunk{Kind: StreamChunkKindText, Text: "внутренняя ошибка обработки ответа"}:
+				}
+			}
+		}()
+		defer func() {
 			_ = c.messageRepo.UpdateContent(context.Background(), messageID, existingContent+newPart.String())
 		}()
 		defer close(clientChan)
@@ -335,6 +353,15 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 	if genParams != nil && len(genParams.Tools) > 0 {
 		return c.sendMessageWithToolLoop(ctx, userId, sessionId, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, editHistoryNotice, nil)
 	}
+	if settings != nil {
+		toolsCount := 0
+		if genParams != nil {
+			toolsCount = len(genParams.Tools)
+		}
+		logger.W("EditUserMessageAndContinue: tool-loop disabled session_id=%d tools=%d mcp_enabled=%t mcp_server_ids=%v web_search_enabled=%t", sessionId, toolsCount, settings.MCPEnabled, settings.MCPServerIDs, settings.WebSearchEnabled)
+	} else {
+		logger.W("EditUserMessageAndContinue: tool-loop disabled session_id=%d settings=nil tools=0", sessionId)
+	}
 
 	assistantMsg := domain.NewMessage(sessionId, "", domain.MessageRoleAssistant)
 	if err := c.messageRepo.Create(ctx, assistantMsg); err != nil {
@@ -351,6 +378,15 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 	var fullResponse strings.Builder
 	clientChan := make(chan ChatStreamChunk, 100)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.E("EditUserMessageAndContinue panic: session_id=%d user_id=%d panic=%v", sessionId, userId, r)
+				select {
+				case <-ctx.Done():
+				case clientChan <- ChatStreamChunk{Kind: StreamChunkKindText, Text: "внутренняя ошибка обработки ответа"}:
+				}
+			}
+		}()
 		defer func() {
 			_ = c.messageRepo.UpdateContent(context.Background(), messageID, fullResponse.String())
 		}()

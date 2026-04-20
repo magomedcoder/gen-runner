@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/mcpclient"
+	"github.com/magomedcoder/gen/internal/service"
 	"github.com/magomedcoder/gen/pkg/logger"
 )
 
@@ -23,6 +25,8 @@ const (
 	minToolExecSeconds     = 30
 	maxToolExecSeconds     = 300
 	defaultToolExecSeconds = 120
+	defaultToolLoopRounds  = 12
+	maxToolLoopRoundsCap   = 128
 )
 
 func toolExecutionDuration(sessionTimeoutSec int32) time.Duration {
@@ -70,6 +74,12 @@ func runFnWithContext[T any](ctx context.Context, fn func() (T, error)) (T, erro
 type cohereActionRow struct {
 	ToolName   string          `json:"tool_name"`
 	Parameters json.RawMessage `json:"parameters"`
+}
+
+type executableToolCall struct {
+	RequestedName string
+	ResolvedName  string
+	Parameters    json.RawMessage
 }
 
 type toolLoopEnvKey struct{}
@@ -128,6 +138,57 @@ func allowedToolNameSet(tools []domain.Tool) map[string]struct{} {
 	}
 
 	return m
+}
+
+func resolveDeclaredToolName(genParams *domain.GenerationParams, raw string) (string, bool) {
+	n := normalizeToolName(raw)
+	if genParams == nil || n == "" {
+		return "", false
+	}
+
+	allowed := allowedToolNameSet(genParams.Tools)
+	if _, ok := allowed[n]; ok {
+		return n, true
+	}
+
+	type cand struct {
+		sid   int64
+		canon string
+	}
+
+	var hits []cand
+	for _, t := range genParams.Tools {
+		canon := normalizeToolName(t.Name)
+		if canon == "" {
+			continue
+		}
+		if _, ok := allowed[canon]; !ok {
+			continue
+		}
+
+		sid, orig, ok := mcpclient.ParseToolAlias(canon)
+		if !ok || sid <= 0 {
+			continue
+		}
+
+		if normalizeToolName(orig) == n {
+			hits = append(hits, cand{sid: sid, canon: canon})
+		}
+	}
+
+	if len(hits) == 0 {
+		return "", false
+	}
+
+	sort.Slice(hits, func(i, j int) bool {
+		if hits[i].sid != hits[j].sid {
+			return hits[i].sid < hits[j].sid
+		}
+
+		return hits[i].canon < hits[j].canon
+	})
+
+	return hits[0].canon, true
 }
 
 func normalizeToolName(s string) string {
@@ -435,7 +496,7 @@ func parseCohereActionList(blob string) ([]cohereActionRow, error) {
 	var asSlice []cohereActionRow
 	if err := json.Unmarshal([]byte(blob), &asSlice); err == nil {
 		if len(asSlice) > 0 {
-			return asSlice, nil
+			return normalizeToolActionRows(asSlice)
 		}
 
 		if strings.HasPrefix(strings.TrimSpace(blob), "[") {
@@ -454,10 +515,27 @@ func parseCohereActionList(blob string) ([]cohereActionRow, error) {
 			args = json.RawMessage(`{}`)
 		}
 
-		return []cohereActionRow{{
+		return normalizeToolActionRows([]cohereActionRow{{
 			ToolName:   strings.TrimSpace(legacy.Name),
 			Parameters: args,
-		}}, nil
+		}})
+	}
+
+	type legacyToolArgs struct {
+		Tool      string          `json:"tool"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+	var legacyTool legacyToolArgs
+	if err := json.Unmarshal([]byte(blob), &legacyTool); err == nil && strings.TrimSpace(legacyTool.Tool) != "" {
+		args := legacyTool.Arguments
+		if len(args) == 0 || string(args) == "null" {
+			args = json.RawMessage(`{}`)
+		}
+
+		return normalizeToolActionRows([]cohereActionRow{{
+			ToolName:   strings.TrimSpace(legacyTool.Tool),
+			Parameters: args,
+		}})
 	}
 
 	type legacyToolParams struct {
@@ -471,13 +549,61 @@ func parseCohereActionList(blob string) ([]cohereActionRow, error) {
 			args = json.RawMessage(`{}`)
 		}
 
-		return []cohereActionRow{{
+		return normalizeToolActionRows([]cohereActionRow{{
 			ToolName:   strings.TrimSpace(tp.ToolName),
 			Parameters: args,
-		}}, nil
+		}})
 	}
 
-	return nil, fmt.Errorf("неверный формат вызова инструментов (ожидается JSON-массив с tool_name/parameters или объект name/arguments)")
+	return nil, fmt.Errorf("неверный формат вызова инструментов (ожидается JSON-массив с tool_name/parameters или объект name/arguments/tool/arguments)")
+}
+
+func normalizeToolActionRows(rows []cohereActionRow) ([]cohereActionRow, error) {
+	out := make([]cohereActionRow, 0, len(rows))
+	for _, row := range rows {
+		params, err := normalizeToolParameters(row.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("arguments для %q: %w", strings.TrimSpace(row.ToolName), err)
+		}
+		out = append(out, cohereActionRow{
+			ToolName:   strings.TrimSpace(row.ToolName),
+			Parameters: params,
+		})
+	}
+	return out, nil
+}
+
+func normalizeToolParameters(raw json.RawMessage) (json.RawMessage, error) {
+	raw = json.RawMessage(strings.TrimSpace(string(raw)))
+	if len(raw) == 0 || string(raw) == "null" {
+		return json.RawMessage(`{}`), nil
+	}
+
+	if raw[0] == '"' {
+		var encoded string
+		if err := json.Unmarshal(raw, &encoded); err != nil {
+			return nil, err
+		}
+
+		encoded = strings.TrimSpace(encoded)
+		if encoded == "" {
+			return json.RawMessage(`{}`), nil
+		}
+
+		raw = json.RawMessage(encoded)
+	}
+
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, err
+	}
+
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+
+	return json.RawMessage(b), nil
 }
 
 func isDirectAnswerTool(name string) bool {
@@ -551,6 +677,49 @@ func toolCallsToOpenAIJSON(calls []cohereActionRow) (string, error) {
 	return string(b), nil
 }
 
+func maxToolInvocationRounds(reg *service.Registry) int {
+	n := defaultToolLoopRounds
+	if reg != nil {
+		if hinted := reg.AggregateChatHints().MaxToolInvocationRounds; hinted > 0 {
+			n = hinted
+		}
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > maxToolLoopRoundsCap {
+		return maxToolLoopRoundsCap
+	}
+	return n
+}
+
+func resolveExecutableToolCalls(genParams *domain.GenerationParams, rows []cohereActionRow) ([]executableToolCall, error) {
+	out := make([]executableToolCall, 0, len(rows))
+	for _, row := range rows {
+		resolved, ok := resolveDeclaredToolName(genParams, row.ToolName)
+		if !ok {
+			return nil, fmt.Errorf("инструмент %q не объявлен в настройках сессии", row.ToolName)
+		}
+		out = append(out, executableToolCall{
+			RequestedName: row.ToolName,
+			ResolvedName:  resolved,
+			Parameters:    row.Parameters,
+		})
+	}
+	return out, nil
+}
+
+func executableCallsToActionRows(in []executableToolCall) []cohereActionRow {
+	out := make([]cohereActionRow, 0, len(in))
+	for _, c := range in {
+		out = append(out, cohereActionRow{
+			ToolName:   c.ResolvedName,
+			Parameters: c.Parameters,
+		})
+	}
+	return out
+}
+
 func truncateToolResult(s string) string {
 	if utf8.RuneCountInString(s) <= maxToolResultRunes {
 		return s
@@ -618,8 +787,13 @@ func (c *ChatUseCase) runChatToolLoop(
 		}
 		_ = send(ChatStreamChunk{Kind: StreamChunkKindText, Text: s, MessageID: 0})
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			logger.E("ChatUseCase tool-loop panic: session_id=%d user_id=%d panic=%v", sessionID, userID, r)
+			sendErr(fmt.Errorf("внутренняя ошибка обработки инструментов"))
+		}
+	}()
 
-	allowed := allowedToolNameSet(genParams.Tools)
 	gp := cloneGenParamsForToolCalls(genParams)
 	history := append([]*domain.Message(nil), messagesForLLM...)
 
@@ -631,14 +805,11 @@ func (c *ChatUseCase) runChatToolLoop(
 		_ = send(ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice})
 	}
 
-	maxToolRounds := int(^uint(0) >> 1)
-	if c.runnerReg != nil {
-		if n := c.runnerReg.AggregateChatHints().MaxToolInvocationRounds; n > 0 {
-			maxToolRounds = n
-		}
-	}
+	maxToolRounds := maxToolInvocationRounds(c.runnerReg)
+	logger.I("ChatUseCase tool-loop: session_id=%d user_id=%d max_rounds=%d tools=%d", sessionID, userID, maxToolRounds, len(gp.Tools))
 
 	for round := 0; round < maxToolRounds; round++ {
+		logger.D("ChatUseCase tool-loop: session_id=%d round=%d/%d history_messages=%d", sessionID, round+1, maxToolRounds, len(history))
 		ch, runnerToolFn, err := c.llmRepo.SendMessageWithRunnerToolActionOnRunner(ctx, runnerAddr, sessionID, resolvedModel, history, stopSequences, timeoutSeconds, gp)
 		if err != nil {
 			sendErr(err)
@@ -663,11 +834,16 @@ func (c *ChatUseCase) runChatToolLoop(
 		}
 
 		blob := strings.TrimSpace(runnerToolFn())
+		blobSource := "runner"
 		if blob == "" {
 			blob = extractToolActionBlob(full)
+			blobSource = "text_extract"
 		}
+		logger.D("ChatUseCase tool-loop: session_id=%d round=%d action_blob_source=%s action_blob_bytes=%d assistant_text_runes=%d",
+			sessionID, round+1, blobSource, len(blob), utf8.RuneCountInString(full))
 
 		if blob == "" {
+			logger.D("ChatUseCase tool-loop: session_id=%d round=%d финальный ответ без tool-calls", sessionID, round+1)
 			am := domain.NewMessage(sessionID, full, domain.MessageRoleAssistant)
 			if err := c.messageRepo.Create(ctx, am); err != nil {
 				sendErr(err)
@@ -720,6 +896,7 @@ func (c *ChatUseCase) runChatToolLoop(
 
 		execRows := filterExecutableToolRows(rows)
 		if len(execRows) == 0 {
+			logger.D("ChatUseCase tool-loop: session_id=%d round=%d только direct answer/пусто, завершаем", sessionID, round+1)
 			am := domain.NewMessage(sessionID, full, domain.MessageRoleAssistant)
 			if err := c.messageRepo.Create(ctx, am); err != nil {
 				sendErr(err)
@@ -730,24 +907,24 @@ func (c *ChatUseCase) runChatToolLoop(
 			return
 		}
 
-		toolCallsJSON, err := toolCallsToOpenAIJSON(execRows)
+		execCalls, err := resolveExecutableToolCalls(gp, execRows)
+		if err != nil {
+			sendErr(err)
+			return
+		}
+		logger.I("ChatUseCase tool-loop: session_id=%d round=%d tool_calls=%d", sessionID, round+1, len(execCalls))
+
+		toolCallsJSON, err := toolCallsToOpenAIJSON(executableCallsToActionRows(execCalls))
 		if err != nil {
 			sendErr(err)
 			return
 		}
 
-		for _, row := range execRows {
-			name := normalizeToolName(row.ToolName)
-			if _, ok := allowed[name]; !ok {
-				sendErr(fmt.Errorf("инструмент %q не объявлен в настройках сессии", row.ToolName))
-				return
-			}
-		}
-
-		toolResults := make([]string, len(execRows))
-		for i, row := range execRows {
-			name := normalizeToolName(row.ToolName)
-			st := c.toolProgressDisplayName(ctx, sessionID, name, row.ToolName)
+		toolResults := make([]string, len(execCalls))
+		for i, call := range execCalls {
+			st := c.toolProgressDisplayName(ctx, sessionID, call.ResolvedName, call.RequestedName)
+			logger.D("ChatUseCase tool-loop: session_id=%d round=%d call=%d requested=%q resolved=%q",
+				sessionID, round+1, i+1, call.RequestedName, call.ResolvedName)
 
 			if !send(ChatStreamChunk{Kind: StreamChunkKindToolStatus, Text: "Выполняется: " + st, ToolName: st, MessageID: 0}) {
 				return
@@ -761,11 +938,11 @@ func (c *ChatUseCase) runChatToolLoop(
 				TimeoutSeconds: timeoutSeconds,
 				SamplingGen:    samplingGenParamsForMCP(gp),
 			})
-			res, err := c.executeDeclaredTool(toolCtx, userID, sessionID, name, row.Parameters)
+			res, err := c.executeDeclaredTool(toolCtx, userID, sessionID, call.ResolvedName, call.Parameters)
 			cancelTool()
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
-					sendErr(fmt.Errorf("таймаут выполнения инструмента %q", row.ToolName))
+					sendErr(fmt.Errorf("таймаут выполнения инструмента %q", call.RequestedName))
 					return
 				}
 
@@ -774,19 +951,21 @@ func (c *ChatUseCase) runChatToolLoop(
 			}
 
 			toolResults[i] = truncateToolResult(res)
+			logger.D("ChatUseCase tool-loop: session_id=%d round=%d call=%d result_runes=%d",
+				sessionID, round+1, i+1, utf8.RuneCountInString(toolResults[i]))
 		}
 
 		assist := domain.NewMessage(sessionID, full, domain.MessageRoleAssistant)
 		assist.ToolCallsJSON = toolCallsJSON
 
-		toolMsgs := make([]*domain.Message, len(execRows))
+		toolMsgs := make([]*domain.Message, len(execCalls))
 		if err := c.chatTx.WithinTx(ctx, func(ctx context.Context, r domain.ChatRepos) error {
 			if err := r.Message.Create(ctx, assist); err != nil {
 				return err
 			}
-			for i, row := range execRows {
+			for i, call := range execCalls {
 				tm := domain.NewMessage(sessionID, toolResults[i], domain.MessageRoleTool)
-				tm.ToolName = row.ToolName
+				tm.ToolName = call.ResolvedName
 				tm.ToolCallID = fmt.Sprintf("call_%d", i+1)
 				if err := r.Message.Create(ctx, tm); err != nil {
 					return err
@@ -798,6 +977,8 @@ func (c *ChatUseCase) runChatToolLoop(
 			sendErr(err)
 			return
 		}
+		logger.I("ChatUseCase tool-loop: session_id=%d round=%d persisted assistant+tool messages=%d",
+			sessionID, round+1, 1+len(toolMsgs))
 
 		history = append(history, assist)
 		history = append(history, toolMsgs...)
@@ -814,16 +995,6 @@ func (c *ChatUseCase) runChatToolLoop(
 
 func (c *ChatUseCase) toolProgressDisplayName(ctx context.Context, sessionID int64, normalizedName string, rawToolName string) string {
 	n := normalizeToolName(normalizedName)
-	switch n {
-	case "gen_mcp_list_resources":
-		return "MCP: ресурсы (список)"
-	case "gen_mcp_read_resource":
-		return "MCP: ресурс (чтение)"
-	case "gen_mcp_list_prompts":
-		return "MCP: промпты (список)"
-	case "gen_mcp_get_prompt":
-		return "MCP: промпт"
-	}
 	if sid, orig, ok := mcpclient.ParseToolAlias(n); ok {
 		label := fmt.Sprintf("MCP #%d", sid)
 		if c.mcpServerRepo != nil {
@@ -875,14 +1046,6 @@ func (c *ChatUseCase) executeDeclaredTool(ctx context.Context, userID int, sessi
 		return c.toolPutSessionFile(ctx, userID, sessionID, params)
 	case "web_search":
 		return c.toolWebSearch(ctx, userID, sessionID, params)
-	case "gen_mcp_list_resources":
-		return c.toolGenMcpListResources(ctx, sessionID, params)
-	case "gen_mcp_read_resource":
-		return c.toolGenMcpReadResource(ctx, sessionID, params)
-	case "gen_mcp_list_prompts":
-		return c.toolGenMcpListPrompts(ctx, sessionID, params)
-	case "gen_mcp_get_prompt":
-		return c.toolGenMcpGetPrompt(ctx, sessionID, params)
 	default:
 		if sid, orig, ok := mcpclient.ParseToolAlias(nameNorm); ok {
 			logger.D("MCP executeDeclaredTool: session_id=%d alias_norm=%q server_id=%d orig_tool=%q params_bytes=%d",

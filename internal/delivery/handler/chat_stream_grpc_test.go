@@ -63,3 +63,41 @@ func TestStreamSendLoop_AssistantFinalAccumulatesTextAndReasoning(t *testing.T) 
 		t.Fatalf("reasoning: want r1, got %q", af.GetReasoning())
 	}
 }
+
+func TestStreamSendLoop_EmitsToolStatusChunks(t *testing.T) {
+	ch := make(chan usecase.ChatStreamChunk, 3)
+	go func() {
+		ch <- usecase.ChatStreamChunk{
+			Kind:     usecase.StreamChunkKindToolStatus,
+			Text:     "Выполняется: MCP Demo b24_list_tasks",
+			ToolName: "MCP Demo b24_list_tasks",
+		}
+		ch <- usecase.ChatStreamChunk{
+			Kind:      usecase.StreamChunkKindText,
+			Text:      "готово",
+			MessageID: 7,
+		}
+		close(ch)
+	}()
+
+	var got []*chatpb.ChatResponse
+	err := streamSendLoop(ch, func(r *chatpb.ChatResponse) error {
+		got = append(got, r)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) < 3 {
+		t.Fatalf("expected tool status + text + final, got=%d", len(got))
+	}
+	if got[0].GetChunkKind() != chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS {
+		t.Fatalf("first chunk kind mismatch: %v", got[0].GetChunkKind())
+	}
+	if got[0].GetContent() == "" {
+		t.Fatal("tool status content should not be empty")
+	}
+	if !got[len(got)-1].GetDone() || got[len(got)-1].GetAssistantFinal() == nil {
+		t.Fatal("final response must contain assistant_final")
+	}
+}

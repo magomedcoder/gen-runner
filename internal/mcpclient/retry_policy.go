@@ -76,13 +76,9 @@ func callToolAllowsTransportRetry(toolName string) bool {
 		return false
 	}
 
-	switch name {
-	case "gen_mcp_list_resources",
-		"gen_mcp_read_resource",
-		"gen_mcp_list_prompts",
-		"gen_mcp_get_prompt":
+	if _, _, ok := ParseToolAlias(name); ok {
 		return true
-	default:
-		return false
 	}
+
+	return false
 }

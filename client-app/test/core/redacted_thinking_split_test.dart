@@ -25,6 +25,30 @@ void main() {
       expect(r.$2, 'inner');
     });
 
+    test('think tags (DeepSeek-style)', () {
+      final r = RedactedThinkingSplit.peel(
+        'Ans\u003Cthink\u003Estep\u003C/think\u003Ewer',
+      );
+      expect(r.$1, 'Answer');
+      expect(r.$2, 'step');
+    });
+
+    test('reasoning tags', () {
+      final r = RedactedThinkingSplit.peel(
+        'out\u003Creasoning\u003Er\u003C/reasoning\u003Ez',
+      );
+      expect(r.$1, 'outz');
+      expect(r.$2, 'r');
+    });
+
+    test('earliest tag wins when both present', () {
+      final r = RedactedThinkingSplit.peel(
+        'a\u003Cthink\u003Et\u003C/think\u003Eb\u003Credacted_thinking\u003Eu\u003C/redacted_thinking\u003Ev',
+      );
+      expect(r.$1, 'abv');
+      expect(r.$2, 't\nu');
+    });
+
     test('unclosed block keeps tail as reasoning', () {
       final r = RedactedThinkingSplit.peel(
         'a\u003Credacted_thinking\u003Etail',
