@@ -5,10 +5,6 @@ package llmrunner;
 option go_package = "github.com/magomedcoder/gen-runner/pb/llmrunnerpb;llmrunnerpb";
 
 service LLMRunnerService {
-  rpc RegisterRunnerWithToken(RunnerRegisterRequest) returns (Empty);
-
-  rpc UnregisterRunnerWithToken(RunnerUnregisterRequest) returns (Empty);
-
   rpc GetModels(Empty) returns (GetModelsResponse);
 
   rpc GetGpuInfo(Empty) returns (GetGpuInfoResponse);
@@ -33,28 +29,6 @@ service LLMRunnerService {
 }
 
 message Empty {}
-
-message RunnerRegisterHints {
-  int32 max_context_tokens = 1;
-  int32 llm_history_max_messages = 2;
-  bool llm_history_summarize_dropped = 3;
-  int32 llm_history_summary_max_input_runes = 4;
-  string llm_history_summary_model = 5;
-  string llm_history_summary_runner_listen_address = 6;
-  int32 llm_history_summary_cache_entries = 7;
-  int32 max_tool_invocation_rounds = 8;
-}
-
-message RunnerRegisterRequest {
-  string listen_address = 1;
-  string registration_token = 2;
-  RunnerRegisterHints hints = 3;
-}
-
-message RunnerUnregisterRequest {
-  string listen_address = 1;
-  string registration_token = 2;
-}
 
 message GetModelsResponse {
   repeated string models = 1;
