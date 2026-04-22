@@ -1,5 +1,7 @@
 package llama
 
+import "strings"
+
 // WithGPULayers задает количество слоев модели, которые выгружаются на gpu
 // Большее значение обычно ускоряет инференс, но требует больше видеопамяти
 func WithGPULayers(n int) ModelOption {
@@ -55,5 +57,12 @@ type ProgressCallback func(progress float32) bool
 func WithProgressCallback(cb ProgressCallback) ModelOption {
 	return func(c *modelConfig) {
 		c.progressCallback = cb
+	}
+}
+
+// WithMMProj задаёт путь к GGUF-проектору (mmproj) для vision-моделей; пустая строка - только текст
+func WithMMProj(path string) ModelOption {
+	return func(c *modelConfig) {
+		c.mmproj = strings.TrimSpace(path)
 	}
 }

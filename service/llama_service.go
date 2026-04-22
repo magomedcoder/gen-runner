@@ -475,6 +475,28 @@ func (s *LlamaService) ensureModel(modelName string) (*ModelYAML, string, error)
 		}))
 	}
 
+	var mmProjAbs string
+	if yamlCfg != nil {
+		if r := strings.TrimSpace(yamlCfg.MMProj); r != "" {
+			if filepath.IsAbs(r) {
+				mmProjAbs = filepath.Clean(r)
+			} else {
+				mmProjAbs = filepath.Join(s.modelsDir, filepath.Clean(r))
+			}
+
+			st, e := os.Stat(mmProjAbs)
+			if e != nil {
+				return nil, "", fmt.Errorf("llama: mmproj %q: %w", mmProjAbs, e)
+			}
+
+			if st.IsDir() {
+				return nil, "", fmt.Errorf("llama: mmproj %q: ожидался файл .gguf", mmProjAbs)
+			}
+
+			modelOpts = append(modelOpts, llama.WithMMProj(mmProjAbs))
+		}
+	}
+
 	if s.reinitLlamaLogging {
 		llama.InitLogging()
 	}
@@ -645,10 +667,6 @@ func (s *LlamaService) UnloadModel(ctx context.Context) error {
 }
 
 func (s *LlamaService) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan domain.TextStreamChunk, error) {
-	if MessagesHaveVisionAttachments(messages) {
-		return nil, fmt.Errorf("llama: vision-вложения не поддерживаются текущим API")
-	}
-
 	yamlCfg, _, err := s.ensureModel(model)
 	if err != nil {
 		return nil, err
@@ -661,23 +679,39 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 		return nil, fmt.Errorf("llama: пустой список сообщений (нет текста content)")
 	}
 
+	wantVision := MessagesHaveVisionAttachments(norm)
+	if wantVision {
+		s.mu.RLock()
+		mr := s.model
+		s.mu.RUnlock()
+		if mr == nil || !mr.HasMTMD() {
+			return nil, fmt.Errorf("llama: в сообщении есть изображение, но не загружен mmproj: укажите в YAML модели поле mmproj (путь к .gguf проектору рядом с весами)")
+		}
+	}
+
 	genMerged := MergeGenParams(genParams, yamlCfg)
 	chatTmpl := ""
 	if yamlCfg != nil {
 		chatTmpl = yamlCfg.Template
 	}
 
-	prompt, presetStops, err := s.resolveChatPrompt(norm, genMerged, chatTmpl)
-	if err != nil {
-		return nil, err
+	var prompt string
+	var presetStops []string
+	if !wantVision {
+		prompt, presetStops, err = s.resolveChatPrompt(norm, genMerged, chatTmpl)
+		if err != nil {
+			return nil, err
+		}
+		prompt = applyResponseFormatPrompt(prompt, genMerged)
 	}
-	prompt = applyResponseFormatPrompt(prompt, genMerged)
 
 	stopForPredict := MergeStopSequences(stopSequences, presetStops)
 	if yamlCfg != nil && len(yamlCfg.Stop) > 0 {
 		stopForPredict = MergeStopSequences(stopForPredict, yamlCfg.Stop)
 	}
-	stopForPredict = MergeStopSequences(stopForPredict, inferStopSequencesFromPrompt(prompt))
+	if !wantVision {
+		stopForPredict = MergeStopSequences(stopForPredict, inferStopSequencesFromPrompt(prompt))
+	}
 
 	contextOpts := make([]llama.ContextOption, 0, 4)
 	nCtx := s.llamaNCtx
@@ -719,9 +753,12 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 	if modelRef == nil {
 		return nil, fmt.Errorf("llama: модель не загружена")
 	}
-	draftModelRef, err := s.ensureDraftModel()
-	if err != nil {
-		return nil, err
+	var draftModelRef *llama.Model
+	if !wantVision {
+		draftModelRef, err = s.ensureDraftModel()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	genCtx, err := modelRef.NewContext(contextOpts...)
@@ -729,23 +766,29 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 		return nil, err
 	}
 
-	promptTokens, err := genCtx.Tokenize(prompt)
-	if err != nil {
-		_ = genCtx.Close()
-		return nil, fmt.Errorf("llama: tokenize prompt: %w", err)
+	var promptTokens []int32
+	if !wantVision {
+		promptTokens, err = genCtx.Tokenize(prompt)
+		if err != nil {
+			_ = genCtx.Close()
+			return nil, fmt.Errorf("llama: tokenize prompt: %w", err)
+		}
+
+		promptTokenCount := len(promptTokens)
+		if promptTokenCount > nCtx {
+			_ = genCtx.Close()
+			return nil, fmt.Errorf("llama: контекст слишком велик (%d токенов, n_ctx=%d)", promptTokenCount, nCtx)
+		}
+
+		if s.maxContextTokens > 0 && promptTokenCount > s.maxContextTokens {
+			_ = genCtx.Close()
+			return nil, fmt.Errorf("llama: контекст слишком велик (%d токенов, лимит %d)", promptTokenCount, s.maxContextTokens)
+		}
 	}
-	promptTokenCount := len(promptTokens)
-	if promptTokenCount > nCtx {
-		_ = genCtx.Close()
-		return nil, fmt.Errorf("llama: контекст слишком велик (%d токенов, n_ctx=%d)", promptTokenCount, nCtx)
-	}
-	if s.maxContextTokens > 0 && promptTokenCount > s.maxContextTokens {
-		_ = genCtx.Close()
-		return nil, fmt.Errorf("llama: контекст слишком велик (%d токенов, лимит %d)", promptTokenCount, s.maxContextTokens)
-	}
-	useSpeculative := s.speculativeEnabled && draftModelRef != nil
-	useTokenPipeline := s.tokenPipelineEnabled && !useSpeculative
-	useChatAPI := s.chatAPIEnabled && !useSpeculative && !useTokenPipeline
+
+	useSpeculative := s.speculativeEnabled && draftModelRef != nil && !wantVision
+	useTokenPipeline := s.tokenPipelineEnabled && !useSpeculative && !wantVision
+	useChatAPI := s.chatAPIEnabled && !useSpeculative && !useTokenPipeline && !wantVision
 	if useChatAPI && requiresGeneratePipeline(genMerged, yamlCfg, s) {
 		useChatAPI = false
 	}
@@ -877,6 +920,31 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 		}
 
 		streamFilter := newStopStreamFilter(stopForPredict, func(s string) { emitChunk(s, "") })
+		if wantVision {
+			mtmdMsgs := toLlamaMTMDChatMessages(norm)
+			mtmdMsgs = applyResponseFormatToChatMessages(mtmdMsgs, genMerged)
+			err := genCtx.MTMDChat(ctx, mtmdMsgs, strings.TrimSpace(chatTmpl), false, func(token string) bool {
+				if token == "" {
+					return true
+				}
+
+				streamFilter.push(token)
+
+				select {
+				case <-ctx.Done():
+					return false
+				default:
+					return true
+				}
+
+			}, generateOpts...)
+			streamFilter.flush()
+			if err != nil {
+				emitChunk(fmt.Sprintf("\n[ошибка vision]: %v", err), "")
+			}
+
+			return
+		}
 		if useChatAPI {
 			chatOpts := llama.ChatOptions{
 				StopWords:       stopForPredict,
@@ -986,6 +1054,31 @@ func toLlamaChatMessages(norm []*domain.AIChatMessage) []llama.ChatMessage {
 		})
 	}
 	return messages
+}
+
+func toLlamaMTMDChatMessages(norm []*domain.AIChatMessage) []llama.ChatMessage {
+	out := make([]llama.ChatMessage, 0, len(norm))
+	for _, m := range norm {
+		if m == nil {
+			continue
+		}
+
+		cm := llama.ChatMessage{
+			Role:    ChatRoleString(m.Role),
+			Content: FormatContentForBuiltinChatTemplate(m),
+		}
+
+		if messageLikelyVisionImageAttachment(m) {
+			cm.ImageBytes = append([]byte(nil), m.AttachmentContent...)
+			if m.Role == domain.AIChatMessageRoleUser {
+				cm.Content = strings.TrimSpace(m.Content)
+			}
+		}
+
+		out = append(out, cm)
+	}
+
+	return out
 }
 
 func requiresGeneratePipeline(genMerged *domain.GenerationParams, yamlCfg *ModelYAML, s *LlamaService) bool {

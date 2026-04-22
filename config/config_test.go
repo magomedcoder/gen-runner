@@ -10,7 +10,7 @@ func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	content := `host: "127.0.0.1"
-  port: 50052
+port: 50052
 log_level: "info"
 model_path: "./models"
 `
@@ -42,7 +42,7 @@ func TestLoad_ChatAPIReasoningAndDebugFields(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	content := `host: "127.0.0.1"
-  port: 50051
+port: 50051
 model_path: "./models"
 chat_api_enabled: true
 chat_stream_buffer_size: 256

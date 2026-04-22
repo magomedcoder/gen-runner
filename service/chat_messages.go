@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/magomedcoder/gen-runner/domain"
@@ -62,9 +63,35 @@ func FormatContentForBuiltinChatTemplate(m *domain.AIChatMessage) string {
 	return c
 }
 
+func isImageFilenameExt(name string) bool {
+	switch strings.ToLower(filepath.Ext(strings.TrimSpace(name))) {
+	case ".png", ".jpg", ".jpeg", ".webp", ".gif":
+		return true
+	default:
+		return false
+	}
+}
+
+func messageLikelyVisionImageAttachment(m *domain.AIChatMessage) bool {
+	if m == nil || len(m.AttachmentContent) == 0 {
+		return false
+	}
+
+	mt := strings.ToLower(strings.TrimSpace(m.AttachmentMime))
+	if strings.HasPrefix(mt, "image/") {
+		return true
+	}
+
+	if mt == "" {
+		return isImageFilenameExt(m.AttachmentName) || strings.TrimSpace(m.AttachmentName) == ""
+	}
+
+	return false
+}
+
 func MessagesHaveVisionAttachments(messages []*domain.AIChatMessage) bool {
 	for _, m := range messages {
-		if m != nil && len(m.AttachmentContent) > 0 {
+		if messageLikelyVisionImageAttachment(m) {
 			return true
 		}
 	}

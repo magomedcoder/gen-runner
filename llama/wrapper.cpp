@@ -5,6 +5,8 @@
 #include "llama.cpp/common/sampling.h"
 #include "llama.cpp/common/speculative.h"
 #include "llama.cpp/common/chat.h"
+#include "llama.cpp/tools/mtmd/mtmd.h"
+#include "llama.cpp/tools/mtmd/mtmd-helper.h"
 #include "llama.cpp/vendor/nlohmann/json.hpp"
 
 #include <algorithm>
@@ -61,6 +63,7 @@ struct llama_wrapper_model_t {
     llama_model* model;
     // Запрошенное число gpu-слоев (для статистики)
     int n_gpu_layers;
+    mtmd_context* mtmd = nullptr;
 };
 
 struct llama_wrapper_context_t {
@@ -191,6 +194,35 @@ void* llama_wrapper_model_load(const char* model_path, llama_wrapper_model_param
         // Если передано -1 (означает "по умолчанию"), llama.cpp использует 999 слоев
         wrapper->n_gpu_layers = (params.n_gpu_layers == -1) ? 999 : params.n_gpu_layers;
 
+        wrapper->mtmd = nullptr;
+        if (params.mmproj_path && params.mmproj_path[0] != '\0') {
+            mtmd_context_params mparams = mtmd_context_params_default();
+            mparams.use_gpu = true;
+            mparams.print_timings = false;
+            if (params.n_threads > 0) {
+                mparams.n_threads = params.n_threads;
+            }
+
+            if (params.flash_attn != nullptr) {
+                std::string fa_mode(params.flash_attn);
+                if (fa_mode == "enabled") {
+                    mparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
+                } else if (fa_mode == "disabled") {
+                    mparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_DISABLED;
+                } else {
+                    mparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
+                }
+            }
+
+            wrapper->mtmd = mtmd_init_from_file(params.mmproj_path, model, mparams);
+            if (!wrapper->mtmd) {
+                llama_model_free(model);
+                delete wrapper;
+                g_last_error = "Не удалось загрузить mmproj из: " + std::string(params.mmproj_path);
+                return nullptr;
+            }
+        }
+
         return wrapper;
     } catch (const std::exception& e) {
         g_last_error = "Exception loading model: " + std::string(e.what());
@@ -204,6 +236,10 @@ void llama_wrapper_model_free(void* model) {
     }
 
     auto wrapper = static_cast<llama_wrapper_model_t*>(model);
+    if (wrapper->mtmd) {
+        mtmd_free(wrapper->mtmd);
+        wrapper->mtmd = nullptr;
+    }
     if (wrapper->model) {
         llama_model_free(wrapper->model);
 
@@ -212,6 +248,15 @@ void llama_wrapper_model_free(void* model) {
     }
 
     delete wrapper;
+}
+
+bool llama_wrapper_model_has_mtmd(void* model) {
+    if (!model) {
+        return false;
+    }
+
+    auto wrapper = static_cast<llama_wrapper_model_t*>(model);
+    return wrapper->mtmd != nullptr;
 }
 
 void* llama_wrapper_context_create(void* model, llama_wrapper_model_params params) {
@@ -1640,5 +1685,217 @@ void llama_wrapper_get_runtime_info(void* model, void* ctx, const char* kv_cache
         info->n_batch = 0;
         info->kv_cache_size_mb = 0;
     }
+}
+
+static void fill_sampling_params_from_generate(llama_wrapper_generate_params gen_params, common_params_sampling& sampling_params) {
+    sampling_params.seed = gen_params.seed;
+    sampling_params.temp = gen_params.temperature;
+    sampling_params.top_k = gen_params.top_k;
+    sampling_params.top_p = gen_params.top_p;
+    sampling_params.min_p = gen_params.min_p;
+    sampling_params.typ_p = gen_params.typ_p;
+    sampling_params.top_n_sigma = gen_params.top_n_sigma;
+    sampling_params.min_keep = gen_params.min_keep;
+    sampling_params.penalty_last_n = gen_params.penalty_last_n;
+    sampling_params.penalty_repeat = gen_params.penalty_repeat;
+    sampling_params.penalty_freq = gen_params.penalty_freq;
+    sampling_params.penalty_present = gen_params.penalty_present;
+    sampling_params.dry_multiplier = gen_params.dry_multiplier;
+    sampling_params.dry_base = gen_params.dry_base;
+    sampling_params.dry_allowed_length = gen_params.dry_allowed_length;
+    sampling_params.dry_penalty_last_n = gen_params.dry_penalty_last_n;
+    sampling_params.dry_sequence_breakers.clear();
+    for (int i = 0; i < gen_params.dry_sequence_breakers_count; i++) {
+        if (gen_params.dry_sequence_breakers && gen_params.dry_sequence_breakers[i]) {
+            sampling_params.dry_sequence_breakers.push_back(std::string(gen_params.dry_sequence_breakers[i]));
+        }
+    }
+    sampling_params.dynatemp_range = gen_params.dynatemp_range;
+    sampling_params.dynatemp_exponent = gen_params.dynatemp_exponent;
+    sampling_params.xtc_probability = gen_params.xtc_probability;
+    sampling_params.xtc_threshold = gen_params.xtc_threshold;
+    sampling_params.mirostat = gen_params.mirostat;
+    sampling_params.mirostat_tau = gen_params.mirostat_tau;
+    sampling_params.mirostat_eta = gen_params.mirostat_eta;
+    sampling_params.n_prev = gen_params.n_prev;
+    sampling_params.n_probs = gen_params.n_probs;
+    sampling_params.ignore_eos = gen_params.ignore_eos;
+}
+
+int llama_wrapper_mtmd_chat_prompt(
+    void* ctx_raw,
+    void* model_raw,
+    const char* chat_template_override,
+    int use_jinja_int,
+    const char** roles,
+    const char** contents,
+    const unsigned char** image_bytes,
+    const size_t* image_lens,
+    const int* has_image,
+    int n_messages,
+    llama_wrapper_generate_params gen_params) {
+    if (!ctx_raw || !model_raw || !roles || !contents || !has_image || n_messages <= 0) {
+        g_last_error = "mtmd: некорректные аргументы";
+        return -1;
+    }
+
+    auto* mw = static_cast<llama_wrapper_model_t*>(model_raw);
+    if (!mw->mtmd) {
+        g_last_error = "mtmd: проектор не загружен (укажите mmproj при загрузке модели)";
+        return -2;
+    }
+
+    auto* cw = static_cast<llama_wrapper_context_t*>(ctx_raw);
+    if (!cw->ctx || !mw->model) {
+        g_last_error = "mtmd: контекст или модель недоступны";
+        return -3;
+    }
+
+    llama_context* lctx = cw->ctx;
+    llama_model* lmodel = mw->model;
+    const bool use_jinja = use_jinja_int != 0;
+
+    std::string tmpl_override = chat_template_override ? std::string(chat_template_override) : std::string();
+    common_chat_templates_ptr tmpls = common_chat_templates_init(lmodel, tmpl_override, "", "");
+    if (!tmpls) {
+        g_last_error = "mtmd: не удалось инициализировать chat templates";
+        return -4;
+    }
+
+    std::vector<common_chat_msg> history;
+    llama_pos n_past = 0;
+    const int n_batch = llama_n_batch(lctx);
+
+    for (int i = 0; i < n_messages; i++) {
+        common_chat_msg new_msg;
+        new_msg.role = roles[i] ? roles[i] : "";
+        new_msg.content = contents[i] ? contents[i] : "";
+
+        mtmd_bitmap* bmp = nullptr;
+        std::vector<const mtmd_bitmap*> bmp_ptrs;
+        if (has_image[i]) {
+            if (!image_bytes || !image_lens || !image_bytes[i] || image_lens[i] == 0) {
+                g_last_error = "mtmd: пустое изображение в сообщении";
+                return -5;
+            }
+
+            bmp = mtmd_helper_bitmap_init_from_buf(mw->mtmd, image_bytes[i], image_lens[i]);
+            if (!bmp) {
+                g_last_error = "mtmd: не удалось декодировать изображение";
+                return -6;
+            }
+
+            const std::string marker = mtmd_default_marker();
+            if (new_msg.content.find(marker) == std::string::npos) {
+                new_msg.content = marker + new_msg.content;
+            }
+
+            bmp_ptrs.push_back(bmp);
+        }
+
+        const std::string formatted = common_chat_format_single(tmpls.get(), history, new_msg, new_msg.role == "user", use_jinja);
+
+        mtmd_input_text text{};
+        text.text = formatted.c_str();
+        text.add_special = history.empty();
+        text.parse_special = true;
+
+        mtmd_input_chunks* chunks = mtmd_input_chunks_init();
+        if (!chunks) {
+            if (bmp) {
+                mtmd_bitmap_free(bmp);
+            }
+            g_last_error = "mtmd: mtmd_input_chunks_init failed";
+            return -7;
+        }
+
+        const int32_t tr = mtmd_tokenize(mw->mtmd, chunks, &text, bmp_ptrs.empty() ? nullptr : bmp_ptrs.data(), bmp_ptrs.size());
+        if (tr != 0) {
+            if (bmp) {
+                mtmd_bitmap_free(bmp);
+            }
+            mtmd_input_chunks_free(chunks);
+            g_last_error = "mtmd: mtmd_tokenize ошибка " + std::to_string(tr);
+            return -8;
+        }
+        if (bmp) {
+            mtmd_bitmap_free(bmp);
+            bmp = nullptr;
+        }
+
+        llama_pos new_n_past = n_past;
+        if (mtmd_helper_eval_chunks(mw->mtmd, lctx, chunks, n_past, 0, n_batch, true, &new_n_past) != 0) {
+            mtmd_input_chunks_free(chunks);
+            g_last_error = "mtmd: mtmd_helper_eval_chunks не удался";
+            return -9;
+        }
+        mtmd_input_chunks_free(chunks);
+        n_past = new_n_past;
+        history.push_back(std::move(new_msg));
+    }
+
+    common_params_sampling sampling_params{};
+    fill_sampling_params_from_generate(gen_params, sampling_params);
+    common_sampler* smpl = common_sampler_init(lmodel, sampling_params);
+    if (!smpl) {
+        g_last_error = "mtmd: не удалось создать sampler";
+        return -10;
+    }
+
+    const llama_vocab* vocab = llama_model_get_vocab(lmodel);
+    const int available_ctx = llama_n_ctx(lctx);
+    int gen_room = available_ctx - static_cast<int>(n_past);
+    if (gen_room < 1) {
+        common_sampler_free(smpl);
+        g_last_error = "mtmd: нет места в контексте для генерации";
+        return -11;
+    }
+
+    int n_predict = gen_params.max_tokens > 0 ? std::min(gen_params.max_tokens, gen_room) : gen_room;
+    if (n_predict < 1) {
+        common_sampler_free(smpl);
+        g_last_error = "mtmd: max_tokens некорректен";
+        return -12;
+    }
+
+    const int batch_cap = std::max(512, n_batch);
+    llama_batch gen_batch = llama_batch_init(batch_cap, 0, 1);
+
+    std::string accumulated;
+    for (int step = 0; step < n_predict; step++) {
+        const llama_token tid = common_sampler_sample(smpl, lctx, -1);
+        if (llama_vocab_is_eog(vocab, tid)) {
+            break;
+        }
+
+        common_sampler_accept(smpl, tid, true);
+        const std::string piece = common_token_to_piece(lctx, tid);
+        accumulated += piece;
+
+        if (gen_params.stop_words_count > 0 && gen_params.stop_words) {
+            for (int si = 0; si < gen_params.stop_words_count; si++) {
+                if (gen_params.stop_words[si] && accumulated.find(gen_params.stop_words[si]) != std::string::npos) {
+                    goto mtmd_gen_done;
+                }
+            }
+        }
+
+        if (gen_params.callback_handle != 0) {
+            if (!goTokenCallback(gen_params.callback_handle, piece.c_str())) {
+                break;
+            }
+        }
+
+        common_batch_clear(gen_batch);
+        common_batch_add(gen_batch, tid, n_past, {0}, true);
+        n_past++;
+        if (llama_decode(lctx, gen_batch) != 0) {
+            break;
+        }
+    }
+mtmd_gen_done:
+    llama_batch_free(gen_batch);
+    common_sampler_free(smpl);
+    return 0;
 }
 }

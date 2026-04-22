@@ -10,7 +10,7 @@ import (
 	"github.com/magomedcoder/gen-runner/domain"
 )
 
-func TestSendMessage_VisionAttachmentUnsupported_FastFail(t *testing.T) {
+func TestSendMessage_VisionAttachmentErrorsWithoutMMProjOrModels(t *testing.T) {
 	svc := NewLlamaService("")
 	msgs := []*domain.AIChatMessage{
 		{
@@ -23,10 +23,11 @@ func TestSendMessage_VisionAttachmentUnsupported_FastFail(t *testing.T) {
 
 	_, err := svc.SendMessage(context.Background(), "any-model", msgs, nil, nil)
 	if err == nil {
-		t.Fatal("ожидалась ошибка о неподдерживаемых vision-вложениях")
+		t.Fatal("ожидалась ошибка")
 	}
 
-	if !strings.Contains(err.Error(), "vision-вложения не поддерживаются") {
+	low := strings.ToLower(err.Error())
+	if !strings.Contains(low, "mmproj") && !strings.Contains(low, "модел") && !strings.Contains(low, "yaml") {
 		t.Fatalf("неожиданная ошибка: %v", err)
 	}
 }

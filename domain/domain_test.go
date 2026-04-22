@@ -66,21 +66,23 @@ func TestNewChatSession(t *testing.T) {
 
 func TestAIMessageFromProto_attachmentContent(t *testing.T) {
 	n := "pic.png"
+	mime := "image/png"
 	p := &llmrunnerpb.ChatMessage{
 		Role:              "user",
 		Content:           "что на картинке",
 		CreatedAt:         1,
 		AttachmentName:    &n,
+		AttachmentMime:    &mime,
 		AttachmentContent: []byte{0x89, 0x50},
 	}
 
 	m := AIMessageFromProto(p, 7)
-	if m.AttachmentName != n || string(m.AttachmentContent) != string(p.AttachmentContent) {
+	if m.AttachmentName != n || m.AttachmentMime != mime || string(m.AttachmentContent) != string(p.AttachmentContent) {
 		t.Fatalf("из proto: %+v", m)
 	}
 
 	p2 := AIMessageToProto(m)
-	if p2.GetAttachmentName() != n || string(p2.GetAttachmentContent()) != string(p.AttachmentContent) {
+	if p2.GetAttachmentName() != n || p2.GetAttachmentMime() != mime || string(p2.GetAttachmentContent()) != string(p.AttachmentContent) {
 		t.Fatalf("в proto: %+v", p2)
 	}
 }

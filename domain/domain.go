@@ -32,6 +32,7 @@ type AIChatMessage struct {
 	Content           string
 	Role              AIChatMessageRole
 	AttachmentName    string
+	AttachmentMime    string
 	AttachmentFileId  int64
 	AttachmentContent []byte
 	ToolCallID        string
@@ -105,6 +106,10 @@ func AIMessageToProto(msg *AIChatMessage) *llmrunnerpb.ChatMessage {
 		p.AttachmentContent = msg.AttachmentContent
 	}
 
+	if mime := strings.TrimSpace(msg.AttachmentMime); mime != "" {
+		p.AttachmentMime = &mime
+	}
+
 	if msg.ToolCallID != "" {
 		p.ToolCallId = &msg.ToolCallID
 	}
@@ -138,6 +143,10 @@ func AIMessageFromProto(proto *llmrunnerpb.ChatMessage, sessionID int64) *AIChat
 	}
 	if len(proto.AttachmentContent) > 0 {
 		msg.AttachmentContent = append([]byte(nil), proto.AttachmentContent...)
+	}
+
+	if proto.AttachmentMime != nil {
+		msg.AttachmentMime = strings.TrimSpace(*proto.AttachmentMime)
 	}
 
 	if proto.ToolCallId != nil {

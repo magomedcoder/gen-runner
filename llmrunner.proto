@@ -76,6 +76,7 @@ message ChatMessage {
   optional string tool_call_id = 7;
   optional string tool_name = 8;
   optional string tool_calls_json = 9;
+  optional string attachment_mime = 10;
 }
 
 message ChatResponse {

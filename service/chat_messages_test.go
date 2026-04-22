@@ -61,3 +61,33 @@ func TestNormalizeChatMessages_preservesUserInstructionAsLastMessage(t *testing.
 		t.Fatalf("last message must be latest user instruction, got role=%s content=%q", out[len(out)-1].Role, out[len(out)-1].Content)
 	}
 }
+
+func TestMessagesHaveVisionAttachments_imageMimeOrFilename(t *testing.T) {
+	if !MessagesHaveVisionAttachments([]*domain.AIChatMessage{
+		{
+			AttachmentMime:    "image/png",
+			AttachmentContent: []byte{1},
+		},
+	}) {
+		t.Fatal("image/* mime must count as vision payload")
+	}
+
+	if MessagesHaveVisionAttachments([]*domain.AIChatMessage{
+		{
+			AttachmentMime:    "application/pdf",
+			AttachmentName:    "x.pdf",
+			AttachmentContent: []byte{1, 2, 3},
+		},
+	}) {
+		t.Fatal("non-image mime must not count as vision")
+	}
+
+	if !MessagesHaveVisionAttachments([]*domain.AIChatMessage{
+		{
+			AttachmentName:    "pic.png",
+			AttachmentContent: []byte{1},
+		},
+	}) {
+		t.Fatal("legacy: image extension without mime still treated as vision candidate")
+	}
+}

@@ -1,8 +1,9 @@
 package llama
 
 type ChatMessage struct {
-	Role    string // Роль сообщения (например - system, user, assistant)
-	Content string // Содержимое сообщения
+	Role       string // Роль сообщения (например - system, user, assistant)
+	Content    string // Содержимое сообщения
+	ImageBytes []byte // Опциональные байты изображения (jpeg/png/webp/gif) для libmtmd на этом сообщении
 }
 
 type ChatResponse struct {

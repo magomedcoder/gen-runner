@@ -105,6 +105,7 @@ type modelConfig struct {
 	tensorSplit             string
 	disableProgressCallback bool
 	progressCallback        ProgressCallback
+	mmproj                  string
 }
 
 var defaultModelConfig = modelConfig{

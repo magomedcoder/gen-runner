@@ -5,6 +5,7 @@ extern "C" {
 #endif
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef bool (*llama_progress_callback_wrapper)(float progress, void* user_data);
@@ -27,6 +28,7 @@ typedef struct {
     bool disable_progress_callback; // Для тихой загрузки
     llama_progress_callback_wrapper progress_callback; // Пользовательский callback
     void* progress_callback_user_data; // Пользовательские данные для callback
+    const char* mmproj_path; // Опциональный путь к mmproj (GGUF проектор для vision). NULL - только текст
 } llama_wrapper_model_params;
 
 // Параметры генерации
@@ -98,6 +100,24 @@ void llama_wrapper_init_logging();
 // Управление моделью
 void* llama_wrapper_model_load(const char* model_path, llama_wrapper_model_params params);
 void llama_wrapper_model_free(void* model);
+// true, если к модели привязан mtmd (загружен mmproj)
+bool llama_wrapper_model_has_mtmd(void* model);
+
+// Мультимодальный чат (libmtmd)
+// 0 - успех
+// отрицательное - ошибка
+int llama_wrapper_mtmd_chat_prompt(
+    void* ctx,
+    void* model,
+    const char* chat_template_override,
+    int use_jinja,
+    const char** roles,
+    const char** contents,
+    const unsigned char** image_bytes,
+    const size_t* image_lens,
+    const int* has_image,
+    int n_messages,
+    llama_wrapper_generate_params gen_params);
 
 // Управление контекстом
 void* llama_wrapper_context_create(void* model, llama_wrapper_model_params params);

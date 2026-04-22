@@ -17,6 +17,7 @@ type ModelYAML struct {
 	From      string              `yaml:"from,omitempty"`
 	System    string              `yaml:"system,omitempty"`
 	Template  string              `yaml:"template,omitempty"`
+	MMProj    string              `yaml:"mmproj,omitempty"`
 	Parameter *ModelYAMLParameter `yaml:"parameter,omitempty"`
 	NumCtx    *int                `yaml:"num_ctx,omitempty"`
 	Stop      []string            `yaml:"stop,omitempty"`

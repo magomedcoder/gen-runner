@@ -10,7 +10,7 @@ import (
 /*
 #cgo CFLAGS: -I./llama.cpp -I./ -I./llama.cpp/ggml/include -I./llama.cpp/include -I./llama.cpp/common -I./llama.cpp/vendor
 #cgo CPPFLAGS: -I./llama.cpp -I./ -I./llama.cpp/ggml/include -I./llama.cpp/include -I./llama.cpp/common -I./llama.cpp/vendor
-#cgo LDFLAGS: -L./ -lbinding -lcommon -lllama -lggml -lggml-cpu -lggml-base -lstdc++ -lm -lgomp
+#cgo LDFLAGS: -L./ -lbinding -lcommon -lmtmd -lllama -lggml -lggml-cpu -lggml-base -lstdc++ -lm -lgomp
 #include "wrapper.h"
 #include <stdlib.h>
 
@@ -70,6 +70,12 @@ func LoadModel(path string, opts ...ModelOption) (*Model, error) {
 		defer C.free(unsafe.Pointer(cTensorSplit))
 	}
 
+	var cMmproj *C.char
+	if config.mmproj != "" {
+		cMmproj = C.CString(config.mmproj)
+		defer C.free(unsafe.Pointer(cMmproj))
+	}
+
 	params := C.llama_wrapper_model_params{
 		n_ctx:           0, // Не используется при загрузке модели
 		n_batch:         0, // Не используется при загрузке модели
@@ -85,6 +91,7 @@ func LoadModel(path string, opts ...ModelOption) (*Model, error) {
 		tensor_split:    cTensorSplit,
 		kv_cache_type:   nil,
 		flash_attn:      nil,
+		mmproj_path:     cMmproj,
 	}
 
 	var callbackID uintptr
@@ -222,6 +229,17 @@ func (m *Model) Close() error {
 
 	m.closed = true
 	return nil
+}
+
+func (m *Model) HasMTMD() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.closed || m.modelPtr == nil {
+		return false
+	}
+
+	return bool(C.llama_wrapper_model_has_mtmd(m.modelPtr))
 }
 
 func (m *Model) ChatTemplate() string {
