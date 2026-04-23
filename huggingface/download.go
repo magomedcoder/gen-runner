@@ -95,18 +95,14 @@ func downloadFile(opts Options, client *Client, repoID, revision, filename, outD
 		return err
 	}
 
-	f, err := os.Create(dstPath)
-	if err != nil {
-		return err
-	}
-
-	defer f.Close()
-
 	dp := newDownloadProgress(opts.LogOutput, filename, opts.progressMu)
-	n, total, err := client.Download(ctx, repoID, revision, filename, f, dp.report)
+	n, total, err := client.DownloadToPath(ctx, repoID, revision, filename, dstPath, dp.report)
 	dp.finish(n, total)
 	if err != nil {
-		_ = os.Remove(dstPath)
+		if st, e := os.Stat(dstPath); e == nil && st.Size() == 0 {
+			_ = os.Remove(dstPath)
+		}
+
 		return err
 	}
 

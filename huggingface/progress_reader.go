@@ -11,6 +11,7 @@ type ProgressFunc func(written, total int64)
 
 type progressReader struct {
 	r         io.Reader
+	base      int64
 	written   int64
 	total     int64
 	on        ProgressFunc
@@ -46,6 +47,6 @@ func (p *progressReader) maybeReport(force bool) {
 		}
 	}
 
-	p.on(p.written, p.total)
+	p.on(p.base+p.written, p.total)
 	p.nextFlush = now.Add(progressReportMinInterval)
 }
