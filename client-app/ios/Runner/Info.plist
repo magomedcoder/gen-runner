@@ -47,5 +47,7 @@
 	<true/>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Чтобы выбрать файл или изображение для вложения в чат.</string>
 </dict>
 </plist>

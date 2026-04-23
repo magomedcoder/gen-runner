@@ -106,21 +106,25 @@ class _AssistantReasoningToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: onPressed,
-      tooltip: expanded
-          ? 'Свернуть размышление'
-          : 'Показать размышление',
-      padding: EdgeInsets.zero,
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(
-        minWidth: 36,
-        minHeight: 36,
-      ),
-      icon: Icon(
-        expanded ? Icons.expand_less : Icons.expand_more,
-        size: 22,
-        color: messageTextColor.withValues(alpha: 0.55),
+    final tip = expanded ? 'Свернуть размышление' : 'Показать размышление';
+    return Semantics(
+      excludeSemantics: true,
+      label: tip,
+      button: true,
+      child: IconButton(
+        onPressed: onPressed,
+        tooltip: tip,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(
+          minWidth: 36,
+          minHeight: 36,
+        ),
+        icon: Icon(
+          expanded ? Icons.expand_less : Icons.expand_more,
+          size: 22,
+          color: messageTextColor.withValues(alpha: 0.55),
+        ),
       ),
     );
   }
@@ -412,17 +416,23 @@ class _ChatBubbleState extends State<ChatBubble> {
             child: Stack(
               children: [
                 Center(
-                  child: InteractiveViewer(
-                    minScale: 0.4,
-                    maxScale: 6,
-                    child: Image.memory(
-                      bytes,
-                      fit: BoxFit.contain,
-                      gaplessPlayback: true,
-                      errorBuilder: (c, _, stackTrace) => Icon(
-                        Icons.broken_image_outlined,
-                        color: Colors.white.withValues(alpha: 0.7),
-                        size: 64,
+                  child: Semantics(
+                    label:
+                        'Вложенное изображение на весь экран, масштаб жестами',
+                    child: InteractiveViewer(
+                      minScale: 0.4,
+                      maxScale: 6,
+                      child: ExcludeSemantics(
+                        child: Image.memory(
+                          bytes,
+                          fit: BoxFit.contain,
+                          gaplessPlayback: true,
+                          errorBuilder: (c, _, stackTrace) => Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white.withValues(alpha: 0.7),
+                            size: 64,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -430,10 +440,15 @@ class _ChatBubbleState extends State<ChatBubble> {
                 Positioned(
                   top: 4,
                   right: 4,
-                  child: IconButton(
-                    tooltip: 'Закрыть',
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    icon: const Icon(Icons.close, color: Colors.white),
+                  child: Semantics(
+                    excludeSemantics: true,
+                    label: 'Закрыть просмотр изображения',
+                    button: true,
+                    child: IconButton(
+                      tooltip: 'Закрыть',
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
                   ),
                 ),
               ],
@@ -452,16 +467,19 @@ class _ChatBubbleState extends State<ChatBubble> {
     }
 
     if (_userAttachmentThumbLoading && _userAttachmentThumbBytes == null) {
-      return SizedBox(
-        height: 120,
-        width: 200,
-        child: Center(
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: messageTextColor.withValues(alpha: 0.45),
+      return Semantics(
+        label: 'Загрузка превью вложенного изображения',
+        child: SizedBox(
+          height: 120,
+          width: 200,
+          child: Center(
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: messageTextColor.withValues(alpha: 0.45),
+              ),
             ),
           ),
         ),
@@ -476,6 +494,7 @@ class _ChatBubbleState extends State<ChatBubble> {
     return Tooltip(
       message: 'Нажмите, чтобы открыть изображение целиком',
       child: Semantics(
+        excludeSemantics: true,
         label: 'Вложенное изображение, открыть целиком',
         button: true,
         child: Material(
@@ -688,70 +707,80 @@ class _ChatBubbleState extends State<ChatBubble> {
                     if (attachmentLabel != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: Tooltip(
-                          message: canOpenRagPreview
-                              ? 'Открыть, как модель видит документ (RAG)'
+                        child: Semantics(
+                          excludeSemantics: true,
+                          button: canOpenRagPreview,
+                          enabled: canOpenRagPreview,
+                          label: canOpenRagPreview
+                              ? 'Вложение $attachmentLabel, открыть превью для поиска по документу'
                               : (messageEligibleForChatImageThumb(message)
-                                    ? 'Вложение: изображение'
-                                    : 'Вложение: файл'),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: canOpenRagPreview
-                                  ? () => _showRagPreviewForAttachment(context)
-                                  : null,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                  horizontal: 2,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      messageEligibleForChatImageThumb(
-                                        message,
-                                      )
-                                          ? Icons.image_outlined
-                                          : Icons.insert_drive_file_rounded,
-                                      size: 18,
-                                      color: messageTextColor,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Flexible(
-                                      child: Text(
-                                        attachmentLabel,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: messageTextColor,
-                                          decoration: canOpenRagPreview
-                                              ? TextDecoration.underline
-                                              : TextDecoration.none,
-                                          decorationStyle:
-                                              TextDecorationStyle.dotted,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
+                                    ? 'Вложение изображение: $attachmentLabel'
+                                    : 'Вложение файл: $attachmentLabel'),
+                          child: Tooltip(
+                            message: canOpenRagPreview
+                                ? 'Открыть, как модель видит документ (RAG)'
+                                : (messageEligibleForChatImageThumb(message)
+                                      ? 'Вложение: изображение'
+                                      : 'Вложение: файл'),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: canOpenRagPreview
+                                    ? () => _showRagPreviewForAttachment(context)
+                                    : null,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                    horizontal: 2,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        messageEligibleForChatImageThumb(
+                                          message,
+                                        )
+                                            ? Icons.image_outlined
+                                            : Icons.insert_drive_file_rounded,
+                                        size: 18,
+                                        color: messageTextColor,
                                       ),
-                                    ),
-                                    if (canOpenRagPreview) ...[
-                                      const SizedBox(width: 4),
-                                      Tooltip(
-                                        message: hasRagPreviewStored
-                                            ? 'Как модель видит документ'
-                                            : 'Превью после ответа с RAG',
-                                        child: Icon(
-                                          hasRagPreviewStored
-                                              ? Icons.visibility_outlined
-                                              : Icons.visibility_off_outlined,
-                                          size: 18,
-                                          color: messageTextColor.withValues(
-                                            alpha: 0.75,
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          attachmentLabel,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: messageTextColor,
+                                            decoration: canOpenRagPreview
+                                                ? TextDecoration.underline
+                                                : TextDecoration.none,
+                                            decorationStyle:
+                                                TextDecorationStyle.dotted,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (canOpenRagPreview) ...[
+                                        const SizedBox(width: 4),
+                                        Tooltip(
+                                          message: hasRagPreviewStored
+                                              ? 'Как модель видит документ'
+                                              : 'Превью после ответа с RAG',
+                                          child: Icon(
+                                            hasRagPreviewStored
+                                                ? Icons.visibility_outlined
+                                                : Icons.visibility_off_outlined,
+                                            size: 18,
+                                            color: messageTextColor.withValues(
+                                              alpha: 0.75,
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -848,27 +877,35 @@ class _ChatBubbleState extends State<ChatBubble> {
                     if (isStreaming)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.5,
-                                color: messageTextColor.withValues(alpha: 0.75),
+                        child: Semantics(
+                          excludeSemantics: true,
+                          label: 'Обрабатываю ответ',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: messageTextColor.withValues(
+                                    alpha: 0.75,
+                                  ),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Обрабатываю...',
-                              style: TextStyle(
-                                fontSize: 12,
-                                height: 1.2,
-                                color: messageTextColor.withValues(alpha: 0.75),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Обрабатываю...',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.2,
+                                  color: messageTextColor.withValues(
+                                    alpha: 0.75,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     if (sessionFileIds.isNotEmpty)
@@ -894,38 +931,46 @@ class _ChatBubbleState extends State<ChatBubble> {
                                   Tooltip(
                                     message:
                                         'Скачать артефакт с сервера (в приложении превью нет)',
-                                    child: TextButton.icon(
-                                      onPressed: _downloadingFileId != null
-                                          ? null
-                                          : () => _downloadSessionFile(fid),
-                                      icon: _downloadingFileId == fid
-                                          ? SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: messageTextColor
-                                                    .withValues(alpha: 0.85),
+                                    child: Semantics(
+                                      excludeSemantics: true,
+                                      label:
+                                          'Скачать файл #$fid с сервера, открыть во внешней программе',
+                                      button: true,
+                                      enabled: _downloadingFileId == null,
+                                      child: TextButton.icon(
+                                        onPressed: _downloadingFileId != null
+                                            ? null
+                                            : () => _downloadSessionFile(fid),
+                                        icon: _downloadingFileId == fid
+                                            ? SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: messageTextColor
+                                                      .withValues(alpha: 0.85),
+                                                ),
+                                              )
+                                            : Icon(
+                                                Icons.download_rounded,
+                                                size: 18,
+                                                color:
+                                                    theme.colorScheme.primary,
                                               ),
-                                            )
-                                          : Icon(
-                                              Icons.download_rounded,
-                                              size: 18,
-                                              color: theme.colorScheme.primary,
-                                            ),
-                                      label: Text(
-                                        'Файл #$fid',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: theme.colorScheme.primary,
+                                        label: Text(
+                                          'Файл #$fid',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: theme.colorScheme.primary,
+                                          ),
                                         ),
-                                      ),
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
+                                          visualDensity: VisualDensity.compact,
                                         ),
-                                        visualDensity: VisualDensity.compact,
                                       ),
                                     ),
                                   ),
@@ -955,127 +1000,171 @@ class _ChatBubbleState extends State<ChatBubble> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (showEditNav) ...[
-                      IconButton(
-                        onPressed: widget.onPrevEdit,
-                        icon: const Icon(Icons.chevron_left_rounded, size: 20),
-                        tooltip: 'Предыдущая версия',
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
-                        ),
-                      ),
-                      Text(
-                        '${(editsIndex ?? 0) + 1}/${editsTotal ?? 1}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.9,
+                      Semantics(
+                        excludeSemantics: true,
+                        label: 'Предыдущая версия сообщения',
+                        button: true,
+                        enabled: widget.onPrevEdit != null,
+                        child: IconButton(
+                          onPressed: widget.onPrevEdit,
+                          icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                          tooltip: 'Предыдущая версия',
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
                           ),
                         ),
                       ),
-                      IconButton(
-                        onPressed: widget.onNextEdit,
-                        icon: const Icon(Icons.chevron_right_rounded, size: 20),
-                        tooltip: 'Следующая версия',
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
+                      Semantics(
+                        label:
+                            'Версия сообщения ${(editsIndex ?? 0) + 1} из ${editsTotal ?? 1}',
+                        child: Text(
+                          '${(editsIndex ?? 0) + 1}/${editsTotal ?? 1}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.9,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Semantics(
+                        excludeSemantics: true,
+                        label: 'Следующая версия сообщения',
+                        button: true,
+                        enabled: widget.onNextEdit != null,
+                        child: IconButton(
+                          onPressed: widget.onNextEdit,
+                          icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                          tooltip: 'Следующая версия',
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
                     ],
                     if (hasCopyableText || isStreaming)
-                      IconButton(
-                        onPressed: hasCopyableText
-                            ? () async {
-                                await Clipboard.setData(
-                                  ClipboardData(
-                                    text: isUser
-                                        ? message.content
-                                        : assistantVisible.trim(),
-                                  ),
-                                );
+                      Semantics(
+                        excludeSemantics: true,
+                        label: _justCopied
+                            ? 'Текст скопирован в буфер обмена'
+                            : (hasCopyableText
+                                  ? 'Копировать текст сообщения в буфер обмена'
+                                  : 'Копирование недоступно, ответ ещё формируется'),
+                        button: true,
+                        enabled: hasCopyableText,
+                        child: IconButton(
+                          onPressed: hasCopyableText
+                              ? () async {
+                                  await Clipboard.setData(
+                                    ClipboardData(
+                                      text: isUser
+                                          ? message.content
+                                          : assistantVisible.trim(),
+                                    ),
+                                  );
 
-                                if (!mounted) {
-                                  return;
-                                }
-
-                                setState(() => _justCopied = true);
-
-                                Future.delayed(const Duration(seconds: 2), () {
-                                  if (mounted) {
-                                    setState(() => _justCopied = false);
+                                  if (!mounted) {
+                                    return;
                                   }
-                                });
-                              }
-                            : null,
-                        icon: Icon(
-                          _justCopied
-                              ? Icons.check_rounded
-                              : Icons.copy_rounded,
-                          size: 18,
-                          color: theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: hasCopyableText ? 1 : 0.4,
+
+                                  setState(() => _justCopied = true);
+
+                                  Future.delayed(const Duration(seconds: 2), () {
+                                    if (mounted) {
+                                      setState(() => _justCopied = false);
+                                    }
+                                  });
+                                }
+                              : null,
+                          icon: Icon(
+                            _justCopied
+                                ? Icons.check_rounded
+                                : Icons.copy_rounded,
+                            size: 18,
+                            color: theme.colorScheme.onSurfaceVariant.withValues(
+                              alpha: hasCopyableText ? 1 : 0.4,
+                            ),
                           ),
-                        ),
-                        tooltip: _justCopied ? 'Скопировано' : 'Копировать',
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
-                        ),
-                        style: IconButton.styleFrom(
-                          foregroundColor: theme.colorScheme.onSurfaceVariant
-                              .withValues(alpha: hasCopyableText ? 1 : 0.4),
+                          tooltip: _justCopied ? 'Скопировано' : 'Копировать',
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          style: IconButton.styleFrom(
+                            foregroundColor: theme.colorScheme.onSurfaceVariant
+                                .withValues(alpha: hasCopyableText ? 1 : 0.4),
+                          ),
                         ),
                       ),
                     if (widget.showContinuePartial) ...[
                       const SizedBox(width: 4),
-                      IconButton(
-                        onPressed: message.id > 0
-                            ? () => context.read<ChatBloc>().add(
-                                ChatContinueAssistant(message.id),
-                              )
-                            : null,
-                        icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                        tooltip: 'Продолжить',
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
+                      Semantics(
+                        excludeSemantics: true,
+                        label: 'Продолжить ответ ассистента',
+                        button: true,
+                        enabled: message.id > 0,
+                        child: IconButton(
+                          onPressed: message.id > 0
+                              ? () => context.read<ChatBloc>().add(
+                                  ChatContinueAssistant(message.id),
+                                )
+                              : null,
+                          icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                          tooltip: 'Продолжить',
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
                         ),
                       ),
                     ],
                     if (widget.onRegenerate != null)
-                      IconButton(
-                        onPressed: widget.onRegenerate,
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
-                        tooltip: 'Перегенерировать ответ',
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
+                      Semantics(
+                        excludeSemantics: true,
+                        label: 'Перегенерировать ответ ассистента',
+                        button: true,
+                        child: IconButton(
+                          onPressed: widget.onRegenerate,
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          tooltip: 'Перегенерировать ответ',
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
                         ),
                       ),
                     if (widget.onEditSubmit != null && isUser && !isStreaming)
-                      IconButton(
-                        onPressed: () {
-                          setState(() => _isEditing = !_isEditing);
-                        },
-                        icon: const Icon(Icons.edit_rounded, size: 18),
-                        tooltip: 'Редактировать и продолжить',
-                        padding: EdgeInsets.zero,
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(
-                          minWidth: 32,
-                          minHeight: 32,
+                      Semantics(
+                        excludeSemantics: true,
+                        label: _isEditing
+                            ? 'Закончить редактирование сообщения'
+                            : 'Редактировать сообщение и продолжить диалог',
+                        button: true,
+                        child: IconButton(
+                          onPressed: () {
+                            setState(() => _isEditing = !_isEditing);
+                          },
+                          icon: const Icon(Icons.edit_rounded, size: 18),
+                          tooltip: 'Редактировать и продолжить',
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
                         ),
                       ),
                     if (isTool && message.toolName != null && message.toolName!.trim().isNotEmpty)
@@ -1240,11 +1329,16 @@ Widget _assistantMessageBody(
                 child: Image.memory(
                   s.bytes,
                   fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) => Text(
-                    'Не удалось показать изображение',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: messageTextColor.withValues(alpha: 0.8),
+                  semanticLabel: 'Изображение в ответе ассистента',
+                  errorBuilder: (context, error, stackTrace) => Semantics(
+                    excludeSemantics: true,
+                    label: 'Не удалось показать изображение',
+                    child: Text(
+                      'Не удалось показать изображение',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: messageTextColor.withValues(alpha: 0.8),
+                      ),
                     ),
                   ),
                 ),
@@ -1267,40 +1361,50 @@ class _ToolProgressLine extends StatelessWidget {
     final isMcp = text.contains('MCP') || text.contains('MCP #');
     final isWebSearch = lower.contains('web_search');
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (isMcp)
-          Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Icon(
-              Icons.extension_outlined,
-              size: 16,
-              color: messageTextColor.withValues(alpha: 0.8),
+    return Semantics(
+      container: true,
+      label: text,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isMcp)
+            ExcludeSemantics(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(
+                  Icons.extension_outlined,
+                  size: 16,
+                  color: messageTextColor.withValues(alpha: 0.8),
+                ),
+              ),
+            )
+          else if (isWebSearch)
+            ExcludeSemantics(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(
+                  Icons.travel_explore,
+                  size: 16,
+                  color: messageTextColor.withValues(alpha: 0.8),
+                ),
+              ),
             ),
-          )
-        else if (isWebSearch)
-          Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Icon(
-              Icons.travel_explore,
-              size: 16,
-              color: messageTextColor.withValues(alpha: 0.8),
+          if (isMcp || isWebSearch) const SizedBox(width: 8),
+          Expanded(
+            child: ExcludeSemantics(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: messageTextColor.withValues(alpha: 0.85),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ),
           ),
-        if (isMcp || isWebSearch) const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.35,
-              color: messageTextColor.withValues(alpha: 0.85),
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

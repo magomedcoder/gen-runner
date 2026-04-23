@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:gen/core/failures.dart';
+import 'package:gen/core/chat_backend_user_error.dart';
 import 'package:gen/core/grpc_unavailable.dart';
 import 'package:gen/core/chat_image_attachment.dart';
 import 'package:gen/core/log/logs.dart';
@@ -382,9 +382,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       _reportServerUnreachableIfNeeded(e);
       emit(
         state.copyWith(
-          error: isGrpcUnavailable(e)
-              ? null
-              : 'Не удалось загрузить историю правок',
+          error: chatHeadlineIfBackendReachable(
+            e,
+            'Не удалось загрузить историю правок',
+          ),
         ),
       );
     }
@@ -441,9 +442,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
         emit(
           state.copyWith(
-            error: isGrpcUnavailable(e)
-                ? null
-                : 'Не удалось загрузить ветку версии',
+            error: chatHeadlineIfBackendReachable(
+              e,
+              'Не удалось загрузить ветку версии',
+            ),
           ),
         );
       }
@@ -513,9 +515,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       _reportServerUnreachableIfNeeded(e);
       emit(
         state.copyWith(
-          error: isGrpcUnavailable(e)
-              ? null
-              : 'Не удалось загрузить историю перегенераций',
+          error: chatHeadlineIfBackendReachable(
+            e,
+            'Не удалось загрузить историю перегенераций',
+          ),
         ),
       );
     }
@@ -575,9 +578,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         }
         emit(
           state.copyWith(
-            error: isGrpcUnavailable(e)
-                ? null
-                : 'Не удалось загрузить версию ответа',
+            error: chatHeadlineIfBackendReachable(
+              e,
+              'Не удалось загрузить версию ответа',
+            ),
           ),
         );
       }
@@ -860,7 +864,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               isLoading: false,
               hasActiveRunners: hasActiveRunners,
               webSearchGloballyEnabled: false,
-              error: isGrpcUnavailable(e) ? null : 'Ошибка загрузки сессий',
+              error: chatHeadlineIfBackendReachable(
+                e,
+                'Не удалось загрузить список чатов',
+              ),
             ),
           );
         }
@@ -1106,7 +1113,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       emit(
         state.copyWith(
           isLoading: false,
-          error: isGrpcUnavailable(e) ? null : 'Ошибка загрузки сессий',
+          error: chatHeadlineIfBackendReachable(
+            e,
+            'Не удалось загрузить список чатов',
+          ),
         ),
       );
     }
@@ -1211,7 +1221,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       emit(
         state.copyWith(
           isLoading: false,
-          error: isGrpcUnavailable(e) ? null : 'Ошибка загрузки сообщений',
+          error: chatHeadlineIfBackendReachable(
+            e,
+            'Не удалось загрузить сообщения',
+          ),
         ),
       );
     }
@@ -1254,7 +1267,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       emit(
         state.copyWith(
           isLoadingOlderMessages: false,
-          error: isGrpcUnavailable(e) ? null : 'Ошибка загрузки сообщений',
+          error: chatHeadlineIfBackendReachable(
+            e,
+            'Не удалось загрузить сообщения',
+          ),
         ),
       );
     }
@@ -1392,7 +1408,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         _reportServerUnreachableIfNeeded(e);
         emit(
           state.copyWith(
-            error: isGrpcUnavailable(e) ? null : 'Ошибка создания сессии',
+            error: chatHeadlineIfBackendReachable(
+              e,
+              'Не удалось создать чат',
+            ),
             isLoading: false,
           ),
         );
@@ -1423,9 +1442,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         Logs().e('ChatBloc: ошибка загрузки вложения', exception: e);
         requestLogoutIfUnauthorized(e, authBloc);
         _reportServerUnreachableIfNeeded(e);
-        final msg = isGrpcUnavailable(e)
-            ? null
-            : (e is Failure ? e.message : 'Ошибка загрузки файла');
+        final msg = chatHeadlineIfBackendReachable(
+          e,
+          'Не удалось загрузить файл',
+        );
         emit(
           state.copyWith(
             isLoading: false,
@@ -2241,7 +2261,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       emit(
         state.copyWith(
           isLoading: false,
-          error: isGrpcUnavailable(e) ? null : 'Ошибка удаления сессии',
+          error: chatHeadlineIfBackendReachable(
+            e,
+            'Не удалось удалить чат',
+          ),
         ),
       );
     }
@@ -2279,7 +2302,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       emit(
         state.copyWith(
           isLoading: false,
-          error: isGrpcUnavailable(e) ? null : 'Ошибка обновления заголовка',
+          error: chatHeadlineIfBackendReachable(
+            e,
+            'Не удалось обновить название чата',
+          ),
         ),
       );
     }

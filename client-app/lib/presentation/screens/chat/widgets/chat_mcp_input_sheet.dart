@@ -179,7 +179,7 @@ class _ChatMcpMenuButtonState extends State<ChatMcpMenuButton> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Загрузка серверов…',
+                          'Загрузка серверов...',
                           style: theme.textTheme.bodyMedium,
                         ),
                       ),

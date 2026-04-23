@@ -1,3 +1,4 @@
+import 'package:gen/core/chat_backend_user_error.dart';
 import 'package:gen/core/failures.dart';
 import 'package:gen/core/grpc_unavailable.dart';
 
@@ -8,12 +9,7 @@ String chatStreamFailureMessage(Object error, {required String lead}) {
     return '$lead: ${error.message}';
   }
 
-  final raw = error.toString().trim();
-  if (raw.isEmpty) {
-    return lead;
-  }
-
-  return '$lead. $raw';
+  return '$lead: ${chatBackendErrorMessage(error)}';
 }
 
 String? chatStreamErrorForState(Object e, {required String lead}) {

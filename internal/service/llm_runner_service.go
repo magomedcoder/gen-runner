@@ -95,6 +95,10 @@ func NewLLMRunnerService(address, model string) (*LLMRunnerService, error) {
 }
 
 func (s *LLMRunnerService) Close() error {
+	if s.conn == nil {
+		return nil
+	}
+
 	return s.conn.Close()
 }
 

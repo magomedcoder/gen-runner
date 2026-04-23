@@ -35,9 +35,11 @@ Future<Uint8List?> _readClipboardFileFormat(
       completer.completeError(e);
     }
   });
+
   if (progress == null) {
     completer.complete(null);
   }
+
   return completer.future;
 }
 
@@ -50,15 +52,18 @@ Future<({Uint8List bytes, String name})?> _readFirstSupportedClipboardImage(
     (Formats.webp, 'clipboard.webp'),
     (Formats.gif, 'clipboard.gif'),
   ];
+
   for (final c in candidates) {
     if (!reader.canProvide(c.$1)) {
       continue;
     }
+
     final bytes = await _readClipboardFileFormat(reader, c.$1);
     if (bytes != null && bytes.isNotEmpty) {
       return (bytes: bytes, name: c.$2);
     }
   }
+
   return null;
 }
 
@@ -96,18 +101,14 @@ class ChatInputBar extends StatefulWidget {
 
 class ChatInputBarState extends State<ChatInputBar> {
   static const int _maxAttachments = 4;
+
   static const double _inputCardMinHeightDesktop = 90.0;
   static const double _inputCardMinHeightMobile = 124.0;
   static const double _inputCardGrowthStep = 50.0;
   static const double _inputCardMaxWindowFactor = 0.5;
   static const double _bottomActionsBarHeight = 48.0;
   static const double _roundedCardRadius = 22.0;
-  static const EdgeInsets _inputContentPadding = EdgeInsets.fromLTRB(
-    16,
-    16,
-    16,
-    16,
-  );
+  static const EdgeInsets _inputContentPadding = EdgeInsets.fromLTRB(16, 16, 16, 16);
 
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
@@ -207,14 +208,13 @@ class ChatInputBarState extends State<ChatInputBar> {
         text,
         attachmentFileName: hasFiles ? _selectedFiles.first.name : null,
         attachmentFileNames: hasFiles
-            ? _selectedFiles.map((f) => f.name).toList(growable: false)
-            : const [],
+          ? _selectedFiles.map((f) => f.name).toList(growable: false)
+          : const [],
         attachmentContent: hasFiles ? _selectedFiles.first.bytes : null,
         attachmentContents: hasFiles
-            ? _selectedFiles
-                  .map((f) => f.bytes ?? const <int>[])
-                  .toList(growable: false)
-            : const [],
+          ? _selectedFiles.map((f) => f.bytes ?? const <int>[])
+              .toList(growable: false)
+          : const [],
       ),
     );
     _textController.clear();
@@ -226,6 +226,7 @@ class ChatInputBarState extends State<ChatInputBar> {
     if (!widget.isEnabled || !widget.allowAttachments) {
       return;
     }
+
     if (_selectedFiles.length >= _maxAttachments) {
       showAppTopNotice(
         'Можно прикрепить не более $_maxAttachments файлов',
@@ -273,9 +274,11 @@ class ChatInputBarState extends State<ChatInputBar> {
     if (!widget.isEnabled || !widget.allowAttachments) {
       return;
     }
+
     if (files.isEmpty && readFailedBeforeValidation <= 0) {
       return;
     }
+
     _mergeAndReportIncomingFiles(
       files,
       readFailedBeforeValidation: readFailedBeforeValidation,
@@ -297,50 +300,60 @@ class ChatInputBarState extends State<ChatInputBar> {
         unreadable++;
         continue;
       }
+
       if (!AttachmentSettings.isSupportedExtension(file.name)) {
         unsupported++;
         continue;
       }
+
       if (file.bytes!.length > AttachmentSettings.maxFileSizeBytes) {
         tooLarge++;
         continue;
       }
+
       final duplicate = next.any((f) => f.name == file.name);
       if (duplicate) {
         continue;
       }
+
       if (next.length >= _maxAttachments) {
         droppedByLimit++;
         continue;
       }
+
       next.add(file);
       added++;
     }
+
     if (!mounted) {
       return;
     }
+
     setState(() {
       _selectedFiles
         ..clear()
         ..addAll(next);
     });
     final totalUnreadable = unreadable + readFailedBeforeValidation;
-    final skippedTotal =
-        droppedByLimit + unsupported + tooLarge + totalUnreadable;
+    final skippedTotal = droppedByLimit + unsupported + tooLarge + totalUnreadable;
     if (skippedTotal > 0) {
       final details = <String>[];
       if (unsupported > 0) {
         details.add('неподдерживаемый формат: $unsupported');
       }
+
       if (tooLarge > 0) {
         details.add('слишком большие: $tooLarge');
       }
+
       if (droppedByLimit > 0) {
         details.add('превышен лимит $_maxAttachments: $droppedByLimit');
       }
+
       if (totalUnreadable > 0) {
         details.add('не удалось прочитать: $totalUnreadable');
       }
+
       final prefix = added > 0 ? 'Добавлено: $added. ' : '';
       showAppTopNotice(
         '$prefixПропущено: $skippedTotal (${details.join(', ')})',
@@ -353,9 +366,11 @@ class ChatInputBarState extends State<ChatInputBar> {
     if (!widget.isEnabled || !widget.allowAttachments) {
       return;
     }
+
     if (_dictating || _voskModelLoading) {
       return;
     }
+
     if (_selectedFiles.length >= _maxAttachments) {
       if (mounted) {
         showAppTopNotice(
@@ -365,6 +380,7 @@ class ChatInputBarState extends State<ChatInputBar> {
       }
       return;
     }
+
     final clipboard = SystemClipboard.instance;
     if (clipboard == null) {
       if (mounted) {
@@ -375,6 +391,7 @@ class ChatInputBarState extends State<ChatInputBar> {
       }
       return;
     }
+
     final ClipboardReader reader;
     try {
       reader = await clipboard.read();
@@ -384,6 +401,7 @@ class ChatInputBarState extends State<ChatInputBar> {
       }
       return;
     }
+
     final pair = await _readFirstSupportedClipboardImage(reader);
     if (pair == null) {
       if (mounted) {
@@ -394,9 +412,11 @@ class ChatInputBarState extends State<ChatInputBar> {
       }
       return;
     }
+
     if (!mounted) {
       return;
     }
+
     setDroppedFiles([
       PlatformFile(
         name: pair.name,
@@ -412,10 +432,6 @@ class ChatInputBarState extends State<ChatInputBar> {
 
   Future<void> _toggleVoskDictation() async {
     if (!widget.isEnabled) {
-      return;
-    }
-    if (kIsWeb) {
-      showAppTopNotice('Голосовой ввод недоступен в веб-версии.', error: true);
       return;
     }
 
@@ -434,9 +450,11 @@ class ChatInputBarState extends State<ChatInputBar> {
           prefix: _dictationPrefix,
           suffix: _dictationSuffix,
         );
+
         if (!mounted) {
           return;
         }
+
         setState(() {
           _dictating = false;
           _textController.value = value;
@@ -463,6 +481,7 @@ class ChatInputBarState extends State<ChatInputBar> {
         if (!mounted) {
           return;
         }
+
         showedVoskLoader = true;
         showDialog<void>(
           context: context,
@@ -509,12 +528,13 @@ class ChatInputBarState extends State<ChatInputBar> {
       var modelPath = await sync.ensureModelPath();
       if (modelPath == null || modelPath.isEmpty) {
         final dir = await FilePicker.platform.getDirectoryPath(
-          dialogTitle:
-              'Папка для голосового ввода (вручную, если нет автозагрузки)',
+          dialogTitle: 'Папка для голосового ввода',
         );
+
         if (dir == null || !mounted) {
           return;
         }
+
         await dictation.saveModelPath(dir);
         modelPath = dir;
       }
@@ -535,6 +555,7 @@ class ChatInputBarState extends State<ChatInputBar> {
           if (!mounted) {
             return;
           }
+
           setState(() {
             _textController.value = TextEditingValue(
               text: fullText,
@@ -545,9 +566,11 @@ class ChatInputBarState extends State<ChatInputBar> {
           });
         },
       );
+
       if (!mounted) {
         return;
       }
+
       setState(() => _dictating = true);
     } on GrpcError catch (e) {
       if (mounted) {
@@ -566,6 +589,7 @@ class ChatInputBarState extends State<ChatInputBar> {
           nav.pop();
         }
       }
+
       if (mounted) {
         setState(() => _voskModelLoading = false);
       }
@@ -577,6 +601,7 @@ class ChatInputBarState extends State<ChatInputBar> {
     if (_dictating) {
       unawaited(sl<LocalVoskDictationService>().cancel());
     }
+
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -584,8 +609,8 @@ class ChatInputBarState extends State<ChatInputBar> {
 
   double _minCardHeight(BuildContext context) {
     return Breakpoints.isMobile(context)
-        ? _inputCardMinHeightMobile
-        : _inputCardMinHeightDesktop;
+      ? _inputCardMinHeightMobile
+      : _inputCardMinHeightDesktop;
   }
 
   double _cardMaxHeight(BuildContext context) {
@@ -618,8 +643,7 @@ class ChatInputBarState extends State<ChatInputBar> {
     required double horizontalPadding,
     required double layoutWidth,
   }) {
-    final contentHInset =
-        _inputContentPadding.left + _inputContentPadding.right;
+    final contentHInset = _inputContentPadding.left + _inputContentPadding.right;
     final availableTextWidth = math.max(
       120.0,
       layoutWidth - (horizontalPadding * 2) - 24.0 - contentHInset,
@@ -631,11 +655,10 @@ class ChatInputBarState extends State<ChatInputBar> {
     );
     final minH = _minCardHeight(context);
     final attachmentRows = _selectedFiles.isEmpty
-        ? 0
-        : (_selectedFiles.length <= 2 ? 1 : 2);
+      ? 0
+      : (_selectedFiles.length <= 2 ? 1 : 2);
     final attachmentExtra = attachmentRows * 36.0;
-    final textAndAttachmentsHeight =
-        minH + attachmentExtra + ((lines - 1) * _inputCardGrowthStep);
+    final textAndAttachmentsHeight = minH + attachmentExtra + ((lines - 1) * _inputCardGrowthStep);
     final maxHeight = _cardMaxHeight(context);
 
     final outerHeight = textAndAttachmentsHeight + _bottomActionsBarHeight;
@@ -647,9 +670,11 @@ class ChatInputBarState extends State<ChatInputBar> {
     if (bytes < 1024) {
       return '$bytes B';
     }
+
     if (bytes < 1024 * 1024) {
       return '${(bytes / 1024).toStringAsFixed(1)} KB';
     }
+
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
@@ -670,25 +695,31 @@ class ChatInputBarState extends State<ChatInputBar> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.attach_file_rounded,
-                      size: 14,
-                      color: scheme.onSurfaceVariant,
+              Semantics(
+                container: true,
+                label: 'Вложения к сообщению: ${_selectedFiles.length} из $_maxAttachments',
+                child: ExcludeSemantics(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.attach_file_rounded,
+                          size: 14,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Прикреплено: ${_selectedFiles.length}/$_maxAttachments',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Прикреплено: ${_selectedFiles.length}/$_maxAttachments',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
               Wrap(
@@ -709,63 +740,85 @@ class ChatInputBarState extends State<ChatInputBar> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: scheme.primaryContainer.withValues(
-                                alpha: 0.65,
+                          Expanded(
+                            child: Semantics(
+                              container: true,
+                              label:
+                                'Вложение: ${_selectedFiles[i].name}, '
+                                '${_formatAttachmentSize(_selectedFiles[i].size)}',
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ExcludeSemantics(
+                                    child: Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color: scheme.primaryContainer.withValues(alpha: 0.65),
+                                        borderRadius: BorderRadius.circular(7),
+                                      ),
+                                      child: Icon(
+                                        Icons.insert_drive_file_rounded,
+                                        size: 14,
+                                        color: scheme.onPrimaryContainer,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: ExcludeSemantics(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            _selectedFiles[i].name,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: scheme.onSurface,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 1),
+                                          Text(
+                                            _formatAttachmentSize(
+                                              _selectedFiles[i].size,
+                                            ),
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w500,
+                                              color: scheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              borderRadius: BorderRadius.circular(7),
-                            ),
-                            child: Icon(
-                              Icons.insert_drive_file_rounded,
-                              size: 14,
-                              color: scheme.onPrimaryContainer,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _selectedFiles[i].name,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: scheme.onSurface,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 1),
-                                Text(
-                                  _formatAttachmentSize(_selectedFiles[i].size),
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500,
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
+                          Semantics(
+                            excludeSemantics: true,
+                            label: 'Убрать из черновика файл ${_selectedFiles[i].name}',
+                            button: true,
+                            child: IconButton(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 22,
+                                minHeight: 22,
+                              ),
+                              icon: Icon(
+                                Icons.close_rounded,
+                                size: 16,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                              onPressed: () => _clearFile(i),
+                              tooltip: 'Убрать файл',
                             ),
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 22,
-                              minHeight: 22,
-                            ),
-                            icon: Icon(
-                              Icons.close_rounded,
-                              size: 16,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                            onPressed: () => _clearFile(i),
-                            tooltip: 'Убрать файл',
                           ),
                         ],
                       ),
@@ -781,8 +834,7 @@ class ChatInputBarState extends State<ChatInputBar> {
 
   Color _brightReasoningOnColor(ThemeData theme) {
     final scheme = theme.colorScheme;
-    final vivid =
-        Color.lerp(scheme.tertiary, scheme.primary, 0.35) ?? scheme.tertiary;
+    final vivid = Color.lerp(scheme.tertiary, scheme.primary, 0.35) ?? scheme.tertiary;
     if (theme.brightness == Brightness.light) {
       return Color.lerp(vivid, Colors.white, 0.14) ?? vivid;
     }
@@ -791,8 +843,7 @@ class ChatInputBarState extends State<ChatInputBar> {
   }
 
   Widget _buildBottomActionsBar(ChatState state, ThemeData theme) {
-    final canSend =
-        (_isComposing || _selectedFiles.isNotEmpty) && widget.isEnabled;
+    final canSend = (_isComposing || _selectedFiles.isNotEmpty) && widget.isEnabled;
 
     return SizedBox(
       height: _bottomActionsBarHeight,
@@ -810,17 +861,21 @@ class ChatInputBarState extends State<ChatInputBar> {
           child: Row(
           children: [
             if (widget.allowAttachments) ...[
-              IconButton(
-                tooltip:
-                    'Прикрепить файл (${_selectedFiles.length}/$_maxAttachments)',
-                onPressed:
-                    widget.isEnabled && _selectedFiles.length < _maxAttachments
-                    ? _pickFile
+              Semantics(
+                excludeSemantics: true,
+                label: 'Прикрепить вложение, занято слотов ${_selectedFiles.length} из $_maxAttachments',
+                button: true,
+                enabled: widget.isEnabled && _selectedFiles.length < _maxAttachments,
+                child: IconButton(
+                  tooltip: 'Прикрепить (${_selectedFiles.length}/$_maxAttachments)',
+                  onPressed: widget.isEnabled && _selectedFiles.length < _maxAttachments
+                    ? () => unawaited(_pickFile())
                     : null,
-                icon: Icon(
-                  Icons.attach_file_rounded,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.4,
+                  icon: Icon(
+                    Icons.attach_file_rounded,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.4,
+                    ),
                   ),
                 ),
               ),
@@ -828,50 +883,40 @@ class ChatInputBarState extends State<ChatInputBar> {
             Builder(
               builder: (context) {
                 final reasoningOn = state.currentSessionId == null
-                    ? state.draftModelReasoningEnabled
-                    : (state.sessionSettings?.modelReasoningEnabled ?? false);
-                final canToggleReasoning =
-                    widget.isEnabled &&
-                    (state.currentSessionId == null ||
-                        state.sessionSettings != null);
+                  ? state.draftModelReasoningEnabled
+                  : (state.sessionSettings?.modelReasoningEnabled ?? false);
+                final canToggleReasoning = widget.isEnabled && (state.currentSessionId == null || state.sessionSettings != null);
                 final Color reasoningIconColor;
 
                 if (!canToggleReasoning) {
-                  reasoningIconColor = theme.colorScheme.onSurfaceVariant
-                      .withValues(alpha: 0.38);
+                  reasoningIconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38);
                 } else if (reasoningOn) {
                   final bright = _brightReasoningOnColor(theme);
                   reasoningIconColor = widget.isEnabled
-                      ? bright
-                      : bright.withValues(alpha: 0.52);
+                    ? bright
+                    : bright.withValues(alpha: 0.52);
                 } else {
                   reasoningIconColor = widget.isEnabled
-                      ? theme.colorScheme.outline
-                      : theme.colorScheme.outline.withValues(alpha: 0.55);
+                    ? theme.colorScheme.outline
+                    : theme.colorScheme.outline.withValues(alpha: 0.55);
                 }
                 return IconButton(
                   tooltip: reasoningOn
-                      ? 'Размышление модели: включено'
-                      : 'Размышление модели: выключено',
+                    ? 'Размышление модели: включено'
+                    : 'Размышление модели: выключено',
                   style: IconButton.styleFrom(
                     foregroundColor: reasoningIconColor,
-                    disabledForegroundColor: theme.colorScheme.onSurfaceVariant
-                        .withValues(alpha: 0.38),
+                    disabledForegroundColor: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
                   ),
-                  onPressed: canToggleReasoning
-                      ? () {
-                          context.read<ChatBloc>().add(
-                            ChatSetModelReasoning(!reasoningOn),
-                          );
-                        }
-                      : null,
+                  onPressed: canToggleReasoning ? () {
+                    context.read<ChatBloc>().add(ChatSetModelReasoning(!reasoningOn));
+                  }
+                  : null,
                   icon: Icon(
                     Icons.psychology_outlined,
                     color: reasoningOn
-                        ? theme.colorScheme.onSurfaceVariant
-                        : theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.4,
-                          ),
+                      ? theme.colorScheme.onSurfaceVariant
+                      : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                   ),
                 );
               },
@@ -880,28 +925,23 @@ class ChatInputBarState extends State<ChatInputBar> {
               Builder(
                 builder: (context) {
                   final searchOn = state.currentSessionId == null
-                      ? state.draftWebSearchEnabled
-                      : (state.sessionSettings?.webSearchEnabled ?? false);
-                  final canSearch =
-                      widget.isEnabled &&
-                      (state.currentSessionId == null ||
-                          state.sessionSettings != null);
+                    ? state.draftWebSearchEnabled
+                    : (state.sessionSettings?.webSearchEnabled ?? false);
+                  final canSearch = widget.isEnabled && (state.currentSessionId == null || state.sessionSettings != null);
                   final curProv = state.currentSessionId == null
-                      ? state.draftWebSearchProvider
-                      : (state.sessionSettings?.webSearchProvider ?? '');
+                    ? state.draftWebSearchProvider
+                    : (state.sessionSettings?.webSearchProvider ?? '');
                   final Color searchIconColor;
 
                   if (!canSearch) {
-                    searchIconColor = theme.colorScheme.onSurfaceVariant
-                        .withValues(alpha: 0.38);
+                    searchIconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38);
                   } else if (searchOn) {
                     final primary = theme.colorScheme.primary;
                     searchIconColor = widget.isEnabled
-                        ? theme.colorScheme.onSurfaceVariant
-                        : primary.withValues(alpha: 0.48);
+                      ? theme.colorScheme.onSurfaceVariant
+                      : primary.withValues(alpha: 0.48);
                   } else {
-                    searchIconColor = theme.colorScheme.onSurfaceVariant
-                        .withValues(alpha: 0.4);
+                    searchIconColor = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
                   }
 
                   PopupMenuItem<String> menuItem(
@@ -915,13 +955,12 @@ class ChatInputBarState extends State<ChatInputBar> {
                         children: [
                           SizedBox(
                             width: 22,
-                            child: checked
-                                ? Icon(
-                                    Icons.check_rounded,
-                                    size: 18,
-                                    color: theme.colorScheme.primary,
-                                  )
-                                : null,
+                            child: checked ? Icon(
+                              Icons.check_rounded,
+                              size: 18,
+                              color: theme.colorScheme.primary,
+                            )
+                            : null,
                           ),
                           Expanded(child: Text(label)),
                         ],
@@ -935,37 +974,35 @@ class ChatInputBarState extends State<ChatInputBar> {
                     child: Padding(
                       padding: const EdgeInsets.all(8),
                       child: searchOn && canSearch
-                          ? DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withValues(
-                                  alpha: 0.16,
-                                ),
-                                shape: BoxShape.circle,
-                              ),
-                              child: SizedBox(
-                                width: 26,
-                                height: 26,
-                                child: Center(
-                                  child: Icon(
-                                    Icons.travel_explore,
-                                    color: searchIconColor,
-                                    size: 22,
-                                  ),
-                                ),
-                              ),
-                            )
-                          : Icon(
-                              Icons.travel_explore_outlined,
-                              color: searchIconColor,
-                              size: 22,
+                        ? DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.16,
                             ),
+                            shape: BoxShape.circle,
+                          ),
+                          child: SizedBox(
+                            width: 26,
+                            height: 26,
+                            child: Center(
+                              child: Icon(
+                                Icons.travel_explore,
+                                color: searchIconColor,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Icon(
+                        Icons.travel_explore_outlined,
+                        color: searchIconColor,
+                        size: 22,
+                      ),
                     ),
                     onSelected: (v) {
                       final bloc = context.read<ChatBloc>();
                       if (v == 'off') {
-                        bloc.add(
-                          const ChatSetWebSearch(enabled: false, provider: ''),
-                        );
+                        bloc.add(const ChatSetWebSearch(enabled: false, provider: ''));
                       } else {
                         bloc.add(ChatSetWebSearch(enabled: true, provider: v));
                       }
@@ -1003,10 +1040,8 @@ class ChatInputBarState extends State<ChatInputBar> {
                 !state.isStreamingInCurrentSession) ...[
               TextButton.icon(
                 onPressed: widget.isEnabled
-                    ? () => context.read<ChatBloc>().add(
-                        const ChatRetryLastMessage(),
-                      )
-                    : null,
+                  ? () => context.read<ChatBloc>().add(const ChatRetryLastMessage())
+                  : null,
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('Повторить'),
               ),
@@ -1022,66 +1057,65 @@ class ChatInputBarState extends State<ChatInputBar> {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final action =
-                      (state.isStreamingInCurrentSession && widget.showStop)
-                      ? FilledButton.tonal(
-                          onPressed: _stopGeneration,
-                          style: FilledButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            backgroundColor: theme.colorScheme.errorContainer,
-                            foregroundColor: theme.colorScheme.onErrorContainer,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.stop_rounded, size: 20),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  'Стоп',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    color: theme.colorScheme.onErrorContainer,
-                                  ),
-                                ),
+                  final action = (state.isStreamingInCurrentSession && widget.showStop)
+                    ? FilledButton.tonal(
+                      onPressed: _stopGeneration,
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        backgroundColor: theme.colorScheme.errorContainer,
+                        foregroundColor: theme.colorScheme.onErrorContainer,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.stop_rounded, size: 20),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Стоп',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: theme.colorScheme.onErrorContainer,
                               ),
-                            ],
-                          ),
-                        )
-                      : FilledButton(
-                          onPressed: canSend ? _sendMessage : null,
-                          style: FilledButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(widget.submitIcon, size: 20),
-                              const SizedBox(width: 8),
-                              Flexible(
-                                child: Text(
-                                  widget.submitLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
+                        ],
+                      ),
+                    )
+                    : FilledButton(
+                      onPressed: canSend ? _sendMessage : null,
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(widget.submitIcon, size: 20),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              widget.submitLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
                               ),
-                            ],
+                            ),
                           ),
-                        );
+                        ],
+                      ),
+                    );
                   return Align(
                     alignment: Alignment.centerRight,
                     child: ConstrainedBox(
@@ -1094,32 +1128,30 @@ class ChatInputBarState extends State<ChatInputBar> {
                           if (!kIsWeb) ...[
                             IconButton(
                               tooltip: _dictating
-                                  ? 'Остановить диктовку'
-                                  : (_voskModelLoading
-                                        ? 'Первоначальная подготовка голосового ввода...'
-                                        : 'Голосовой ввод'),
+                                ? 'Остановить диктовку'
+                                : (_voskModelLoading
+                                    ? 'Первоначальная подготовка голосового ввода...'
+                                    : 'Голосовой ввод'),
                               onPressed: widget.isEnabled && !_voskModelLoading
-                                  ? _toggleVoskDictation
-                                  : null,
+                                ? _toggleVoskDictation
+                                : null,
                               icon: _voskModelLoading
-                                  ? SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color:
-                                            theme.colorScheme.onSurfaceVariant,
-                                      ),
-                                    )
-                                  : Icon(
-                                      _dictating
-                                          ? Icons.mic_rounded
-                                          : Icons.mic_none_rounded,
-                                      color: _dictating
-                                          ? theme.colorScheme.error
-                                          : theme.colorScheme.onSurfaceVariant
-                                                .withValues(alpha: 0.4),
-                                    ),
+                                ? SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                )
+                                : Icon(
+                                  _dictating
+                                    ? Icons.mic_rounded
+                                    : Icons.mic_none_rounded,
+                                  color: _dictating
+                                    ? theme.colorScheme.error
+                                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                                ),
                             ),
                             const SizedBox(width: 4),
                           ],
@@ -1148,16 +1180,15 @@ class ChatInputBarState extends State<ChatInputBar> {
       height: 1.45,
       letterSpacing: 0.15,
       color: widget.isEnabled
-          ? theme.colorScheme.onSurface
-          : theme.colorScheme.onSurfaceVariant,
+        ? theme.colorScheme.onSurface
+        : theme.colorScheme.onSurfaceVariant,
     );
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final layoutWidth =
-            constraints.hasBoundedWidth && constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
+        final layoutWidth = constraints.hasBoundedWidth && constraints.maxWidth.isFinite
+          ? constraints.maxWidth
+          : MediaQuery.sizeOf(context).width;
         return BlocBuilder<ChatBloc, ChatState>(
           builder: (context, state) {
             final cardHeight = _cardHeightForText(
@@ -1260,9 +1291,9 @@ class ChatInputBarState extends State<ChatInputBar> {
                           controller: _textController,
                           focusNode: _focusNode,
                           enabled:
-                              widget.isEnabled &&
-                              !_dictating &&
-                              !_voskModelLoading,
+                            widget.isEnabled &&
+                            !_dictating &&
+                            !_voskModelLoading,
                           expands: true,
                           maxLines: null,
                           minLines: null,
@@ -1270,14 +1301,14 @@ class ChatInputBarState extends State<ChatInputBar> {
                           style: inputTextStyle,
                           decoration: InputDecoration(
                             hintText: !widget.isEnabled
-                                ? 'Обрабатываю...'
-                                : _voskModelLoading
+                              ? 'Обрабатываю...'
+                              : _voskModelLoading
                                 ? 'Первоначальная подготовка голосового ввода...'
                                 : _dictating
-                                ? 'Слушаю...'
-                                : (isDesktop
-                                      ? 'Сообщение…  Ctrl+Enter — новая строка; Ctrl+Shift+V — изображение из буфера'
-                                      : 'Сообщение…'),
+                                  ? 'Слушаю...'
+                                  : (isDesktop
+                                    ? 'Сообщение...  Ctrl+Enter - новая строка, Ctrl+Shift+V - изображение из буфера'
+                                    : 'Сообщение...'),
                             hintStyle: TextStyle(
                               fontSize: 14,
                               height: 1.45,

@@ -1,4 +1,5 @@
 import 'package:grpc/grpc.dart';
+import 'package:gen/core/chat_backend_user_error.dart';
 import 'package:gen/core/failures.dart';
 import 'package:gen/core/grpc_error_info_reason.dart';
 import 'package:gen/core/grpc_error_reason_message.dart';
@@ -20,7 +21,7 @@ String userSafeErrorMessage(
     if (fromReason != null && fromReason.isNotEmpty) {
       return fromReason;
     }
-    return 'Ошибка сервера (код ${error.code})';
+    return chatBackendErrorMessage(error);
   }
   if (error is UnauthorizedFailure) {
     return error.message;
