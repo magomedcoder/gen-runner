@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -85,6 +86,29 @@ func TestSortedDisplayModelNames(t *testing.T) {
 	}
 }
 
+func TestSortedDisplayModelNames_nestedShowsOnlyFinalName(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "vendor", "qwen")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "qwen3-14b-q4.gguf"), []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := SortedDisplayModelNames(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("ожидались 2 записи (stem + tag), получено %d: %v", len(got), got)
+	}
+	if got[0] != "qwen3-14b-q4" || got[1] != "qwen3-14b:q4" {
+		t.Fatalf("ожидались только конечные имена без папок, получено %v", got)
+	}
+}
+
 func TestSplitModelRef(t *testing.T) {
 	n, tg := SplitModelRef("phi:q4")
 	if n != "phi" || tg != "q4" {
@@ -142,5 +166,27 @@ func TestCatalogModelNames_tagAlias(t *testing.T) {
 		if !v {
 			t.Errorf("в каталоге нет записи %q, каталог: %v", k, got)
 		}
+	}
+}
+
+func TestCatalogModelNames_deduplicatesCaseVariants(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "Model-Q4.gguf"), []byte{}, 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "model-q4.gguf"), []byte{}, 0o644)
+
+	got, err := CatalogModelNames(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, s := range got {
+		if strings.EqualFold(s, "model-q4") {
+			count++
+		}
+	}
+
+	if count != 1 {
+		t.Fatalf("ожидался один вариант model-q4, получено %d; каталог: %v", count, got)
 	}
 }

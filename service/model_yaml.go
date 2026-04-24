@@ -379,10 +379,7 @@ func addManifestCatalogEntries(dir string, seen map[string]struct{}) error {
 			relStem = filepath.Join(relDir, stem)
 		}
 
-		seen[relStem] = struct{}{}
-		if b, tg, ok := splitStemToTagged(relStem); ok {
-			seen[b+":"+tg] = struct{}{}
-		}
+		addCatalogEntriesFromStem(seen, relStem)
 
 		return nil
 	})

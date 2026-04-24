@@ -9,6 +9,50 @@ import (
 	"unicode"
 )
 
+func normalizeCatalogKey(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+
+	return strings.ToLower(filepath.Clean(strings.ReplaceAll(v, "\\", "/")))
+}
+
+func putUniqueCatalogValue(byKey map[string]string, value string) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return
+	}
+
+	key := normalizeCatalogKey(trimmed)
+	if key == "" {
+		return
+	}
+
+	prev, exists := byKey[key]
+	if !exists || len(trimmed) < len(prev) {
+		byKey[key] = trimmed
+	}
+}
+
+func addCatalogEntriesFromStem(seen map[string]struct{}, stem string) {
+	stem = strings.TrimSpace(stem)
+	if stem == "" {
+		return
+	}
+
+	visible := filepath.Base(stem)
+	visible = strings.TrimSpace(visible)
+	if visible == "" || visible == "." || visible == string(filepath.Separator) {
+		return
+	}
+
+	seen[visible] = struct{}{}
+	if b, tg, ok := splitStemToTagged(visible); ok {
+		seen[b+":"+tg] = struct{}{}
+	}
+}
+
 // DisplayModelName возвращает отображаемое имя: для весов в подкаталоге - папка/стем без .gguf
 func DisplayModelName(relPath string) string {
 	p := filepath.Clean(relPath)
@@ -132,23 +176,21 @@ func CatalogModelNames(dir string) ([]string, error) {
 	seen := make(map[string]struct{}, len(files)*2)
 	for _, f := range files {
 		stem := DisplayModelName(f)
-		if stem == "" {
-			continue
-		}
-
-		seen[stem] = struct{}{}
-		if b, tg, ok := splitStemToTagged(stem); ok {
-			seen[b+":"+tg] = struct{}{}
-		}
+		addCatalogEntriesFromStem(seen, stem)
 	}
 
 	if err := addManifestCatalogEntries(dir, seen); err != nil {
 		return nil, err
 	}
 
-	out := make([]string, 0, len(seen))
+	byKey := make(map[string]string, len(seen))
 	for k := range seen {
-		out = append(out, k)
+		putUniqueCatalogValue(byKey, k)
+	}
+
+	out := make([]string, 0, len(byKey))
+	for _, v := range byKey {
+		out = append(out, v)
 	}
 	sort.Strings(out)
 
