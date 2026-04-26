@@ -1,7 +1,7 @@
 package mappers
 
 import (
-	"github.com/magomedcoder/gen/api/pb/commonpb"
+	"github.com/magomedcoder/gen/api/pb/app/commonpb"
 	"github.com/magomedcoder/gen/internal/domain"
 	"strconv"
 )

@@ -3,7 +3,7 @@ package llm_runner
 import (
 	"context"
 	"fmt"
-	"github.com/magomedcoder/gen/llm-runner/pb/llmrunnerpb"
+	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
 	"maps"
 	"slices"
 	"sync"

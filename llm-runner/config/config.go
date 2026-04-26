@@ -77,19 +77,22 @@ type Config struct {
 	LogModelStats                  bool     `yaml:"log_model_stats"`
 }
 
-func Load() (*Config, error) {
+func Load(path string) (*Config, error) {
 	c := &Config{}
 
-	configPath := "config.yaml"
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("путь к файлу конфигурации пустой")
+	}
 
-	if _, err := os.Stat(configPath); err == nil {
-		data, err := os.ReadFile(configPath)
+	if _, err := os.Stat(path); err == nil {
+		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("ошибка чтения конфигурационного файла %s: %w", configPath, err)
+			return nil, fmt.Errorf("ошибка чтения конфигурационного файла %s: %w", path, err)
 		}
 
 		if err := yaml.Unmarshal(data, c); err != nil {
-			return nil, fmt.Errorf("ошибка парсинга конфигурационного файла %s: %w", configPath, err)
+			return nil, fmt.Errorf("ошибка парсинга конфигурационного файла %s: %w", path, err)
 		}
 	}
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/magomedcoder/gen/api/pb/runnerpb"
+	"github.com/magomedcoder/gen/api/pb/app/runnerpb"
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/pkg/logger"
 )

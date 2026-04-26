@@ -5,7 +5,7 @@ import (
 	"github.com/magomedcoder/gen/internal/delivery/mappers"
 	"strconv"
 
-	"github.com/magomedcoder/gen/api/pb/userpb"
+	"github.com/magomedcoder/gen/api/pb/app/userpb"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"

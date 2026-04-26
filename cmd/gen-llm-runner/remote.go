@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/urfave/cli/v3"
 	"strings"
 	"time"
 
-	"github.com/magomedcoder/gen/llm-runner/pb/llmrunnerpb"
+	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

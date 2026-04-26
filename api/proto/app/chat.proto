@@ -4,7 +4,7 @@ package chat;
 
 import "common.proto";
 
-option go_package = "github.com/magomedcoder/gen/api/pb/chatpb;chatpb";
+option go_package = "github.com/magomedcoder/gen/api/pb/app/chatpb;chatpb";
 
 service ChatService {
   rpc CheckConnection(common.Empty) returns (ConnectionResponse);

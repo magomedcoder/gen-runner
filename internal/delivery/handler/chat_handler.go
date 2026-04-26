@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/magomedcoder/gen/api/pb/chatpb"
-	"github.com/magomedcoder/gen/api/pb/commonpb"
+	"github.com/magomedcoder/gen/api/pb/app/chatpb"
+	"github.com/magomedcoder/gen/api/pb/app/commonpb"
 	"github.com/magomedcoder/gen/internal/config"
 	"github.com/magomedcoder/gen/internal/delivery/mappers"
 	"github.com/magomedcoder/gen/internal/domain"

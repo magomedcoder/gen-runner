@@ -3,9 +3,9 @@ package provider
 import (
 	"context"
 	"fmt"
+	"github.com/magomedcoder/gen/llm-runner/config"
 	"strings"
 
-	"github.com/magomedcoder/gen/llm-runner/config"
 	"github.com/magomedcoder/gen/llm-runner/domain"
 	"github.com/magomedcoder/gen/llm-runner/service"
 )

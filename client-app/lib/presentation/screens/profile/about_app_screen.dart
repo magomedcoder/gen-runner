@@ -6,7 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 abstract final class GenProjectLinks {
   static const genServer = 'https://github.com/magomedcoder/gen';
-  static const genRunner = 'https://github.com/magomedcoder/gen-runner';
 }
 
 class AboutAppScreen extends StatelessWidget {
@@ -91,17 +90,6 @@ class AboutAppScreen extends StatelessWidget {
                           url: GenProjectLinks.genServer,
                           style: linkStyle,
                           onTap: () => _openUrl(context, GenProjectLinks.genServer),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'gen-runner - запуск и работа с LLM',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 4),
-                        _ClickableUrl(
-                          url: GenProjectLinks.genRunner,
-                          style: linkStyle,
-                          onTap: () => _openUrl(context, GenProjectLinks.genRunner),
                         ),
                       ],
                     ),

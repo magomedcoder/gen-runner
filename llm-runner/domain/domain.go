@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magomedcoder/gen/llm-runner/pb/llmrunnerpb"
+	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
 )
 
 type AIChatMessageRole string

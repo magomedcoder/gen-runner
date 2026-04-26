@@ -4,7 +4,7 @@ package editor;
 
 import "common.proto";
 
-option go_package = "github.com/magomedcoder/gen/api/pb/editorpb;editorpb";
+option go_package = "github.com/magomedcoder/gen/api/pb/app/editorpb;editorpb";
 
 service EditorService {
   rpc Transform(TransformRequest) returns (TransformResponse);

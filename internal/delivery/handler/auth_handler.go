@@ -2,7 +2,7 @@ package handler
 
 import (
 	"context"
-	"github.com/magomedcoder/gen/api/pb/authpb"
+	"github.com/magomedcoder/gen/api/pb/app/authpb"
 	"github.com/magomedcoder/gen/internal/config"
 	"github.com/magomedcoder/gen/internal/delivery/mappers"
 	"github.com/magomedcoder/gen/internal/usecase"

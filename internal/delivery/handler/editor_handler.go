@@ -2,8 +2,8 @@ package handler
 
 import (
 	"context"
-	"github.com/magomedcoder/gen/api/pb/commonpb"
-	"github.com/magomedcoder/gen/api/pb/editorpb"
+	"github.com/magomedcoder/gen/api/pb/app/commonpb"
+	"github.com/magomedcoder/gen/api/pb/app/editorpb"
 	"github.com/magomedcoder/gen/internal/rpcmeta"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"

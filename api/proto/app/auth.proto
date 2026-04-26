@@ -4,7 +4,7 @@ package auth;
 
 import "common.proto";
 
-option go_package = "github.com/magomedcoder/gen/api/pb/authpb;authpb";
+option go_package = "github.com/magomedcoder/gen/api/pb/app/authpb;authpb";
 
 service AuthService {
   rpc Login(LoginRequest) returns (LoginResponse);

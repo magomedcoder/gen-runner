@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/magomedcoder/gen/llm-runner/config"
+	"github.com/urfave/cli/v3"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/magomedcoder/gen/llm-runner/config"
 )
 
 func cmdModels() *cli.Command {
@@ -27,7 +27,7 @@ type localModel struct {
 }
 
 func runListModels(_ context.Context, _ *cli.Command) error {
-	cfg, err := config.Load()
+	cfg, err := config.Load("./configs/config-llm-runner.yaml")
 	if err != nil {
 		return err
 	}

@@ -3,7 +3,7 @@ package handler
 import (
 	"testing"
 
-	"github.com/magomedcoder/gen/api/pb/chatpb"
+	"github.com/magomedcoder/gen/api/pb/app/chatpb"
 	"github.com/magomedcoder/gen/internal/usecase"
 )
 

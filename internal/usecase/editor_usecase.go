@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/magomedcoder/gen/api/pb/editorpb"
+	"github.com/magomedcoder/gen/api/pb/app/editorpb"
 	"github.com/magomedcoder/gen/internal/domain"
 )
 

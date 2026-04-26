@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
+	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
 	"github.com/magomedcoder/gen/internal/domain"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

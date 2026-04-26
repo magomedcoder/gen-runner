@@ -2,17 +2,18 @@ package main
 
 import (
 	"context"
+	"github.com/magomedcoder/gen/llm-runner/config"
+	"github.com/urfave/cli/v3"
 	"net"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
 	runner "github.com/magomedcoder/gen/llm-runner"
-	"github.com/magomedcoder/gen/llm-runner/config"
 	"github.com/magomedcoder/gen/llm-runner/gpu"
 	"github.com/magomedcoder/gen/llm-runner/logger"
-	"github.com/magomedcoder/gen/llm-runner/pb/llmrunnerpb"
 	"github.com/magomedcoder/gen/llm-runner/provider"
 	"google.golang.org/grpc"
 )
@@ -30,7 +31,7 @@ func runServe(ctx context.Context, _ *cli.Command) error {
 	ctx, stopSignals := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stopSignals()
 
-	cfg, err := config.Load()
+	cfg, err := config.Load("./configs/config-llm-runner.yaml")
 	if err != nil {
 		logger.Default.SetLevel(logger.LevelInfo)
 		logger.E("Ошибка загрузки конфигурации: %v", err)

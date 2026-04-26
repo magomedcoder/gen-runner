@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/magomedcoder/gen/llm-runner/config"
 	"github.com/urfave/cli/v3"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/magomedcoder/gen/llm-runner/config"
 	"github.com/magomedcoder/gen/llm-runner/service"
 )
 
@@ -42,7 +42,7 @@ func runShow(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("укажите имя модели, например: myalias или Base-Q4.gguf")
 	}
 
-	cfg, err := config.Load()
+	cfg, err := config.Load("./configs/config-llm-runner.yaml")
 	if err != nil {
 		return err
 	}

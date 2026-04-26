@@ -6,10 +6,10 @@
 
 ```bash
 # Установка зависимостей
-make deps
+make deps-llm-runner
 
 # Генерация proto
-make gen
+make gen-proto
 
 # Сборка библиотек (без CUDA)
 make build-libs-cpu

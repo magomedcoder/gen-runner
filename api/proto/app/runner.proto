@@ -4,7 +4,7 @@ package runner;
 
 import "common.proto";
 
-option go_package = "github.com/magomedcoder/gen/api/pb/runnerpb;runnerpb";
+option go_package = "github.com/magomedcoder/gen/api/pb/app/runnerpb;runnerpb";
 
 service RunnerService {
   rpc GetRunners(common.Empty) returns (GetRunnersResponse);

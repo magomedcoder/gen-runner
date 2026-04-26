@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-
 	"github.com/magomedcoder/gen/llm-runner/config"
+	"github.com/urfave/cli/v3"
+
 	"github.com/magomedcoder/gen/llm-runner/huggingface"
 )
 
@@ -50,7 +51,7 @@ func cmdDownload() *cli.Command {
 }
 
 func runDownload(_ context.Context, cmd *cli.Command) error {
-	cfg, err := config.Load()
+	cfg, err := config.Load("./configs/config-llm-runner.yaml")
 	if err != nil {
 		return err
 	}

@@ -4,7 +4,7 @@ package user;
 
 import "common.proto";
 
-option go_package = "github.com/magomedcoder/gen/api/pb/userpb;userpb";
+option go_package = "github.com/magomedcoder/gen/api/pb/app/userpb;userpb";
 
 service UserService {
   rpc GetUsers(GetUsersRequest) returns (GetUsersResponse);

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package common;
 
-option go_package = "github.com/magomedcoder/gen/api/pb/commonpb;commonpb";
+option go_package = "github.com/magomedcoder/gen/api/pb/app/commonpb;commonpb";
 
 message Empty {}
 

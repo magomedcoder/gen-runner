@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
 	"github.com/magomedcoder/gen/llm-runner/domain"
 	"github.com/magomedcoder/gen/llm-runner/gpu"
 	"github.com/magomedcoder/gen/llm-runner/logger"
-	"github.com/magomedcoder/gen/llm-runner/pb/llmrunnerpb"
 	"github.com/magomedcoder/gen/llm-runner/provider"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/magomedcoder/gen/llm-runner/config"
 	"github.com/urfave/cli/v3"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/magomedcoder/gen/llm-runner/config"
 	"github.com/magomedcoder/gen/llm-runner/service"
 )
 
@@ -45,7 +45,7 @@ func runCreate(ctx context.Context, cmd *cli.Command) error {
 
 	stem := service.ManifestYAMLStemForRef(name)
 
-	appCfg, err := config.Load()
+	appCfg, err := config.Load("./configs/config-llm-runner.yaml")
 	if err != nil {
 		return err
 	}

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
+	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/rpcmeta"
 	"github.com/magomedcoder/gen/pkg/document"

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package llmrunner;
 
-option go_package = "github.com/magomedcoder/gen/llm-runner/pb/llmrunnerpb;llmrunnerpb";
+option go_package = "github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb;llmrunnerpb";
 
 service LLMRunnerService {
   rpc GetModels(Empty) returns (GetModelsResponse);

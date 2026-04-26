@@ -4,3 +4,5 @@ build
 .DS_Store
 data
 /configs/config.yaml
+/configs/config-llm-runner.yaml
+/llm-runner/models
