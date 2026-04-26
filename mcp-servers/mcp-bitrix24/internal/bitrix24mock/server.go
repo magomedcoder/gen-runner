@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"sort"
 	"strconv"
@@ -312,9 +313,7 @@ func toInt(v any) int {
 
 func cloneMap(src map[string]any) map[string]any {
 	dst := make(map[string]any, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
+	maps.Copy(dst, src)
 
 	return dst
 }

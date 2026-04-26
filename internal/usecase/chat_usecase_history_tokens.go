@@ -40,11 +40,7 @@ func (c *ChatUseCase) effectiveMaxRAGContextRunes(systemAndHistory []*domain.Mes
 
 	ragTok := max(maxTok-pre-genReserve-userOverhead, 120)
 
-	runesLimit := min(ragTok*2, cap)
-
-	if runesLimit < 200 {
-		runesLimit = 200
-	}
+	runesLimit := max(min(ragTok*2, cap), 200)
 
 	return runesLimit
 }

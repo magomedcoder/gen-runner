@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -80,13 +81,7 @@ func TestIntegrationMCPDemoStdioListTools(t *testing.T) {
 		}
 	}
 
-	found := false
-	for _, n := range names {
-		if n == "ping" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(names, "ping")
 
 	if !found {
 		t.Fatalf("ожидался tool ping, получено: %v", names)

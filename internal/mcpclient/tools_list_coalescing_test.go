@@ -16,7 +16,7 @@ func p95Duration(ds []time.Duration) time.Duration {
 	}
 
 	cp := append([]time.Duration(nil), ds...)
-	for i := 0; i < len(cp); i++ {
+	for i := range cp {
 		for j := i + 1; j < len(cp); j++ {
 			if cp[j] < cp[i] {
 				cp[i], cp[j] = cp[j], cp[i]
@@ -24,10 +24,7 @@ func p95Duration(ds []time.Duration) time.Duration {
 		}
 	}
 
-	idx := int(float64(len(cp))*0.95) - 1
-	if idx < 0 {
-		idx = 0
-	}
+	idx := max(int(float64(len(cp))*0.95)-1, 0)
 
 	if idx >= len(cp) {
 		idx = len(cp) - 1
@@ -43,7 +40,7 @@ func runConcurrentListToolsWave(t *testing.T, c *ToolsListCache, srv *domain.MCP
 
 	durations := make([]time.Duration, workers)
 	errCh := make(chan error, workers)
-	for i := 0; i < workers; i++ {
+	for i := range workers {
 		i := i
 		go func() {
 			defer wg.Done()

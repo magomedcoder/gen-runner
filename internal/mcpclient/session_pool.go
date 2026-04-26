@@ -77,7 +77,7 @@ func (p *httpSessionPool) run(ctx context.Context, srv *domain.MCPServer, notify
 	fp := poolSessionFingerprint(ctx, srv)
 	maxIdle := time.Duration(httpPoolMaxIdleSec.Load()) * time.Second
 
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := range 2 {
 		now := time.Now()
 		if pc.session != nil && (pc.fp != fp || now.Sub(pc.lastUsed) > maxIdle) {
 			logger.D("MCP http_pool: server_id=%d закрытие сессии (fp_changed=%v idle_expired=%v)", srv.ID, pc.fp != fp, now.Sub(pc.lastUsed) > maxIdle)

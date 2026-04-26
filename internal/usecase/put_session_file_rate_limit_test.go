@@ -42,7 +42,7 @@ func TestSessionPutRateLimiter_uploadCountCap(t *testing.T) {
 	const uid = 42
 	const small = 100
 
-	for i := 0; i < putSessionFileMaxUploadsPerMin; i++ {
+	for i := range putSessionFileMaxUploadsPerMin {
 		if err := lim.checkPutSessionFileRate(uid, small); err != nil {
 			t.Fatalf("iteration %d: %v", i, err)
 		}

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -25,13 +26,7 @@ func normalizeAttachmentFileIDsForModel(ids []int64) ([]int64, error) {
 			return nil, fmt.Errorf("некорректный attachment_file_id: %d", fid)
 		}
 
-		duplicate := false
-		for _, existing := range normalized {
-			if existing == fid {
-				duplicate = true
-				break
-			}
-		}
+		duplicate := slices.Contains(normalized, fid)
 
 		if !duplicate {
 			normalized = append(normalized, fid)

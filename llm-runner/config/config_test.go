@@ -20,7 +20,7 @@ model_path: "./models"
 
 	t.Chdir(dir)
 
-	cfg, err := Load()
+	cfg, err := Load(configPath)
 	if err != nil {
 		t.Fatalf("загрузка конфигурации: %v", err)
 	}
@@ -31,10 +31,6 @@ model_path: "./models"
 
 	if cfg.ListenAddr() != "127.0.0.1:50052" {
 		t.Errorf("ListenAddr: ожидалось 127.0.0.1:50052, получено %q", cfg.ListenAddr())
-	}
-
-	if cfg.DefaultModel != "" {
-		t.Errorf("default_model без ключа в yaml: ожидалось пусто, получено %q", cfg.DefaultModel)
 	}
 }
 
@@ -59,7 +55,7 @@ log_model_stats: true
 	}
 	t.Chdir(dir)
 
-	cfg, err := Load()
+	cfg, err := Load(configPath)
 	if err != nil {
 		t.Fatalf("загрузка конфигурации: %v", err)
 	}

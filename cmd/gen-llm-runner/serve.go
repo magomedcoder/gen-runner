@@ -2,20 +2,18 @@ package main
 
 import (
 	"context"
-	"github.com/magomedcoder/gen/llm-runner/config"
-	"github.com/urfave/cli/v3"
-	"net"
-	"os/signal"
-	"strings"
-	"syscall"
-	"time"
-
 	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
 	runner "github.com/magomedcoder/gen/llm-runner"
+	"github.com/magomedcoder/gen/llm-runner/config"
 	"github.com/magomedcoder/gen/llm-runner/gpu"
-	"github.com/magomedcoder/gen/llm-runner/logger"
 	"github.com/magomedcoder/gen/llm-runner/provider"
+	"github.com/magomedcoder/gen/pkg/logger"
+	"github.com/urfave/cli/v3"
 	"google.golang.org/grpc"
+	"net"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 func cmdServe() *cli.Command {
@@ -48,13 +46,9 @@ func runServe(ctx context.Context, _ *cli.Command) error {
 		return err
 	}
 
-	if dm := strings.TrimSpace(cfg.DefaultModel); dm != "" {
-		logger.I("Подсказка: default_model=%q используется только как fallback, если в запросе не указан model; в VRAM при старте ничего не загружается", dm)
-	}
-
 	gpuCollector := gpu.NewCollector()
 
-	runnerServer := runner.NewServer(textProvider, gpuCollector, cfg.MaxConcurrentGenerations, cfg.DefaultModel, cfg.UnloadAfterRPC(), cfg.ModelsDir())
+	runnerServer := runner.NewServer(textProvider, gpuCollector, cfg.MaxConcurrentGenerations, cfg.UnloadAfterRPC(), cfg.ModelsDir())
 
 	listenAddr := cfg.ListenAddr()
 	lis, err := net.Listen("tcp", listenAddr)

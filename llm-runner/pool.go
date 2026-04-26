@@ -4,16 +4,15 @@ import (
 	"context"
 	"fmt"
 	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
+	"github.com/magomedcoder/gen/llm-runner/domain"
+	"github.com/magomedcoder/gen/pkg/logger"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"maps"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/magomedcoder/gen/llm-runner/domain"
-	"github.com/magomedcoder/gen/llm-runner/logger"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func mapResponseFormatToProto(in *domain.ResponseFormat) *llmrunnerpb.ResponseFormat {

@@ -1,6 +1,7 @@
 package wikiindex
 
 import (
+	"maps"
 	"math"
 	"sort"
 	"strings"
@@ -314,9 +315,7 @@ func cloneMeta(in map[string]any) map[string]any {
 	}
 
 	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 
 	return out
 }

@@ -38,10 +38,7 @@ func approxVisionImageTokens(byteLen int) int {
 		maxTokens = 8192
 	)
 
-	t := byteLen / 16
-	if t < minTokens {
-		t = minTokens
-	}
+	t := max(byteLen/16, minTokens)
 
 	if t > maxTokens {
 		t = maxTokens
@@ -197,10 +194,7 @@ func shrinkMessagesToApproxTokenBudget(msgs []*domain.Message, maxTokens int, pr
 
 	out := cloneMessageSliceForTrim(msgs)
 	for sumApproxTokens(out) > maxTokens {
-		tailStart := len(out) - preserveTail
-		if tailStart < 0 {
-			tailStart = 0
-		}
+		tailStart := max(len(out)-preserveTail, 0)
 
 		idx := -1
 		for i := tailStart - 1; i >= 0; i-- {

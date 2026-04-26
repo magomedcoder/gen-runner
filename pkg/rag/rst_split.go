@@ -139,7 +139,7 @@ func rstOverlineTitleUnderline(ol, tit, ul string) bool {
 }
 
 func rstAdornmentOnlyText(s string) bool {
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		ts := strings.TrimSpace(line)
 		if ts == "" {
 			continue

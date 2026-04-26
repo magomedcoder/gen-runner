@@ -885,7 +885,7 @@ func (c *ChatUseCase) runChatToolLoop(
 	maxToolRounds := maxToolInvocationRounds(c.runnerReg)
 	logger.I("ChatUseCase tool-loop: session_id=%d user_id=%d max_rounds=%d tools=%d", sessionID, userID, maxToolRounds, len(gp.Tools))
 
-	for round := 0; round < maxToolRounds; round++ {
+	for round := range maxToolRounds {
 		logger.I("ChatUseCase tool-loop: session_id=%d round=%d/%d phase=llm_request runner=%q model=%q history_msgs=%d tools=%d", sessionID, round+1, maxToolRounds, runnerAddr, resolvedModel, len(history), len(gp.Tools))
 		ch, runnerToolFn, err := c.llmRepo.SendMessageWithRunnerToolActionOnRunner(ctx, runnerAddr, sessionID, resolvedModel, history, stopSequences, timeoutSeconds, gp)
 		if err != nil {

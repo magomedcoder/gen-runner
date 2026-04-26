@@ -32,7 +32,7 @@ func terminalProgressLine(label string, written, total int64) string {
 	var bar strings.Builder
 	bar.Grow(progressBarWidth + 2)
 	bar.WriteByte('[')
-	for i := 0; i < progressBarWidth; i++ {
+	for i := range progressBarWidth {
 		if i < filled {
 			bar.WriteByte('=')
 		} else {

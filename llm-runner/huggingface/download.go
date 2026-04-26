@@ -189,7 +189,6 @@ func Run(opts Options) error {
 		g.SetLimit(conc)
 
 		for _, name := range toDownload {
-			name := name
 			g.Go(func() error {
 				o := opts
 				o.Context = gctx

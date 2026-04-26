@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -249,13 +250,7 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 	}
 
 	for _, fid := range req.GetAttachmentFileIds() {
-		duplicate := false
-		for _, existing := range attachmentFileIDs {
-			if existing == fid {
-				duplicate = true
-				break
-			}
-		}
+		duplicate := slices.Contains(attachmentFileIDs, fid)
 
 		if !duplicate {
 			attachmentFileIDs = append(attachmentFileIDs, fid)

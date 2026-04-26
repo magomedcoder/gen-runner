@@ -178,15 +178,9 @@ func unionPDFPageRange(lo, hi, lo2, hi2 int) (int, int) {
 		return lo2, hi2
 	}
 
-	outLo := lo
-	if lo2 < outLo {
-		outLo = lo2
-	}
+	outLo := min(lo2, lo)
 
-	outHi := hi
-	if hi2 > outHi {
-		outHi = hi2
-	}
+	outHi := max(hi2, hi)
 
 	return outLo, outHi
 }

@@ -423,10 +423,7 @@ func (u *DocumentIngestUseCase) SearchSessionKnowledge(ctx context.Context, user
 
 	searchTopK := topK
 	if u.adaptiveKEnabled && u.adaptiveKMultiplier > 1 {
-		searchTopK = topK * u.adaptiveKMultiplier
-		if searchTopK > maxAdaptiveSearchTopK {
-			searchTopK = maxAdaptiveSearchTopK
-		}
+		searchTopK = min(topK*u.adaptiveKMultiplier, maxAdaptiveSearchTopK)
 	}
 
 	tSearch := time.Now()

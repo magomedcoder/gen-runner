@@ -12,8 +12,8 @@ import (
 
 	"github.com/magomedcoder/gen/llm-runner/domain"
 	"github.com/magomedcoder/gen/llm-runner/llama"
-	"github.com/magomedcoder/gen/llm-runner/logger"
 	"github.com/magomedcoder/gen/llm-runner/template"
+	"github.com/magomedcoder/gen/pkg/logger"
 )
 
 type LlamaService struct {

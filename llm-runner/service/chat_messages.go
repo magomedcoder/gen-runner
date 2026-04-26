@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/magomedcoder/gen/llm-runner/domain"
@@ -90,13 +91,7 @@ func messageLikelyVisionImageAttachment(m *domain.AIChatMessage) bool {
 }
 
 func MessagesHaveVisionAttachments(messages []*domain.AIChatMessage) bool {
-	for _, m := range messages {
-		if messageLikelyVisionImageAttachment(m) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(messages, messageLikelyVisionImageAttachment)
 }
 
 func NormalizeChatMessages(messages []*domain.AIChatMessage) []*domain.AIChatMessage {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -818,10 +819,7 @@ func (s *wikiService) indexFolder(ctx context.Context, args indexArgs) (indexRep
 		chunkSize = defaultChunkSizeRunes
 	}
 
-	chunkOverlap := args.ChunkOverlapRunes
-	if chunkOverlap < 0 {
-		chunkOverlap = 0
-	}
+	chunkOverlap := max(args.ChunkOverlapRunes, 0)
 	if chunkOverlap == 0 {
 		chunkOverlap = defaultChunkOverlapRunes
 	}
@@ -1043,9 +1041,7 @@ func (s *wikiService) indexFolder(ctx context.Context, args indexArgs) (indexRep
 		}
 	}
 
-	for rel, fileRecord := range updates {
-		s.files[rel] = fileRecord
-	}
+	maps.Copy(s.files, updates)
 
 	inputChunks := make([]wikiindex.InputChunk, 0, 1024)
 	relPaths := make([]string, 0, len(s.files))
@@ -1209,10 +1205,7 @@ func (s *wikiService) buildAnswer(args askArgs) (askResponse, error) {
 	uq := len(wikiindex.TokenizeForSearch(query, s.retriever.TokenLocale()))
 	ratioFiltered := termFiltered
 	if ratio > 0 && ratio <= 1 && uq > 0 {
-		need := int(math.Ceil(float64(uq) * ratio))
-		if need < 1 {
-			need = 1
-		}
+		need := max(int(math.Ceil(float64(uq)*ratio)), 1)
 		next := make([]wikiindex.SearchResult, 0, len(termFiltered))
 		for _, r := range termFiltered {
 			if len(r.MatchedTerms) < need {
@@ -1472,9 +1465,7 @@ func cloneMeta(in map[string]any) map[string]any {
 	}
 
 	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 
 	return out
 }

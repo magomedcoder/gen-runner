@@ -114,10 +114,7 @@ func (c *ChatUseCase) deepRAGMapSummaries(
 			break
 		}
 
-		end := i + chunksPer
-		if end > len(scored) {
-			end = len(scored)
-		}
+		end := min(i+chunksPer, len(scored))
 
 		batch := scored[i:end]
 		block := formatChunksForDeepMap(batch)

@@ -1,6 +1,8 @@
 package logger
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestParseLevel(t *testing.T) {
 	tests := []struct {

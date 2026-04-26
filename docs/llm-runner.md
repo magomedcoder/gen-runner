@@ -9,7 +9,7 @@
 make deps-llm-runner
 
 # Генерация proto
-make gen-proto
+make gen-go-proto
 
 # Сборка библиотек (без CUDA)
 make build-libs-cpu

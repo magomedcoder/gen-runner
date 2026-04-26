@@ -64,7 +64,7 @@ func TestSendMessageWithRunnerToolAction_bufconn_visionRequestAndStream(t *testi
 		},
 		chunks: []*llmrunnerpb.ChatResponse{
 			{Content: "вижу ", Done: false},
-			{Content: "png", Done: false, ToolActionJson: ptrStr(`[]`)},
+			{Content: "png", Done: false, ToolActionJson: new(`[]`)},
 			{Content: "", Done: true},
 		},
 	}
@@ -130,6 +130,7 @@ func TestSendMessageWithRunnerToolAction_bufconn_visionRequestAndStream(t *testi
 	}
 }
 
+//go:fix inline
 func ptrStr(s string) *string {
-	return &s
+	return new(s)
 }

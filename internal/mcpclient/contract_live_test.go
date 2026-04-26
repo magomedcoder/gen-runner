@@ -34,14 +34,10 @@ func TestActiveMCPServersContractLive(t *testing.T) {
 
 	cache := NewToolsListCache()
 	for _, srv := range active {
-		srv := srv
 		t.Run(srv.Name, func(t *testing.T) {
 			timeout := 45 * time.Second
 			if srv.TimeoutSeconds > 0 {
-				timeout = time.Duration(srv.TimeoutSeconds) * time.Second
-				if timeout > 180*time.Second {
-					timeout = 180 * time.Second
-				}
+				timeout = min(time.Duration(srv.TimeoutSeconds)*time.Second, 180*time.Second)
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)

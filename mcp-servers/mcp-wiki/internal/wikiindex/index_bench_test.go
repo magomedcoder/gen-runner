@@ -8,7 +8,7 @@ import (
 func BenchmarkSearch_1kChunks(b *testing.B) {
 	const n = 1000
 	chunks := make([]InputChunk, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		chunks[i] = InputChunk{
 			FilePath:   fmt.Sprintf("wiki/page/%d.md", i),
 			FileName:   fmt.Sprintf("%d.md", i),

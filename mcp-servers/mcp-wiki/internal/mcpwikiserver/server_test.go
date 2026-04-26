@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -512,13 +513,7 @@ func TestWikiModelPromptsRegistered(t *testing.T) {
 		t.Fatalf("expected at least one prompt, got %v", names)
 	}
 
-	found := false
-	for _, n := range names {
-		if n == "wiki_prompts_full" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(names, "wiki_prompts_full")
 	if !found {
 		t.Fatalf("missing wiki_prompts_full in %v", names)
 	}

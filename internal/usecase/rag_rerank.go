@@ -48,7 +48,7 @@ func parseRerankOrder(reply string, n int) []int {
 
 	var raw []string
 	if strings.Contains(reply, ",") {
-		for _, p := range strings.Split(reply, ",") {
+		for p := range strings.SplitSeq(reply, ",") {
 			p = strings.TrimSpace(p)
 			if p == "" {
 				continue
@@ -84,7 +84,7 @@ func parseRerankOrder(reply string, n int) []int {
 	}
 
 	if len(order) < n {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if _, ok := seen[i+1]; !ok {
 				order = append(order, i)
 			}

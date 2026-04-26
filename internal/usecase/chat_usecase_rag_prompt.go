@@ -88,10 +88,7 @@ func buildMessageWithRAG(fileName string, userMessage string, scored []domain.Sc
 		block := "Промежуточное сжатие фрагментов (map-шаг, дополнительно к полным цитатам ниже):\n\n" + s + "\n\n---\n\n"
 		br := utf8.RuneCountInString(block)
 		if total+br > maxContextRunes {
-			room := maxContextRunes - total - 120
-			if room < 80 {
-				room = 80
-			}
+			room := max(maxContextRunes-total-120, 80)
 
 			block = truncateStringRunes(block, room) + "\n\n---\n\n"
 			br = utf8.RuneCountInString(block)
@@ -149,10 +146,7 @@ func buildRAGContextBlock(fileName string, scored []domain.ScoredDocumentRAGChun
 		block := "Сжатое резюме map-шагов:\n\n" + s + "\n\n---\n\n"
 		br := utf8.RuneCountInString(block)
 		if total+br > maxContextRunes {
-			room := maxContextRunes - total - 120
-			if room < 80 {
-				room = 80
-			}
+			room := max(maxContextRunes-total-120, 80)
 
 			block = truncateStringRunes(block, room) + "\n\n---\n\n"
 			br = utf8.RuneCountInString(block)

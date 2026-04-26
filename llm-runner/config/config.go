@@ -17,7 +17,6 @@ type Config struct {
 	RegistrationToken              string   `yaml:"registration_token"`
 	LogLevel                       string   `yaml:"log_level"`
 	ModelPath                      string   `yaml:"model_path"`
-	DefaultModel                   string   `yaml:"default_model"`
 	MaxContextTokens               int      `yaml:"max_context_tokens"`
 	LLMHistoryMaxMessages          int      `yaml:"llm_history_max_messages"`
 	LLMHistorySummarizeDropped     bool     `yaml:"llm_history_summarize_dropped"`

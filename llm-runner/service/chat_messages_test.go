@@ -20,10 +20,7 @@ func TestFormatContentForBuiltinChatTemplate_toolRoleLongMCPStyleContent(t *test
 
 	got := FormatContentForBuiltinChatTemplate(m)
 	if !strings.HasPrefix(got, "[call_id=call_abc] ") {
-		prefixLen := 40
-		if len(got) < prefixLen {
-			prefixLen = len(got)
-		}
+		prefixLen := min(len(got), 40)
 		t.Fatalf("prefix: %q", got[:prefixLen])
 	}
 

@@ -2,16 +2,15 @@ package llm_runner
 
 import (
 	"context"
-	"strings"
-	"time"
-
 	"github.com/magomedcoder/gen/api/pb/llm-runner/llmrunnerpb"
 	"github.com/magomedcoder/gen/llm-runner/domain"
 	"github.com/magomedcoder/gen/llm-runner/gpu"
-	"github.com/magomedcoder/gen/llm-runner/logger"
 	"github.com/magomedcoder/gen/llm-runner/provider"
+	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"strings"
+	"time"
 )
 
 func mapGenerationParamsFromProto(in *llmrunnerpb.GenerationParams) *domain.GenerationParams {
@@ -82,12 +81,11 @@ type Server struct {
 	gpuCollector     gpu.Collector
 	inferenceMetrics *InferenceMetrics
 	sem              chan struct{}
-	defaultModel     string
 	unloadAfterRPC   bool
 	modelsDir        string
 }
 
-func NewServer(textProvider provider.TextProvider, gpuCollector gpu.Collector, maxConcurrentGenerations int, defaultModel string, unloadAfterRPC bool, modelsDir string) *Server {
+func NewServer(textProvider provider.TextProvider, gpuCollector gpu.Collector, maxConcurrentGenerations int, unloadAfterRPC bool, modelsDir string) *Server {
 	if gpuCollector == nil {
 		gpuCollector = gpu.NewCollector()
 	}
@@ -100,7 +98,6 @@ func NewServer(textProvider provider.TextProvider, gpuCollector gpu.Collector, m
 		gpuCollector:     gpuCollector,
 		inferenceMetrics: NewInferenceMetrics(),
 		sem:              sem,
-		defaultModel:     strings.TrimSpace(defaultModel),
 		unloadAfterRPC:   unloadAfterRPC,
 		modelsDir:        strings.TrimSpace(modelsDir),
 	}
@@ -188,9 +185,6 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 
 	sessionID := req.SessionId
 	model := strings.TrimSpace(req.Model)
-	if model == "" {
-		model = s.defaultModel
-	}
 	if model == "" {
 		return status.Error(codes.InvalidArgument, "укажите model в запросе или default_model в config.yaml")
 	}
@@ -290,9 +284,6 @@ func (s *Server) Embed(ctx context.Context, req *llmrunnerpb.EmbedRequest) (*llm
 
 	model := strings.TrimSpace(req.GetModel())
 	if model == "" {
-		model = s.defaultModel
-	}
-	if model == "" {
 		return nil, status.Error(codes.InvalidArgument, "укажите model в запросе или default_model в config.yaml")
 	}
 
@@ -338,9 +329,6 @@ func (s *Server) EmbedBatch(ctx context.Context, req *llmrunnerpb.EmbedBatchRequ
 	}
 
 	model := strings.TrimSpace(req.GetModel())
-	if model == "" {
-		model = s.defaultModel
-	}
 	if model == "" {
 		return nil, status.Error(codes.InvalidArgument, "укажите model в запросе или default_model в config.yaml")
 	}

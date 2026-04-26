@@ -50,7 +50,7 @@ func TestCallToolTransportRetryReducesErrorRateByAtLeast30Percent(t *testing.T) 
 	runWave := func(retryEnabled bool) float64 {
 		SetCallToolTransportRetry(retryEnabled)
 		failures := 0
-		for i := 0; i < total; i++ {
+		for range total {
 			ctx := context.WithValue(context.Background(), callAttemptCtxKey{}, &atomic.Bool{})
 			if _, err := CallTool(ctx, srv, tool, args); err != nil {
 				failures++

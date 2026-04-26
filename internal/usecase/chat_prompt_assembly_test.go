@@ -229,7 +229,7 @@ func TestInstructionSafeBudgetManager_keepsStrictFormatInstructionWithLongDocume
 
 func TestSelectMultiFileRAGCandidates_respectsBudgetInConflictingMultiFileCase(t *testing.T) {
 	var candidates []multiFileRAGCandidate
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		candidates = append(candidates, multiFileRAGCandidate{
 			fileIndex: i % 2,
 			score:     1.0 - float64(i)*0.05,

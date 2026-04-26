@@ -1,4 +1,4 @@
-.PHONY: install gen gen-proto build-libs-cpu build-libs-gpu build-cpu build-gpu build run-cpu run-gpu run test-llama-cpu test-llama-gpu test clean
+.PHONY: install gen-go-proto gen-dart-proto build-libs-cpu build-libs-gpu build-cpu build-gpu build run-cpu run-gpu run test-llama-cpu test-llama-gpu test clean
 
 install:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest \
@@ -9,7 +9,7 @@ RUN_ENV := LD_LIBRARY_PATH="$(PWD)/$(LLAMA_DIR):$(LD_LIBRARY_PATH)" LIBRARY_PATH
 deps-llm-runner:
 	$(MAKE) -C $(LLAMA_DIR) -f Makefile deps
 
-gen-proto:
+gen-go-proto:
 	@for proto in ./api/proto/app/*.proto; do \
 		name=$$(basename $$proto .proto); \
 		mkdir -p ./api/pb/app/$${name}pb; \
@@ -25,6 +25,7 @@ gen-proto:
 		--go-grpc_out=paths=source_relative:./api/pb/llm-runner/llmrunnerpb \
 		./api/proto/llm-runner/llmrunner.proto
 
+gen-dart-proto:
 	mkdir -p ./client-app/lib/generated/grpc_pb
 	protoc --proto_path=./api/proto/app \
 		--dart_out=grpc:./client-app/lib/generated/grpc_pb \
@@ -68,6 +69,7 @@ run:
 
 clean:
 	rm -rf build
+	$(MAKE) -C $(LLAMA_DIR) -f Makefile clean
 
 test:
 	go test ./... -race -count=1
