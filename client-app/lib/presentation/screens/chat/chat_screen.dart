@@ -34,7 +34,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isDraggingFile = false;
   double get _sidebarWidth => Breakpoints.sidebarDefaultWidth;
 
-  static const double _scrollThreshold = 80.0;
   static const Duration _loadOlderDebounce = Duration(milliseconds: 320);
 
   Timer? _loadOlderDebounceTimer;
@@ -61,9 +60,12 @@ class _ChatScreenState extends State<ChatScreen> {
         s.messages.isEmpty) {
       return;
     }
-    if (_scrollController.position.pixels > 120) {
+
+    final pos = _scrollController.position;
+    if (pos.maxScrollExtent - pos.pixels > 120) {
       return;
     }
+
     _loadOlderDebounceTimer?.cancel();
     _loadOlderDebounceTimer = Timer(_loadOlderDebounce, () {
       if (!mounted) {
@@ -80,23 +82,27 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _scrollToBottom() {
+  void _scrollLatestIntoView() {
     if (!mounted) {
       return;
     }
 
-    if (!_scrollController.hasClients) {
-      return;
+    void go() {
+      if (!mounted || !_scrollController.hasClients) {
+        return;
+      }
+
+      final pos = _scrollController.position;
+      final t = pos.minScrollExtent;
+      if (t.isFinite) {
+        _scrollController.jumpTo(t.clamp(pos.minScrollExtent, pos.maxScrollExtent));
+      }
     }
 
-    final pos = _scrollController.position;
-    if (pos.maxScrollExtent - pos.pixels <= _scrollThreshold) {
-      _scrollController.animateTo(
-        pos.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      go();
+      WidgetsBinding.instance.addPostFrameCallback((_) => go());
+    });
   }
 
   void _toggleSidebar() {
@@ -181,12 +187,19 @@ class _ChatScreenState extends State<ChatScreen> {
     final pos = _scrollController.position;
     final oldMax = pos.maxScrollExtent;
     final oldPixels = pos.pixels;
+    final pinnedToLatest = oldPixels <= 1.0 && oldMax > 0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) {
         return;
       }
-      final newMax = _scrollController.position.maxScrollExtent;
+      final p = _scrollController.position;
+      final newMax = p.maxScrollExtent;
       final delta = newMax - oldMax;
+      if (pinnedToLatest) {
+        _scrollController.jumpTo(p.minScrollExtent.clamp(p.minScrollExtent, newMax));
+        return;
+      }
+
       _scrollController.jumpTo((oldPixels + delta).clamp(0.0, newMax));
     });
   }
@@ -202,30 +215,43 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    void tryScrollToBottom() {
-      if (!mounted || !_scrollController.hasClients) {
+    if (prev.currentSessionId != curr.currentSessionId) {
+      if (mounted &&
+          (curr.messages.isNotEmpty || curr.isStreamingInCurrentSession)) {
+        _scrollLatestIntoView();
+      }
+      return;
+    }
+
+    void tryScrollLatestIntoView() {
+      if (!mounted) {
         return;
       }
       if (curr.messages.isEmpty && !curr.isStreamingInCurrentSession) {
         return;
       }
-      _scrollToBottom();
+      _scrollLatestIntoView();
     }
 
-    if (curr.isStreamingInCurrentSession && (prev.currentStreamingText != curr.currentStreamingText || prev.currentStreamingReasoning != curr.currentStreamingReasoning || (!prev.isStreamingInCurrentSession && curr.isStreamingInCurrentSession))) {
-      tryScrollToBottom();
+    if (curr.isStreamingInCurrentSession && (prev.currentStreamingText != curr.currentStreamingText || prev.currentStreamingReasoning != curr.currentStreamingReasoning || prev.toolProgressLabel != curr.toolProgressLabel || (!prev.isStreamingInCurrentSession && curr.isStreamingInCurrentSession))) {
+      tryScrollLatestIntoView();
+      return;
+    }
+
+    if (prev.isStreamingInCurrentSession && !curr.isStreamingInCurrentSession) {
+      tryScrollLatestIntoView();
       return;
     }
 
     if (curr.messages.length > prev.messages.length) {
       if (prev.messages.isEmpty && curr.messages.isNotEmpty && !curr.isLoading) {
-        tryScrollToBottom();
+        tryScrollLatestIntoView();
         return;
       }
       if (prev.messages.isNotEmpty &&
           curr.messages.last.id != prev.messages.last.id &&
           curr.messages.first.id == prev.messages.first.id) {
-        tryScrollToBottom();
+        tryScrollLatestIntoView();
       }
     }
   }
@@ -248,19 +274,22 @@ class _ChatScreenState extends State<ChatScreen> {
             return;
           }
           _inputBarKey.currentState?.resetComposer();
-          _prevStateForScroll = null;
           _loadOlderDebounceTimer?.cancel();
         });
       },
       child: BlocListener<ChatBloc, ChatState>(
         listenWhen: (previous, current) => previous != current,
         listener: (context, state) {
-          final prev = _prevStateForScroll ?? state;
+          final prev = _prevStateForScroll;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) {
               return;
             }
-            _handleScrollOnStateChange(prev, state);
+            if (prev != null) {
+              _handleScrollOnStateChange(prev, state);
+            } else if (state.messages.isNotEmpty && state.currentSessionId != null && !state.isLoading) {
+              _scrollLatestIntoView();
+            }
           });
           _prevStateForScroll = state;
         },

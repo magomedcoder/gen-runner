@@ -145,62 +145,80 @@ class ChatMessageList extends StatelessWidget {
   Widget build(BuildContext context) {
     final horizontalPadding = Breakpoints.isMobile(context) ? 12.0 : 16.0;
     final listItems = _buildChatListItems(state.messages);
+    final n = listItems.length;
+    final hasStream = state.isStreamingInCurrentSession;
+    final hasOlder = state.isLoadingOlderMessages;
+    final childCount = n + (hasStream ? 1 : 0) + (hasOlder ? 1 : 0);
+
+    Widget rowForListIndex(int rowIndex) {
+      final item = listItems[rowIndex];
+      return switch (item) {
+        _ChatListToolBatch(:final start, :final end) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: ToolResultsBatchBubble(
+            tools: state.messages.sublist(start, end + 1).toList(growable: false),
+          ),
+        ),
+        final _ChatListToolChain c => _toolChainRow(context, state, c.chain),
+        _ChatListSingle(:final messageIndex) => _messageRow(context, state, messageIndex),
+      };
+    }
+
+    Widget streamingRow() {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: ChatBubble(
+          message: Message(
+            id: -1,
+            content: state.currentStreamingText ?? '',
+            role: MessageRole.assistant,
+            createdAt: DateTime.now(),
+          ),
+          sessionId: state.currentSessionId,
+          ragPreviewBySessionFile: state.ragPreviewBySessionFile,
+          showEditNav: false,
+          isStreaming: true,
+          streamingStatus: state.toolProgressLabel,
+          streamingReasoning: state.currentStreamingReasoning,
+        ),
+      );
+    }
+
+    const olderSpinner = Padding(
+      padding: EdgeInsets.only(bottom: 8),
+      child: Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    );
+
     return ListView.builder(
+      reverse: true,
       controller: scrollController,
       padding: EdgeInsets.symmetric(
         vertical: 16,
         horizontal: horizontalPadding,
       ),
-      itemCount: listItems.length +
-          (state.isStreamingInCurrentSession ? 1 : 0) +
-          (state.isLoadingOlderMessages ? 1 : 0),
+      itemCount: childCount,
       itemBuilder: (context, index) {
-        if (state.isLoadingOlderMessages && index == 0) {
-          return const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          );
+        if (hasStream && index == 0) {
+          return streamingRow();
         }
-        final offset = state.isLoadingOlderMessages ? 1 : 0;
-        final rowIndex = index - offset;
-        if (rowIndex < listItems.length) {
-          final item = listItems[rowIndex];
-          return switch (item) {
-            _ChatListToolBatch(:final start, :final end) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: ToolResultsBatchBubble(
-                  tools: state.messages.sublist(start, end + 1).toList(growable: false),
-                ),
-              ),
-            final _ChatListToolChain c => _toolChainRow(context, state, c.chain),
-            _ChatListSingle(:final messageIndex) => _messageRow(context, state, messageIndex),
-          };
+
+        final streamOff = hasStream ? 1 : 0;
+        final i = index - streamOff;
+        if (i < n) {
+          final rowIndex = n - 1 - i;
+          return rowForListIndex(rowIndex);
         }
-        if (state.isStreamingInCurrentSession && rowIndex == listItems.length) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: ChatBubble(
-              message: Message(
-                id: -1,
-                content: state.currentStreamingText ?? '',
-                role: MessageRole.assistant,
-                createdAt: DateTime.now(),
-              ),
-              sessionId: state.currentSessionId,
-              ragPreviewBySessionFile: state.ragPreviewBySessionFile,
-              showEditNav: false,
-              isStreaming: true,
-              streamingStatus: state.toolProgressLabel,
-              streamingReasoning: state.currentStreamingReasoning,
-            ),
-          );
+
+        if (hasOlder && index == childCount - 1) {
+          return olderSpinner;
         }
+
         return const SizedBox.shrink();
       },
     );
