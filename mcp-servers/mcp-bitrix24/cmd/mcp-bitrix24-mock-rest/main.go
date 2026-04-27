@@ -15,6 +15,6 @@ func main() {
 
 	srv := bitrix24mock.NewServer()
 
-	log.Printf("Bitrix24 mock REST: http://%s/rest/43176/mock-token/<method>", *addr)
+	log.Printf("Bitrix24 mock REST: http://%s/rest/1/mock-token/<method>", *addr)
 	log.Fatal(http.ListenAndServe(*addr, mcpsafe.RecoverPanic("mcp-bitrix24-mock-rest", srv.Handler())))
 }

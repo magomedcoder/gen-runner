@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:gen/presentation/widgets/safe_markdown_body.dart';
 import 'package:gen/core/redacted_thinking_split.dart';
+import 'package:gen/core/tool_display_format.dart';
 import 'package:gen/core/docx_file_export.dart';
 import 'package:gen/core/chat_image_attachment.dart';
 import 'package:gen/core/injector.dart';
@@ -28,6 +29,56 @@ import 'package:gen/presentation/widgets/code_block_builder.dart';
 
 Color _messageBodyTextColor(ColorScheme cs) {
   return cs.onSurface.withValues(alpha: 0.94);
+}
+
+Widget _toolRoleMessageBody(
+  ThemeData theme,
+  Color messageTextColor,
+  String raw,
+) {
+  final friendly = formatToolResultForUser(raw);
+  final rawTrim = raw.trim();
+  final same = rawTrim == friendly.trim();
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (rawTrim.isNotEmpty && !same)
+        Theme(
+          data: theme,
+          child: ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 8),
+            title: Text(
+              'Размещение',
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            children: [
+              SelectableText(
+                raw,
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.35,
+                  fontFamily: 'monospace',
+                  color: messageTextColor.withValues(alpha: 0.88),
+                ),
+              ),
+            ],
+          ),
+        ),
+      SelectableText(
+        friendly,
+        style: TextStyle(
+          color: messageTextColor,
+          fontSize: 14,
+          height: 1.45,
+        ),
+      ),
+    ],
+  );
 }
 
 MarkdownStyleSheet assistantBubbleMarkdownSheet(ThemeData theme) {
@@ -93,120 +144,6 @@ BorderRadius _bubbleRadius(bool isUser) {
   );
 }
 
-class _AssistantReasoningToggleButton extends StatelessWidget {
-  const _AssistantReasoningToggleButton({
-    required this.expanded,
-    required this.onPressed,
-    required this.messageTextColor,
-  });
-
-  final bool expanded;
-  final VoidCallback onPressed;
-  final Color messageTextColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final tip = expanded ? 'Свернуть размышление' : 'Показать размышление';
-    return Semantics(
-      excludeSemantics: true,
-      label: tip,
-      button: true,
-      child: IconButton(
-        onPressed: onPressed,
-        tooltip: tip,
-        padding: EdgeInsets.zero,
-        visualDensity: VisualDensity.compact,
-        constraints: const BoxConstraints(
-          minWidth: 36,
-          minHeight: 36,
-        ),
-        icon: Icon(
-          expanded ? Icons.expand_less : Icons.expand_more,
-          size: 22,
-          color: messageTextColor.withValues(alpha: 0.55),
-        ),
-      ),
-    );
-  }
-}
-
-class _AssistantReasoningExpandedPanel extends StatelessWidget {
-  const _AssistantReasoningExpandedPanel({
-    super.key,
-    required this.theme,
-    required this.text,
-    required this.messageTextColor,
-    required this.padBefore,
-  });
-
-  final ThemeData theme;
-  final String text;
-  final Color messageTextColor;
-
-  final bool padBefore;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = theme.colorScheme;
-    final bodyStyle = TextStyle(
-      fontSize: 13,
-      height: 1.45,
-      color: messageTextColor.withValues(alpha: 0.78),
-      fontFamily: 'monospace',
-    );
-
-    return Padding(
-      padding: EdgeInsets.only(
-        top: padBefore ? 8 : 0,
-        bottom: 1,
-      ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.42),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.45),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.psychology_outlined,
-                    size: 16,
-                    color: messageTextColor.withValues(alpha: 0.82),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Размышление',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: messageTextColor.withValues(alpha: 0.82),
-                      height: 1.15,
-                      letterSpacing: 0.08,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SelectableText(
-                text,
-                style: bodyStyle,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class ChatBubble extends StatefulWidget {
   final Message message;
   final int? sessionId;
@@ -249,14 +186,12 @@ class _ChatBubbleState extends State<ChatBubble> {
   bool _justCopied = false;
   int? _downloadingFileId;
   bool _isEditing = false;
-  bool _reasoningExpanded = false;
   Uint8List? _userAttachmentThumbBytes;
   bool _userAttachmentThumbLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _reasoningExpanded = widget.isStreaming;
     unawaited(_maybeLoadUserAttachmentThumb());
   }
 
@@ -270,36 +205,57 @@ class _ChatBubbleState extends State<ChatBubble> {
       _userAttachmentThumbBytes = null;
       unawaited(_maybeLoadUserAttachmentThumb());
     }
-    if (widget.message.id != oldWidget.message.id) {
-      _reasoningExpanded = widget.isStreaming;
-    } else if (!oldWidget.isStreaming && widget.isStreaming) {
-      _reasoningExpanded = true;
-    } else if (oldWidget.isStreaming && !widget.isStreaming) {
-      _reasoningExpanded = false;
-    }
   }
 
-  String _reasoningDisplayText(String? tagFromContent) {
-    final live = widget.streamingReasoning;
-    if (live != null && live.trim().isNotEmpty) {
-      return live.trim();
+  String _reasoningSectionStoredOrLive() {
+    final live = widget.streamingReasoning?.trim() ?? '';
+    if (widget.isStreaming && live.isNotEmpty) {
+      return live;
     }
-    final stored = widget.message.reasoningContent?.trim() ?? '';
-    final tag = tagFromContent?.trim() ?? '';
-    return RedactedThinkingSplit.combine(stored, tag).trim();
+    return widget.message.reasoningContent?.trim() ?? '';
   }
 
-  Widget _assistantMessageAndReasoningToggle({
+  String _assistantCopyPlainText(String body, String s1, String s2) {
+    final b = StringBuffer();
+    if (s1.isNotEmpty) {
+      b.writeln('Размышление');
+      b.writeln(s1);
+      b.writeln();
+    }
+    if (s2.isNotEmpty) {
+      b.writeln('Размышление модели');
+      b.writeln(s2);
+      b.writeln();
+    }
+    final t = body.trim();
+    if (t.isNotEmpty) {
+      b.write(t);
+    }
+    return b.toString().trim();
+  }
+
+  Widget _assistantOrderedReasoningAndBody({
     required ThemeData theme,
     required Color messageTextColor,
     required String assistantVisible,
-    required bool hasAssistantReasoning,
-    required String reasoningDisplay,
-    required int messageId,
+    required String tagReasoningFromBody,
     required bool enableMarkdownParseGuard,
   }) {
+    final s1 = _reasoningSectionStoredOrLive();
+    final s2 = tagReasoningFromBody.trim();
     final hasBody = assistantVisible.trim().isNotEmpty;
-    if (!hasAssistantReasoning) {
+    final tileTitleStyle = TextStyle(
+      fontSize: 12,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final monoReason = TextStyle(
+      fontSize: 12,
+      height: 1.4,
+      color: messageTextColor.withValues(alpha: 0.85),
+      fontFamily: 'monospace',
+    );
+
+    if (s1.isEmpty && s2.isEmpty) {
       return hasBody
           ? _assistantMessageBody(
               theme,
@@ -309,42 +265,44 @@ class _ChatBubbleState extends State<ChatBubble> {
             )
           : const SizedBox.shrink();
     }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (_reasoningExpanded)
-          _AssistantReasoningExpandedPanel(
-            key: ValueKey('assistant-reasoning-$messageId'),
-            theme: theme,
-            text: reasoningDisplay,
-            messageTextColor: messageTextColor,
-            padBefore: false,
+        if (s1.isNotEmpty)
+          Theme(
+            data: theme,
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              title: Text('Размышление', style: tileTitleStyle),
+              children: [
+                SelectableText(s1, style: monoReason),
+              ],
+            ),
           ),
-        if (_reasoningExpanded) const SizedBox(height: 8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: hasBody
-                  ? _assistantMessageBody(
-                      theme,
-                      messageTextColor,
-                      assistantVisible,
-                      enableMarkdownParseGuard: enableMarkdownParseGuard,
-                    )
-                  : const SizedBox.shrink(),
+        if (s2.isNotEmpty)
+          Theme(
+            data: theme,
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              title: Text('Размышление модели', style: tileTitleStyle),
+              children: [
+                SelectableText(s2, style: monoReason),
+              ],
             ),
-            const SizedBox(width: 2),
-            _AssistantReasoningToggleButton(
-              expanded: _reasoningExpanded,
-              messageTextColor: messageTextColor,
-              onPressed: () {
-                setState(() => _reasoningExpanded = !_reasoningExpanded);
-              },
-            ),
-          ],
-        ),
+          ),
+        if (hasBody) ...[
+          if (s1.isNotEmpty || s2.isNotEmpty) const SizedBox(height: 8),
+          _assistantMessageBody(
+            theme,
+            messageTextColor,
+            assistantVisible,
+            enableMarkdownParseGuard: enableMarkdownParseGuard,
+          ),
+        ],
       ],
     );
   }
@@ -635,13 +593,14 @@ class _ChatBubbleState extends State<ChatBubble> {
     final assistantVisible = isAssistant
         ? peeledAssistant!.$1
         : message.content;
-    final tagReasoningFromBody = isAssistant ? peeledAssistant!.$2 : null;
-    final reasoningDisplay = isAssistant
-        ? _reasoningDisplayText(tagReasoningFromBody)
-        : '';
+    final tagReasoningFromBody = isAssistant ? (peeledAssistant!.$2 ?? '') : '';
+    final s1Reasoning = isAssistant ? _reasoningSectionStoredOrLive() : '';
+    final s2Reasoning = isAssistant ? tagReasoningFromBody.trim() : '';
     final hasCopyableText = isUser
         ? message.content.trim().isNotEmpty
-        : assistantVisible.trim().isNotEmpty;
+        : (assistantVisible.trim().isNotEmpty ||
+            s1Reasoning.isNotEmpty ||
+            s2Reasoning.isNotEmpty);
     final editsTotal = widget.editsTotal;
     final editsIndex = widget.editsIndex;
     final showEditNav = widget.showEditNav;
@@ -665,8 +624,6 @@ class _ChatBubbleState extends State<ChatBubble> {
         widget.ragPreviewBySessionFile.containsKey(ragPreviewKey);
     final canOpenRagPreview = ragPreviewKey != null && !isStreaming;
     final messageTextColor = _messageBodyTextColor(theme.colorScheme);
-    final hasAssistantReasoning =
-        isAssistant && reasoningDisplay.isNotEmpty;
     final userImagePreview =
         isUser ? _userImagePreviewChip(messageTextColor) : null;
 
@@ -828,7 +785,8 @@ class _ChatBubbleState extends State<ChatBubble> {
                     else if (isUser
                         ? message.content.isNotEmpty
                         : (assistantVisible.trim().isNotEmpty ||
-                            reasoningDisplay.isNotEmpty))
+                            s1Reasoning.isNotEmpty ||
+                            s2Reasoning.isNotEmpty))
                       isUser
                           ? SelectableText(
                               message.content,
@@ -839,15 +797,19 @@ class _ChatBubbleState extends State<ChatBubble> {
                               ),
                             )
                           : (isAssistant
-                                ? _assistantMessageAndReasoningToggle(
-                              theme: theme,
-                              messageTextColor: messageTextColor,
-                              assistantVisible: assistantVisible,
-                              hasAssistantReasoning: hasAssistantReasoning,
-                              reasoningDisplay: reasoningDisplay,
-                              messageId: message.id,
-                              enableMarkdownParseGuard: true,
-                            )
+                                ? _assistantOrderedReasoningAndBody(
+                                    theme: theme,
+                                    messageTextColor: messageTextColor,
+                                    assistantVisible: assistantVisible,
+                                    tagReasoningFromBody: tagReasoningFromBody,
+                                    enableMarkdownParseGuard: true,
+                                  )
+                                : isTool
+                                ? _toolRoleMessageBody(
+                                    theme,
+                                    messageTextColor,
+                                    message.content,
+                                  )
                                 : SelectableText(
                                     assistantVisible,
                                     style: TextStyle(
@@ -865,7 +827,8 @@ class _ChatBubbleState extends State<ChatBubble> {
                           top: (isUser
                                   ? message.content.trim().isNotEmpty
                                   : (assistantVisible.trim().isNotEmpty ||
-                                      reasoningDisplay.isNotEmpty))
+                                      s1Reasoning.isNotEmpty ||
+                                      s2Reasoning.isNotEmpty))
                               ? 8
                               : 0,
                         ),
@@ -1066,7 +1029,11 @@ class _ChatBubbleState extends State<ChatBubble> {
                                     ClipboardData(
                                       text: isUser
                                           ? message.content
-                                          : assistantVisible.trim(),
+                                          : _assistantCopyPlainText(
+                                              assistantVisible,
+                                              s1Reasoning,
+                                              s2Reasoning,
+                                            ),
                                     ),
                                   );
 
@@ -1370,6 +1337,20 @@ Widget _assistantMessageBody(
             ),
           ),
     ],
+  );
+}
+
+Widget buildAssistantMarkdownFromContent(
+  BuildContext context,
+  String content, {
+  bool enableMarkdownParseGuard = true,
+}) {
+  final theme = Theme.of(context);
+  return _assistantMessageBody(
+    theme,
+    _messageBodyTextColor(theme.colorScheme),
+    content,
+    enableMarkdownParseGuard: enableMarkdownParseGuard,
   );
 }
 

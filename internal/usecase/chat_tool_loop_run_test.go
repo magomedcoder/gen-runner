@@ -166,6 +166,27 @@ func markdownPatchActionJSON(base, patch string) string {
 	return string(b)
 }
 
+func markdownPatchTwoActionsJSON() string {
+	rows := []map[string]any{
+		{
+			"tool_name": "apply_markdown_patch",
+			"parameters": map[string]string{
+				"base_text":  "A",
+				"patch_json": `{"ops":[{"op":"append","text":"1"}]}`,
+			},
+		},
+		{
+			"tool_name": "apply_markdown_patch",
+			"parameters": map[string]string{
+				"base_text":  "B",
+				"patch_json": `{"ops":[{"op":"append","text":"2"}]}`,
+			},
+		},
+	}
+	b, _ := json.Marshal(rows)
+	return string(b)
+}
+
 func TestRunChatToolLoopSequentialCallsAndFinalAnswer(t *testing.T) {
 	msgRepo := &memoryMessageRepo{}
 	llm := &scriptedLLMRepo{
@@ -251,6 +272,86 @@ func TestRunChatToolLoopSequentialCallsAndFinalAnswer(t *testing.T) {
 
 	if msgRepo.messages[4].Role != domain.MessageRoleAssistant || strings.TrimSpace(msgRepo.messages[4].Content) != "Итог: ABC" {
 		t.Fatalf("final assistant message mismatch: %+v", msgRepo.messages[4])
+	}
+}
+
+func TestRunChatToolLoopMultipleToolsInOneRound(t *testing.T) {
+	msgRepo := &memoryMessageRepo{}
+	llm := &scriptedLLMRepo{
+		rounds: []scriptedLLMRound{
+			{
+				text:       "Два патча за один ответ",
+				toolAction: markdownPatchTwoActionsJSON(),
+			},
+			{
+				text:       "Готово",
+				toolAction: "",
+			},
+		},
+	}
+	c := &ChatUseCase{
+		llmRepo:     llm,
+		messageRepo: msgRepo,
+		chatTx: fakeChatTx{
+			repos: domain.ChatRepos{
+				Message: msgRepo,
+			},
+		},
+	}
+
+	out := make(chan ChatStreamChunk, 64)
+	go c.runChatToolLoop(
+		context.Background(),
+		1,
+		300,
+		"runner",
+		"model",
+		[]*domain.Message{domain.NewMessage(300, "system", domain.MessageRoleSystem)},
+		nil,
+		60,
+		&domain.GenerationParams{
+			Tools: []domain.Tool{{Name: "apply_markdown_patch", ParametersJSON: `{}`}},
+		},
+		false,
+		nil,
+		out,
+	)
+
+	var statuses int
+	for ch := range out {
+		if ch.Kind == StreamChunkKindToolStatus {
+			statuses++
+		}
+	}
+	if statuses != 2 {
+		t.Fatalf("expected 2 tool statuses for parallel round, got=%d", statuses)
+	}
+
+	msgRepo.mu.Lock()
+	defer msgRepo.mu.Unlock()
+	if len(msgRepo.messages) != 4 {
+		t.Fatalf("expected 4 persisted messages (1 assistant+2 tools + final), got=%d", len(msgRepo.messages))
+	}
+
+	if msgRepo.messages[0].Role != domain.MessageRoleAssistant || msgRepo.messages[0].ToolCallsJSON == "" {
+		t.Fatalf("first message must be assistant with tool_calls_json: %+v", msgRepo.messages[0])
+	}
+
+	if msgRepo.messages[1].Role != domain.MessageRoleTool || strings.TrimSpace(msgRepo.messages[1].ToolCallID) != "call_1" {
+		t.Fatalf("first tool message mismatch: %+v", msgRepo.messages[1])
+	}
+	if msgRepo.messages[2].Role != domain.MessageRoleTool || strings.TrimSpace(msgRepo.messages[2].ToolCallID) != "call_2" {
+		t.Fatalf("second tool message mismatch: %+v", msgRepo.messages[2])
+	}
+	if !strings.Contains(msgRepo.messages[1].Content, "A1") {
+		t.Fatalf("expected first patch result in tool msg 1, got=%q", msgRepo.messages[1].Content)
+	}
+	if !strings.Contains(msgRepo.messages[2].Content, "B2") {
+		t.Fatalf("expected second patch result in tool msg 2, got=%q", msgRepo.messages[2].Content)
+	}
+
+	if msgRepo.messages[3].Role != domain.MessageRoleAssistant || strings.TrimSpace(msgRepo.messages[3].Content) != "Готово" {
+		t.Fatalf("final assistant mismatch: %+v", msgRepo.messages[3])
 	}
 }
 

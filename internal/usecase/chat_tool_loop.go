@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -1028,55 +1029,93 @@ func (c *ChatUseCase) runChatToolLoop(
 		}
 
 		toolResults := make([]string, len(execCalls))
-		failedCallIdx := -1
-		for i, call := range execCalls {
-			st := c.toolProgressDisplayName(ctx, sessionID, call.ResolvedName, call.RequestedName)
-			logger.I("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_exec_start index=%d/%d requested=%q resolved=%q display=%q", sessionID, round+1, i+1, len(execCalls), call.RequestedName, call.ResolvedName, st)
+		type toolOutcome struct {
+			res string
+			err error
+		}
+		outcomes := make([]toolOutcome, len(execCalls))
 
-			if !send(ChatStreamChunk{
-				Kind:      StreamChunkKindToolStatus,
-				Text:      "Выполняется: " + st,
-				ToolName:  st,
-				MessageID: 0,
-			}) {
-				return
-			}
-
-			toolCtx, cancelTool := context.WithTimeout(ctx, toolExecutionDuration(timeoutSeconds))
-			toolCtx = withToolLoopEnv(toolCtx, &toolLoopEnv{
-				RunnerAddr:             runnerAddr,
-				ResolvedModel:          resolvedModel,
-				StopSequences:          stopSequences,
-				TimeoutSeconds:         timeoutSeconds,
-				SamplingGen:            samplingGenParamsForMCP(gp),
-				UserTurnHasVisionImage: userTurnVision,
-			})
-			res, err := c.executeDeclaredTool(toolCtx, userID, sessionID, gp, call.ResolvedName, call.Parameters)
-			cancelTool()
-			if err != nil {
-				deadline := errors.Is(err, context.DeadlineExceeded)
-				if deadline {
-					logger.W("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_exec_timeout index=%d/%d tool=%q", sessionID, round+1, i+1, len(execCalls), call.RequestedName)
-				} else {
-					logger.W("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_exec_err index=%d/%d tool=%q err=%v", sessionID, round+1, i+1, len(execCalls), call.RequestedName, err)
-				}
-
-				toolResults[i] = toolLoopErrorToolMessage(call, err, res, deadline)
-				failedCallIdx = i
-				for j := i + 1; j < len(execCalls); j++ {
-					toolResults[j] = toolLoopSkippedToolMessage(execCalls[j], call)
-				}
-
-				_ = send(ChatStreamChunk{Kind: StreamChunkKindNotice, Text: "Инструмент вернул ошибку. Формирую понятный ответ…"})
-				break
-			}
-
-			toolResults[i] = truncateToolResult(res)
-			logger.I("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_exec_ok index=%d/%d tool=%q result_runes=%d", sessionID, round+1, i+1, len(execCalls), call.ResolvedName, utf8.RuneCountInString(toolResults[i]))
+		loopCtx, stopLoop := context.WithCancel(ctx)
+		defer stopLoop()
+		var stopOnce sync.Once
+		abortTools := func() {
+			stopOnce.Do(stopLoop)
 		}
 
-		if failedCallIdx >= 0 {
-			logger.I("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_errors_as_tool_msgs failed_index=%d/%d (следующий LLM-раунд)", sessionID, round+1, failedCallIdx+1, len(execCalls))
+		var sendMu sync.Mutex
+		sendSafe := func(chunk ChatStreamChunk) bool {
+			sendMu.Lock()
+			defer sendMu.Unlock()
+			return send(chunk)
+		}
+
+		var wg sync.WaitGroup
+		for i, call := range execCalls {
+			wg.Add(1)
+			go func(i int, call executableToolCall) {
+				defer wg.Done()
+				if err := loopCtx.Err(); err != nil {
+					outcomes[i].err = err
+					return
+				}
+
+				st := c.toolProgressDisplayName(ctx, sessionID, call.ResolvedName, call.RequestedName)
+				logger.I("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_exec_start index=%d/%d requested=%q resolved=%q display=%q", sessionID, round+1, i+1, len(execCalls), call.RequestedName, call.ResolvedName, st)
+
+				if !sendSafe(ChatStreamChunk{
+					Kind:      StreamChunkKindToolStatus,
+					Text:      "Выполняется: " + st,
+					ToolName:  st,
+					MessageID: 0,
+				}) {
+					abortTools()
+					outcomes[i].err = errors.New("отправка статуса клиенту прервана")
+					return
+				}
+
+				toolCtx, cancelTool := context.WithTimeout(loopCtx, toolExecutionDuration(timeoutSeconds))
+				toolCtx = withToolLoopEnv(toolCtx, &toolLoopEnv{
+					RunnerAddr:             runnerAddr,
+					ResolvedModel:          resolvedModel,
+					StopSequences:          stopSequences,
+					TimeoutSeconds:         timeoutSeconds,
+					SamplingGen:            samplingGenParamsForMCP(gp),
+					UserTurnHasVisionImage: userTurnVision,
+				})
+				res, err := c.executeDeclaredTool(toolCtx, userID, sessionID, gp, call.ResolvedName, call.Parameters)
+				cancelTool()
+				outcomes[i].res = res
+				outcomes[i].err = err
+				if err != nil {
+					deadline := errors.Is(err, context.DeadlineExceeded)
+					if deadline {
+						logger.W("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_exec_timeout index=%d/%d tool=%q", sessionID, round+1, i+1, len(execCalls), call.RequestedName)
+					} else {
+						logger.W("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_exec_err index=%d/%d tool=%q err=%v", sessionID, round+1, i+1, len(execCalls), call.RequestedName, err)
+					}
+					return
+				}
+
+				logger.I("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_exec_ok index=%d/%d tool=%q result_runes=%d", sessionID, round+1, i+1, len(execCalls), call.ResolvedName, utf8.RuneCountInString(truncateToolResult(res)))
+			}(i, call)
+		}
+		wg.Wait()
+
+		failCount := 0
+		for i, call := range execCalls {
+			if outcomes[i].err != nil {
+				failCount++
+				deadline := errors.Is(outcomes[i].err, context.DeadlineExceeded)
+				toolResults[i] = toolLoopErrorToolMessage(call, outcomes[i].err, outcomes[i].res, deadline)
+				continue
+			}
+
+			toolResults[i] = truncateToolResult(outcomes[i].res)
+		}
+
+		if failCount > 0 {
+			logger.I("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_errors_as_tool_msgs failed=%d/%d (следующий LLM-раунд)", sessionID, round+1, failCount, len(execCalls))
+			_ = send(ChatStreamChunk{Kind: StreamChunkKindNotice, Text: "Один или несколько инструментов завершились с ошибкой. Формирую понятный ответ…"})
 		}
 
 		assist := domain.NewMessage(sessionID, full, domain.MessageRoleAssistant)
@@ -1150,18 +1189,6 @@ func toolLoopErrorToolMessage(call executableToolCall, err error, partialResult 
 	}
 
 	return truncateToolResult(strings.TrimSpace(b.String()))
-}
-
-func toolLoopSkippedToolMessage(skipped, failed executableToolCall) string {
-	s := fmt.Sprintf(
-		"Статус: вызов не выполнялся - цепочка прервана из-за ошибки при инструменте %q.\n"+
-			"Твоя задача: при необходимости кратко сообщи пользователю, что часть инструментов не была вызвана.\n\n"+
-			"Пропущенный инструмент (как запросил пользователь/модель): %q",
-		strings.TrimSpace(failed.RequestedName),
-		strings.TrimSpace(skipped.RequestedName),
-	)
-
-	return truncateToolResult(s)
 }
 
 func (c *ChatUseCase) toolProgressDisplayName(ctx context.Context, sessionID int64, normalizedName string, rawToolName string) string {

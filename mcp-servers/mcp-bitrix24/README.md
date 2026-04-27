@@ -46,7 +46,7 @@ go build -o ./build/mcp-bitrix24-sse ./mcp-servers/mcp-bitrix24/cmd/mcp-bitrix24
 Запуск:
 
 ```bash
-export B24_WEBHOOK_BASE="https://bitrix24.example.com/rest/43176/00000000"
+export B24_WEBHOOK_BASE="https://bitrix24.example.com/rest/1/00000000"
 ./build/mcp-bitrix24-sse -listen 127.0.0.1:8785
 ```
 
@@ -69,7 +69,7 @@ go build -o ./build/mcp-bitrix24-streamable ./mcp-servers/mcp-bitrix24/cmd/mcp-b
 Запуск:
 
 ```bash
-export B24_WEBHOOK_BASE="https://bitrix24.example.com/rest/43176/00000000"
+export B24_WEBHOOK_BASE="https://bitrix24.example.com/rest/1/00000000"
 ./build/mcp-bitrix24-streamable -listen 127.0.0.1:8786
 ```
 
@@ -202,4 +202,4 @@ go build -o ./build/mcp-bitrix24-mock-rest ./mcp-servers/mcp-bitrix24/cmd/mcp-bi
 ./build/mcp-bitrix24-mock-rest -listen 127.0.0.1:8899
 ```
 
-База методов: `http://127.0.0.1:8899/rest/43176/mock-token/<method>`.
+База методов: `http://127.0.0.1:8899/rest/1/mock-token/<method>`.
