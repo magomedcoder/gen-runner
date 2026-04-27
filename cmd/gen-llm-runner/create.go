@@ -40,7 +40,7 @@ func runCreate(ctx context.Context, cmd *cli.Command) error {
 	_ = ctx
 	name := strings.TrimSpace(cmd.Args().First())
 	if name == "" {
-		return fmt.Errorf("укажите имя модели (как в default_model / GetModels), например: mybot или mybot:q4")
+		return fmt.Errorf("укажите имя модели, например: mybot или mybot:q4")
 	}
 
 	stem := service.ManifestYAMLStemForRef(name)

@@ -268,13 +268,15 @@ class _ChatScreenState extends State<ChatScreen> {
           listenWhen: shouldEmitChatRunnerIssueNotice,
           listener: (context, state) {
             final msg = chatRunnerIssueNoticeMessage(state);
-            if (msg != null) {
-              showAppTopNotice(
-                msg,
-                level: chatRunnerIssueNoticeLevel(state),
-                toastAction: AppTopNoticeToastAction.chatReloadRunners,
-              );
+            if (msg == null) {
+              dismissAppTopNoticeToast();
+              return;
             }
+            showAppTopNotice(
+              msg,
+              level: chatRunnerIssueNoticeLevel(state),
+              toastAction: AppTopNoticeToastAction.chatReloadRunners,
+            );
           },
           child: Builder(
             builder: (context) {

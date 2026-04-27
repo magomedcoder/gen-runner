@@ -12,6 +12,8 @@ const _kKeepToolProgress = Object();
 const _kKeepStreamNotice = Object();
 const _kKeepRagDocumentPreview = Object();
 const _kKeepRagIngestionUi = Object();
+const _kKeepSelectedRunnerEnabled = Object();
+const _kKeepSelectedRunnerConnected = Object();
 
 class ChatState extends Equatable {
   final bool isConnected;
@@ -149,8 +151,8 @@ class ChatState extends Equatable {
     String? selectedRunner,
     bool? hasActiveRunners,
     bool? runnersStatusRefreshing,
-    bool? selectedRunnerEnabled,
-    bool? selectedRunnerConnected,
+    Object? selectedRunnerEnabled = _kKeepSelectedRunnerEnabled,
+    Object? selectedRunnerConnected = _kKeepSelectedRunnerConnected,
     bool clearSelectedRunnerHealth = false,
     ChatSessionSettings? sessionSettings,
     String? retryText,
@@ -227,10 +229,14 @@ class ChatState extends Equatable {
           runnersStatusRefreshing ?? this.runnersStatusRefreshing,
       selectedRunnerEnabled: clearSelectedRunnerHealth
           ? null
-          : (selectedRunnerEnabled ?? this.selectedRunnerEnabled),
+          : (identical(selectedRunnerEnabled, _kKeepSelectedRunnerEnabled)
+                ? this.selectedRunnerEnabled
+                : selectedRunnerEnabled as bool?),
       selectedRunnerConnected: clearSelectedRunnerHealth
           ? null
-          : (selectedRunnerConnected ?? this.selectedRunnerConnected),
+          : (identical(selectedRunnerConnected, _kKeepSelectedRunnerConnected)
+                ? this.selectedRunnerConnected
+                : selectedRunnerConnected as bool?),
       sessionSettings: sessionSettings ?? this.sessionSettings,
       retryText: clearRetryPayload ? null : (retryText ?? this.retryText),
       retryAttachmentFileName: clearRetryPayload

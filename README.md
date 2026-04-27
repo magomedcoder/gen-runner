@@ -37,6 +37,7 @@
 
 ## Документация
 
+- [Подробная архитектура платформы](docs/architecture.md)
 - [Сборка сервера](docs/build-server.md)
 - [Сборка клиента](docs/build-client.md)
 - [Сервис запуска и взаимодействия с LLM](docs/llm-runner.md)

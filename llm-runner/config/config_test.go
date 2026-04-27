@@ -12,7 +12,7 @@ func TestLoad(t *testing.T) {
 	content := `host: "127.0.0.1"
 port: 50052
 log_level: "info"
-model_path: "./models"
+model_path: "./llm-runner/models"
 `
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("запись тестового конфига: %v", err)
@@ -39,7 +39,7 @@ func TestLoad_ChatAPIReasoningAndDebugFields(t *testing.T) {
 	configPath := filepath.Join(dir, "config.yaml")
 	content := `host: "127.0.0.1"
 port: 50051
-model_path: "./models"
+model_path: "./llm-runner/models"
 chat_api_enabled: true
 chat_stream_buffer_size: 256
 chat_reasoning_format: "deepseek"

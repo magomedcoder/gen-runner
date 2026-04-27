@@ -1222,6 +1222,29 @@ Uint8List? _decodeLooseBase64(String raw) {
   }
 }
 
+String _normalizeJsonForMarkdown(String input) {
+  final trimmed = input.trim();
+  if (trimmed.isEmpty) {
+    return input;
+  }
+
+  final startsLikeJson = (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'));
+  if (!startsLikeJson) {
+    return input;
+  }
+
+  try {
+    final decoded = jsonDecode(trimmed);
+    if (decoded is! Map && decoded is! List) {
+      return input;
+    }
+    final pretty = const JsonEncoder.withIndent('  ').convert(decoded);
+    return '```json\n$pretty\n```';
+  } catch (_) {
+    return input;
+  }
+}
+
 List<_AssistantBodySeg> _parseAssistantBodySegments(String input) {
   final out = <_AssistantBodySeg>[];
   var rest = input;
@@ -1307,7 +1330,8 @@ Widget _assistantMessageBody(
 
   final segs = _parseAssistantBodySegments(content);
   if (segs.length == 1 && segs.first is _AssistantTextSeg) {
-    return mdBody((segs.first as _AssistantTextSeg).text);
+    final text = (segs.first as _AssistantTextSeg).text;
+    return mdBody(_normalizeJsonForMarkdown(text));
   }
 
   return Column(
@@ -1317,7 +1341,7 @@ Widget _assistantMessageBody(
         if (s is _AssistantTextSeg && s.text.trim().isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: mdBody(s.text),
+            child: mdBody(_normalizeJsonForMarkdown(s.text)),
           )
         else if (s is _AssistantImageSeg)
           Padding(

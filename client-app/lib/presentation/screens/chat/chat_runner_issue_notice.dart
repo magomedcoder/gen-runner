@@ -70,5 +70,5 @@ bool shouldEmitChatRunnerIssueNotice(ChatState previous, ChatState current) {
   final a = chatRunnerIssueNoticeMessage(previous);
   final b = chatRunnerIssueNoticeMessage(current);
 
-  return a != b && b != null;
+  return a != b;
 }

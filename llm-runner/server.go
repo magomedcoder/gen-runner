@@ -186,7 +186,7 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 	sessionID := req.SessionId
 	model := strings.TrimSpace(req.Model)
 	if model == "" {
-		return status.Error(codes.InvalidArgument, "укажите model в запросе или default_model в config.yaml")
+		return status.Error(codes.InvalidArgument, "укажите model в запросе в config.yaml")
 	}
 
 	logger.V("SendMessage: session_id=%d trace_id=%q model=%q sem_in_use=%d/%d", sessionID, traceID, model, semInUse, semCap)
@@ -284,7 +284,7 @@ func (s *Server) Embed(ctx context.Context, req *llmrunnerpb.EmbedRequest) (*llm
 
 	model := strings.TrimSpace(req.GetModel())
 	if model == "" {
-		return nil, status.Error(codes.InvalidArgument, "укажите model в запросе или default_model в config.yaml")
+		return nil, status.Error(codes.InvalidArgument, "укажите model в запросе в config.yaml")
 	}
 
 	logger.V("Embed: trace_id=%q model=%q", incomingTraceID(ctx), model)
@@ -330,7 +330,7 @@ func (s *Server) EmbedBatch(ctx context.Context, req *llmrunnerpb.EmbedBatchRequ
 
 	model := strings.TrimSpace(req.GetModel())
 	if model == "" {
-		return nil, status.Error(codes.InvalidArgument, "укажите model в запросе или default_model в config.yaml")
+		return nil, status.Error(codes.InvalidArgument, "укажите model в запросе в config.yaml")
 	}
 
 	logger.V("EmbedBatch: trace_id=%q model=%q n=%d", incomingTraceID(ctx), model, len(texts))

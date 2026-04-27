@@ -5,7 +5,7 @@ registration_token: ""
 
 log_level: "debug"
 
-model_path: "./models"
+model_path: "./llm-runner/models"
 
 max_context_tokens: 4096
 

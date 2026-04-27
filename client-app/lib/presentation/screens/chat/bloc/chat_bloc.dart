@@ -111,6 +111,28 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     _streamingAssistantMessageId = 0;
   }
 
+  Future<String?> _resolveSelectedRunner({
+    required List<String> runners,
+    String? candidate,
+  }) async {
+    final normalized = candidate?.trim();
+    if (runners.isEmpty) {
+      return normalized == null || normalized.isEmpty ? null : normalized;
+    }
+
+    if (normalized != null &&
+        normalized.isNotEmpty &&
+        runners.contains(normalized)) {
+      return normalized;
+    }
+
+    final fallback = runners.first;
+    try {
+      await setSelectedRunnerUseCase(fallback);
+    } catch (_) {}
+    return fallback;
+  }
+
   ChatState _copyAfterAssistantStreamSuccess({
     List<Message>? messages,
     Set<int>? regeneratedAssistantMessageIds,
@@ -814,12 +836,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           } catch (_) {}
 
           const List<Message> messages = <Message>[];
-          if (selectedRunner == null && runners.isNotEmpty) {
-            selectedRunner = runners.first;
-          }
+          selectedRunner = await _resolveSelectedRunner(
+            runners: runners,
+            candidate: selectedRunner ?? state.selectedRunner,
+          );
 
           _lastRunnerInfos = runnerInfosSnapshot;
-          final effectiveSel = selectedRunner ?? state.selectedRunner;
+          final effectiveSel = selectedRunner;
           final runnerHealth = runnerHealthForSelection(
             effectiveSel,
             runnerInfosSnapshot,
@@ -840,7 +863,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               clearPartialAssistant: true,
               runners: runners,
               runnerNames: runnerNames,
-              selectedRunner: selectedRunner ?? state.selectedRunner,
+              selectedRunner: selectedRunner,
               hasActiveRunners: hasActiveRunners,
               selectedRunnerEnabled: runnerHealth.$1,
               selectedRunnerConnected: runnerHealth.$2,
@@ -863,6 +886,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               hasCompletedInitialConnection: true,
               isLoading: false,
               hasActiveRunners: hasActiveRunners,
+              clearSelectedRunnerHealth: true,
               webSearchGloballyEnabled: false,
               error: chatHeadlineIfBackendReachable(
                 e,
@@ -878,6 +902,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             isConnected: isConnected,
             hasCompletedInitialConnection: true,
             isLoading: false,
+            clearSelectedRunnerHealth: true,
             webSearchGloballyEnabled: false,
             error: null,
           ),
@@ -892,6 +917,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           isConnected: false,
           hasCompletedInitialConnection: true,
           isLoading: false,
+          clearSelectedRunnerHealth: true,
           webSearchGloballyEnabled: false,
           error: null,
         ),
@@ -965,7 +991,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
 
       if (!isConnected) {
-        emit(state.copyWith(isLoading: false, isConnected: false));
+        emit(
+          state.copyWith(
+            isLoading: false,
+            isConnected: false,
+            clearSelectedRunnerHealth: true,
+          ),
+        );
         return;
       }
 
@@ -1013,12 +1045,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         }
       } catch (_) {}
 
-      if (selectedRunner == null && runners.isNotEmpty) {
-        selectedRunner = runners.first;
-      }
+      selectedRunner = await _resolveSelectedRunner(
+        runners: runners,
+        candidate: selectedRunner ?? state.selectedRunner,
+      );
 
       _lastRunnerInfos = runnerInfosSnapshot;
-      final effectiveReconnectSel = selectedRunner ?? state.selectedRunner;
+      final effectiveReconnectSel = selectedRunner;
       final reconnectHealth = runnerHealthForSelection(
         effectiveReconnectSel,
         runnerInfosSnapshot,
@@ -1035,7 +1068,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           sessions: sessions,
           runners: runners,
           runnerNames: runnerNames,
-          selectedRunner: selectedRunner ?? state.selectedRunner,
+          selectedRunner: selectedRunner,
           hasActiveRunners: hasActiveRunners,
           selectedRunnerEnabled: reconnectHealth.$1,
           selectedRunnerConnected: reconnectHealth.$2,
@@ -2367,6 +2400,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           emit(
             state.copyWith(
               hasActiveRunners: hasActiveRunners,
+              clearSelectedRunnerHealth: true,
               webSearchGloballyEnabled: webGlob,
               draftWebSearchEnabled: webGlob
                   ? state.draftWebSearchEnabled
@@ -2428,7 +2462,12 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         ),
       );
     } catch (_) {
-      emit(state.copyWith(runnersStatusRefreshing: false));
+      emit(
+        state.copyWith(
+          runnersStatusRefreshing: false,
+          clearSelectedRunnerHealth: true,
+        ),
+      );
     }
   }
 

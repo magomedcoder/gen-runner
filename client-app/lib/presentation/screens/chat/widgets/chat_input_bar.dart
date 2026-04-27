@@ -109,6 +109,8 @@ class ChatInputBarState extends State<ChatInputBar> {
   static const double _bottomActionsBarHeight = 48.0;
   static const double _roundedCardRadius = 22.0;
   static const EdgeInsets _inputContentPadding = EdgeInsets.fromLTRB(16, 16, 16, 16);
+  static const double _attachmentSectionOneRowHeight = 84.0;
+  static const double _attachmentSectionTwoRowsHeight = 126.0;
 
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
@@ -654,10 +656,11 @@ class ChatInputBarState extends State<ChatInputBar> {
       availableWidth: availableTextWidth,
     );
     final minH = _minCardHeight(context);
-    final attachmentRows = _selectedFiles.isEmpty
-      ? 0
-      : (_selectedFiles.length <= 2 ? 1 : 2);
-    final attachmentExtra = attachmentRows * 36.0;
+    final attachmentExtra = _selectedFiles.isEmpty
+      ? 0.0
+      : (_selectedFiles.length <= 2
+          ? _attachmentSectionOneRowHeight
+          : _attachmentSectionTwoRowsHeight);
     final textAndAttachmentsHeight = minH + attachmentExtra + ((lines - 1) * _inputCardGrowthStep);
     final maxHeight = _cardMaxHeight(context);
 

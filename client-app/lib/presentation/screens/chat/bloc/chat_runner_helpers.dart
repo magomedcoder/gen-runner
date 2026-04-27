@@ -34,6 +34,12 @@ Map<String, String> extractRunnerNames(List<RunnerInfo> runners) {
 
   for (final r in infos) {
     if (r.address == selected) {
+      final hasExplicitConnectivity = r.host.isNotEmpty || r.port > 0 || r.serverInfo != null || r.loadedModel != null || r.gpus.isNotEmpty;
+
+      if (!hasExplicitConnectivity) {
+        return (r.enabled, null);
+      }
+
       return (r.enabled, r.connected);
     }
   }

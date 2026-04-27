@@ -16,7 +16,7 @@ func cmdShow() *cli.Command {
 	return &cli.Command{
 		Name:  "show",
 		Usage: "Показать YAML-манифест модели (sidecar или алиас)",
-		Description: "Ищет stem.yaml рядом с .gguf или манифест по имени алиаса (как default_model).\n" +
+		Description: "Ищет stem.yaml рядом с .gguf или манифест по имени алиаса.\n" +
 			"Флаг --modelfile конвертирует YAML в текст Modelfile.\n" +
 			"При отсутствии YAML для чистого .gguf завершается с ошибкой (см. create).",
 		UsageText: "gen-llm-runner show [options] <имя>",

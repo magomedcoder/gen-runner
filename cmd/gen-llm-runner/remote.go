@@ -178,7 +178,7 @@ func cmdRemoteRun() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "model",
-				Usage: "имя модели (пусто - default_model раннера)",
+				Usage: "имя модели",
 			},
 			&cli.StringFlag{
 				Name:  "prompt",

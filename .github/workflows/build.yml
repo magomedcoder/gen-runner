@@ -34,7 +34,7 @@ jobs:
           mkdir -p ./client-app/lib/generated/grpc_pb
           protoc --proto_path=./api/proto \
             --dart_out=grpc:./client-app/lib/generated/grpc_pb \
-            ./api/proto/*.proto
+            ./api/proto/app/*.proto
 
       - run: flutter pub get
         working-directory: client-app
@@ -83,7 +83,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path ./client-app/lib/generated/grpc_pb
           protoc --proto_path=./api/proto `
             --dart_out=grpc:./client-app/lib/generated/grpc_pb `
-            ./api/proto/*.proto
+            ./api/proto/app/*.proto
 
       - run: flutter pub get
         working-directory: client-app
@@ -136,7 +136,7 @@ jobs:
           mkdir -p ./client-app/lib/generated/grpc_pb
           protoc --proto_path=./api/proto \
             --dart_out=grpc:./client-app/lib/generated/grpc_pb \
-            ./api/proto/*.proto
+            ./api/proto/app/*.proto
 
       - run: flutter pub get
         working-directory: client-app
@@ -183,7 +183,7 @@ jobs:
           mkdir -p ./client-app/lib/generated/grpc_pb
           protoc --proto_path=./api/proto \
             --dart_out=grpc:./client-app/lib/generated/grpc_pb \
-            ./api/proto/*.proto
+            ./api/proto/app/*.proto
 
       - run: flutter pub get
         working-directory: client-app
@@ -215,7 +215,7 @@ jobs:
           mkdir -p ./client-app/lib/generated/grpc_pb
           protoc --proto_path=./api/proto \
             --dart_out=grpc:./client-app/lib/generated/grpc_pb \
-            ./api/proto/*.proto
+            ./api/proto/app/*.proto
 
       - run: flutter pub get
         working-directory: client-app

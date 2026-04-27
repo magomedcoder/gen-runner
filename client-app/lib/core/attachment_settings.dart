@@ -17,6 +17,7 @@ abstract final class AttachmentSettings {
     'txt',
     'md',
     'log',
+    'json',
     'pdf',
     'docx',
     'xlsx',
@@ -70,7 +71,13 @@ abstract final class AttachmentSettings {
     ...imageAttachmentExtensions,
   ];
 
-  static const List<String> textFormatLabels = ['TXT', 'MD', 'LOG', 'HTML'];
+  static const List<String> textFormatLabels = [
+    'TXT',
+    'MD',
+    'LOG',
+    'JSON',
+    'HTML',
+  ];
 
   static const List<String> documentFormatLabels = [
     'PDF',

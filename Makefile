@@ -1,4 +1,4 @@
-.PHONY: install gen-go-proto gen-dart-proto build-libs-cpu build-libs-gpu build-cpu build-gpu build run-cpu run-gpu run test-llama-cpu test-llama-gpu test clean
+.PHONY: install gen-proto gen-go-proto gen-dart-proto build-libs-cpu build-libs-gpu build-cpu build-gpu build run-cpu run-gpu run test-llama-cpu test-llama-gpu test clean
 
 install:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest \
@@ -8,6 +8,9 @@ LLAMA_DIR := llm-runner/llama
 RUN_ENV := LD_LIBRARY_PATH="$(PWD)/$(LLAMA_DIR):$(LD_LIBRARY_PATH)" LIBRARY_PATH="$(PWD)/$(LLAMA_DIR):$(LIBRARY_PATH)"
 deps-llm-runner:
 	$(MAKE) -C $(LLAMA_DIR) -f Makefile deps
+
+.PHONY: gen-proto
+gen-proto: gen-go-proto gen-dart-proto
 
 gen-go-proto:
 	@for proto in ./api/proto/app/*.proto; do \
