@@ -144,6 +144,19 @@ func loadTaskList(ctx context.Context, client *bitrixClient, filter, order map[s
 		return nil, nil
 	}
 
+	if taskID, ok := extractTaskIDFromListFilter(filter); ok && taskID > 0 {
+		task, err := loadTask(ctx, client, taskID)
+		if err != nil {
+			return nil, err
+		}
+
+		if task == nil {
+			return nil, nil
+		}
+
+		return []map[string]any{task}, nil
+	}
+
 	payload := map[string]any{
 		"select": []string{
 			"ID", "TITLE", "STATUS", "CREATED_DATE", "CHANGED_DATE", "DEADLINE", "CREATED_BY", "RESPONSIBLE_ID", "PRIORITY", "TIME_ESTIMATE", "TIME_SPENT_IN_LOGS", "ACTIVITY_DATE",

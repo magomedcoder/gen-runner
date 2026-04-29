@@ -132,9 +132,6 @@ func TestCommentDiagnostics(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func pint(v int) *int { return new(v) }
-
 func TestValidateAnalyzeToolsArgs(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -459,6 +456,92 @@ func TestRunAnalyticsQuery_CommentErrorDoesNotFail(t *testing.T) {
 	}
 }
 
+func TestLoadTaskList_ByIDUsesTaskGet(t *testing.T) {
+	var listCalls, getCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/tasks.task.get"):
+			getCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"task":{"ID":"101","TITLE":"Точечная задача","STATUS":"3"}}}`))
+		case strings.HasSuffix(r.URL.Path, "/tasks.task.list"):
+			listCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"tasks":[{"ID":"999","TITLE":"Лишняя задача","STATUS":"2"}]}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"NOT_FOUND"}`))
+		}
+	}))
+	defer srv.Close()
+
+	client, err := newBitrixClient(srv.URL, time.Second, "info", 0, 200*time.Millisecond)
+	if err != nil {
+		t.Fatalf("newBitrixClient: %v", err)
+	}
+
+	tasks, err := loadTaskList(context.Background(), client, map[string]any{"task_id": "101"}, nil, nil, 20)
+	if err != nil {
+		t.Fatalf("loadTaskList: %v", err)
+	}
+
+	if len(tasks) != 1 {
+		t.Fatalf("expected exactly one task, got %d", len(tasks))
+	}
+
+	if numberLike(field(tasks[0], "ID", "id")) != 101 {
+		t.Fatalf("unexpected task payload: %+v", tasks[0])
+	}
+
+	if getCalls != 1 {
+		t.Fatalf("expected tasks.task.get call, got %d", getCalls)
+	}
+
+	if listCalls != 0 {
+		t.Fatalf("expected no tasks.task.list call, got %d", listCalls)
+	}
+}
+
+func TestBuildAnalyticsContextForTaskList_ByIDUsesTaskGet(t *testing.T) {
+	var listCalls, getCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/tasks.task.get"):
+			getCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"task":{"ID":"202","TITLE":"Контекстная задача","STATUS":"2"}}}`))
+		case strings.HasSuffix(r.URL.Path, "/tasks.task.list"):
+			listCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"result":{"tasks":[{"ID":"303","TITLE":"Лишний список","STATUS":"3"}]}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"NOT_FOUND"}`))
+		}
+	}))
+	defer srv.Close()
+
+	client, err := newBitrixClient(srv.URL, time.Second, "info", 0, 200*time.Millisecond)
+	if err != nil {
+		t.Fatalf("newBitrixClient: %v", err)
+	}
+
+	ac, err := buildAnalyticsContextForTaskList(context.Background(), client, map[string]any{"TASK_ID": 202}, nil, nil, 10, false)
+	if err != nil {
+		t.Fatalf("buildAnalyticsContextForTaskList: %v", err)
+	}
+
+	if ac == nil || len(ac.Items) != 1 || ac.Items[0].TaskID != 202 {
+		t.Fatalf("unexpected analytics context: %+v", ac)
+	}
+	if getCalls != 1 {
+		t.Fatalf("expected tasks.task.get call, got %d", getCalls)
+	}
+	if listCalls != 0 {
+		t.Fatalf("expected no tasks.task.list call, got %d", listCalls)
+	}
+}
+
 func TestBitrixClientCall_DecodesWindows1251JSON(t *testing.T) {
 	cp1251Body, err := charmap.Windows1251.NewEncoder().Bytes([]byte(`{"result":{"task":{"TITLE":"Привет"}}}`))
 	if err != nil {
@@ -504,7 +587,7 @@ func TestCallTaskCommentItemGetList_UsesStablePayloadOrder(t *testing.T) {
 		t.Fatalf("newBitrixClient: %v", err)
 	}
 
-	_, err = client.callTaskCommentItemGetList(context.Background(), 1822404, map[string]any{"POST_DATE": "desc"}, map[string]any{"AUTHOR_ID": 7})
+	_, err = client.callTaskCommentItemGetList(context.Background(), 1001, map[string]any{"POST_DATE": "desc"}, map[string]any{"AUTHOR_ID": 7})
 	if err != nil {
 		t.Fatalf("callTaskCommentItemGetList: %v", err)
 	}

@@ -172,13 +172,9 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 			ctx, rid := withRequestID(ctx)
 			log.Printf("[b24-mcp] tool=b24_get_task req_id=%s", rid)
 			logToolArgs("b24_get_task", args)
-			taskID, err := parseTaskID(args.TaskID)
+			taskID, err := parsePositiveTaskID(args.TaskID)
 			if err != nil {
 				return nil, nil, err
-			}
-
-			if taskID <= 0 {
-				return nil, nil, fmt.Errorf("task_id должно быть > 0")
 			}
 			log.Printf("[b24-mcp] tool=b24_get_task task_id=%d select=%d", taskID, len(args.Select))
 
@@ -218,7 +214,7 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 	})
 
 	type getCommentsArgs struct {
-		TaskID any            `json:"task_id" jsonschema:"ID задачи (число или строка с цифрами)"`
+		TaskID any            `json:"task_id,omitempty" jsonschema:"ID задачи (число или строка с цифрами)"`
 		Order  map[string]any `json:"order,omitempty" jsonschema:"Сортировка комментариев, например {\"POST_DATE\":\"asc\"}"`
 		Filter map[string]any `json:"filter,omitempty" jsonschema:"Фильтр комментариев, например {\"AUTHOR_ID\":503}"`
 	}
@@ -230,13 +226,21 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 			ctx, rid := withRequestID(ctx)
 			log.Printf("[b24-mcp] tool=b24_get_task_comments req_id=%s", rid)
 			logToolArgs("b24_get_task_comments", args)
-			taskID, err := parseTaskID(args.TaskID)
+			taskIDPtr, err := parseOptionalTaskID(args.TaskID)
 			if err != nil {
 				return nil, nil, err
 			}
-
+			if taskIDPtr == nil {
+				msg := "Для b24_get_task_comments нужно передать task_id. " +
+					"Пример: {\"task_id\": 1001}. " +
+					"Если нужен обзор задач, используйте b24_list_tasks или b24_analyze_tasks_by_query."
+				log.Printf("[b24-mcp] tool=b24_get_task_comments отсутствует_task_id")
+				logToolResult("b24_get_task_comments", msg)
+				return mcpresult.Text(msg), nil, nil
+			}
+			taskID := *taskIDPtr
 			if taskID <= 0 {
-				return nil, nil, fmt.Errorf("task_id должно быть > 0")
+				return nil, nil, errTaskIDMustBePositive
 			}
 
 			log.Printf("[b24-mcp] tool=b24_get_task_comments task_id=%d order_keys=%d filter_keys=%d", taskID, len(args.Order), len(args.Filter))
@@ -293,13 +297,9 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 			ctx, rid := withRequestID(ctx)
 			log.Printf("[b24-mcp] tool=b24_get_task_timeline req_id=%s", rid)
 			logToolArgs("b24_get_task_timeline", args)
-			taskID, err := parseTaskID(args.TaskID)
+			taskID, err := parsePositiveTaskID(args.TaskID)
 			if err != nil {
 				return nil, nil, err
-			}
-
-			if taskID <= 0 {
-				return nil, nil, fmt.Errorf("task_id должно быть > 0")
 			}
 
 			limit := 50
@@ -376,7 +376,7 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 	})
 
 	type analyzeBlockersArgs struct {
-		TaskID any  `json:"task_id" jsonschema:"ID задачи (число или строка с цифрами)"`
+		TaskID any  `json:"task_id,omitempty" jsonschema:"ID задачи (число или строка с цифрами)"`
 		Limit  *int `json:"limit,omitempty" jsonschema:"Макс. найденных блокеров (1..100), по умолчанию 20"`
 	}
 	mcp.AddTool(srv, &mcp.Tool{
@@ -392,13 +392,21 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 			ctx, rid := withRequestID(ctx)
 			log.Printf("[b24-mcp] tool=b24_analyze_task_blockers req_id=%s", rid)
 			logToolArgs("b24_analyze_task_blockers", args)
-			taskID, err := parseTaskID(args.TaskID)
+			taskIDPtr, err := parseOptionalTaskID(args.TaskID)
 			if err != nil {
 				return nil, nil, err
 			}
-
+			if taskIDPtr == nil {
+				msg := "Для b24_analyze_task_blockers нужно передать task_id. " +
+					"Пример: {\"task_id\": 1001}. " +
+					"Если нужен обзор без конкретной задачи, используйте b24_analyze_tasks_by_query."
+				log.Printf("[b24-mcp] tool=b24_analyze_task_blockers отсутствует_task_id")
+				logToolResult("b24_analyze_task_blockers", msg)
+				return mcpresult.Text(msg), nil, nil
+			}
+			taskID := *taskIDPtr
 			if taskID <= 0 {
-				return nil, nil, fmt.Errorf("task_id должно быть > 0")
+				return nil, nil, errTaskIDMustBePositive
 			}
 
 			limit := 20
@@ -474,71 +482,88 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 	})
 
 	type analyzeExecutionDriftArgs struct {
-		TaskID any `json:"task_id" jsonschema:"ID задачи (число или строка с цифрами)"`
+		TaskID any `json:"task_id,omitempty" jsonschema:"ID задачи (число или строка с цифрами)"`
 	}
+	analyzeExecutionDriftHandler := func(toolName string) func(context.Context, *mcp.CallToolRequest, analyzeExecutionDriftArgs) (*mcp.CallToolResult, any, error) {
+		return func(ctx context.Context, _ *mcp.CallToolRequest, args analyzeExecutionDriftArgs) (*mcp.CallToolResult, any, error) {
+			return mcpsafe.SafeToolInvoke("mcp-bitrix24", toolName, func() (*mcp.CallToolResult, any, error) {
+				if !heavyAnalyticsEnabled {
+					msg := toolName + " отключен feature-flag `DisableHeavyAnalytics`."
+					return mcpresult.Text(msg), nil, nil
+				}
+				ctx, rid := withRequestID(ctx)
+				log.Printf("[b24-mcp] tool=%s req_id=%s", toolName, rid)
+				logToolArgs(toolName, args)
+				taskIDPtr, err := parseOptionalTaskID(args.TaskID)
+				if err != nil {
+					return nil, nil, err
+				}
+				if taskIDPtr == nil {
+					msg := "Для " + toolName + " нужно передать task_id. " +
+						"Пример: {\"task_id\": 1001}. " +
+						"Если нужен обзор без конкретной задачи, используйте b24_analyze_tasks_by_query."
+					log.Printf("[b24-mcp] tool=%s отсутствует_task_id", toolName)
+					logToolResult(toolName, msg)
+					return mcpresult.Text(msg), nil, nil
+				}
+				taskID := *taskIDPtr
+				if taskID <= 0 {
+					return nil, nil, errTaskIDMustBePositive
+				}
+
+				taskResp, err := client.call(ctx, "tasks.task.get", map[string]any{
+					"taskId": taskID,
+					"select": []string{
+						"ID", "TITLE", "STATUS", "DEADLINE", "RESPONSIBLE_ID", "CREATED_BY", "TIME_ESTIMATE", "TIME_SPENT_IN_LOGS", "CHANGED_DATE",
+					},
+				})
+				if err != nil {
+					log.Printf("[b24-mcp] tool=%s task_id=%d stage=task_get err=%v", toolName, taskID, err)
+					return nil, nil, err
+				}
+
+				taskRaw, err := extractTask(taskResp)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				taskNorm := normalizeTaskSnapshot(taskRaw)
+
+				var commentsNorm []CommentSnapshot
+				commentsResp, err := client.callTaskCommentItemGetList(ctx, taskID, map[string]any{"POST_DATE": "desc"}, nil)
+				if err == nil {
+					commentsNorm = normalizeCommentSnapshots(extractComments(commentsResp), taskID)
+				} else if isIgnorableCommentError(err) {
+					log.Printf("[b24-mcp] tool=%s task_id=%d stage=comments soft_skip err=%v", toolName, taskID, err)
+				} else {
+					return nil, nil, err
+				}
+
+				report := buildExecutionDriftReport(taskNorm, commentsNorm, time.Now())
+				payload := map[string]any{
+					"result": map[string]any{
+						"task_normalized": taskNorm,
+						"drift_report":    report,
+						"actions":         executionDriftActions(report),
+					},
+				}
+
+				log.Printf("[b24-mcp] tool=%s task_id=%d ok drift=%s", toolName, taskID, report.DriftLevel)
+				logToolResult(toolName, payload)
+				return mcpresult.TextAndPayload(toolName, payload), nil, nil
+			})
+		}
+	}
+
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "b24_analyze_task_execution_drift",
 		Description: "Анализ дрифта исполнения задачи: факт/план времени и коммуникационная тишина (read-only)",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, args analyzeExecutionDriftArgs) (*mcp.CallToolResult, any, error) {
-		return mcpsafe.SafeToolInvoke("mcp-bitrix24", "b24_analyze_task_execution_drift", func() (*mcp.CallToolResult, any, error) {
-			if !heavyAnalyticsEnabled {
-				msg := "b24_analyze_task_execution_drift отключен feature-flag `DisableHeavyAnalytics`."
-				return mcpresult.Text(msg), nil, nil
-			}
-			ctx, rid := withRequestID(ctx)
-			log.Printf("[b24-mcp] tool=b24_analyze_task_execution_drift req_id=%s", rid)
-			logToolArgs("b24_analyze_task_execution_drift", args)
-			taskID, err := parseTaskID(args.TaskID)
-			if err != nil {
-				return nil, nil, err
-			}
+	}, analyzeExecutionDriftHandler("b24_analyze_task_execution_drift"))
 
-			if taskID <= 0 {
-				return nil, nil, fmt.Errorf("task_id должно быть > 0")
-			}
-
-			taskResp, err := client.call(ctx, "tasks.task.get", map[string]any{
-				"taskId": taskID,
-				"select": []string{
-					"ID", "TITLE", "STATUS", "DEADLINE", "RESPONSIBLE_ID", "CREATED_BY", "TIME_ESTIMATE", "TIME_SPENT_IN_LOGS", "CHANGED_DATE",
-				},
-			})
-			if err != nil {
-				log.Printf("[b24-mcp] tool=b24_analyze_task_execution_drift task_id=%d stage=task_get err=%v", taskID, err)
-				return nil, nil, err
-			}
-
-			taskRaw, err := extractTask(taskResp)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			taskNorm := normalizeTaskSnapshot(taskRaw)
-
-			var commentsNorm []CommentSnapshot
-			commentsResp, err := client.callTaskCommentItemGetList(ctx, taskID, map[string]any{"POST_DATE": "desc"}, nil)
-			if err == nil {
-				commentsNorm = normalizeCommentSnapshots(extractComments(commentsResp), taskID)
-			} else if isIgnorableCommentError(err) {
-				log.Printf("[b24-mcp] tool=b24_analyze_task_execution_drift task_id=%d stage=comments soft_skip err=%v", taskID, err)
-			} else {
-				return nil, nil, err
-			}
-
-			report := buildExecutionDriftReport(taskNorm, commentsNorm, time.Now())
-			payload := map[string]any{
-				"result": map[string]any{
-					"task_normalized": taskNorm,
-					"drift_report":    report,
-					"actions":         executionDriftActions(report),
-				},
-			}
-
-			log.Printf("[b24-mcp] tool=b24_analyze_task_execution_drift task_id=%d ok drift=%s", taskID, report.DriftLevel)
-			logToolResult("b24_analyze_task_execution_drift", payload)
-			return mcpresult.TextAndPayload("b24_analyze_task_execution_drift", payload), nil, nil
-		})
-	})
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "b24_analyze_tasks_execution_drift",
+		Description: "Алиас к b24_analyze_task_execution_drift (совместимость вызовов модели).",
+	}, analyzeExecutionDriftHandler("b24_analyze_tasks_execution_drift"))
 
 	type analyzeArgs struct {
 		TaskID          any   `json:"task_id,omitempty" jsonschema:"ID задачи для анализа (число или строка с цифрами)"`
@@ -559,7 +584,7 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 
 			if taskIDPtr == nil {
 				msg := "Для b24_analyze_task нужно передать task_id. " +
-					"Пример: {\"task_id\": 1822404}. " +
+					"Пример: {\"task_id\": 1001}. " +
 					"Если нужен обзор без конкретной задачи, используйте b24_analyze_tasks_by_query."
 				log.Printf("[b24-mcp] tool=b24_analyze_task отсутствует_task_id")
 				logToolResult("b24_analyze_task", msg)
@@ -568,7 +593,7 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 
 			taskID := *taskIDPtr
 			if taskID <= 0 {
-				return nil, nil, fmt.Errorf("task_id должно быть > 0")
+				return nil, nil, errTaskIDMustBePositive
 			}
 
 			includeComments := true
@@ -756,6 +781,7 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 	})
 
 	type workloadArgs struct {
+		TaskID          any            `json:"task_id,omitempty" jsonschema:"ID задачи (опционально; при передаче будет выполнен возврат комментариев по задаче для совместимости)"`
 		Filter          map[string]any `json:"filter,omitempty" jsonschema:"Фильтр задач для анализа нагрузки"`
 		Order           map[string]any `json:"order,omitempty" jsonschema:"Сортировка tasks.task.list"`
 		Start           *int           `json:"start,omitempty" jsonschema:"Смещение в tasks.task.list"`
@@ -771,6 +797,42 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 			ctx, rid := withRequestID(ctx)
 			log.Printf("[b24-mcp] tool=b24_analyze_tasks_workload req_id=%s", rid)
 			logToolArgs("b24_analyze_tasks_workload", args)
+			if args.TaskID != nil {
+				taskID, err := parsePositiveTaskID(args.TaskID)
+				if err != nil {
+					return nil, nil, err
+				}
+				log.Printf("[b24-mcp] tool=b24_analyze_tasks_workload redirect=b24_get_task_comments task_id=%d reason=task_id_argument", taskID)
+
+				commentsResp, err := client.callTaskCommentItemGetList(ctx, taskID, map[string]any{"POST_DATE": "desc"}, nil)
+				if err != nil {
+					log.Printf("[b24-mcp] tool=b24_analyze_tasks_workload redirect_task_id=%d err=%v", taskID, err)
+					return nil, nil, err
+				}
+				comments := extractComments(commentsResp)
+				normalizedComments := normalizeCommentSnapshots(comments, taskID)
+				commentsTotal := commentsTotalFromResponse(commentsResp)
+				parseWarnings := commentParseWarnings(commentsTotal, len(normalizedComments))
+
+				redirected := map[string]any{
+					"result": map[string]any{
+						"mode":                    "redirect_to_task_comments_by_task_id",
+						"redirected_from_tool":    "b24_analyze_tasks_workload",
+						"redirected_to_tool":      "b24_get_task_comments",
+						"task_id":                 taskID,
+						"comments":                comments,
+						"comments_normalized":     normalizedComments,
+						"count":                   len(comments),
+						"count_normalized":        len(normalizedComments),
+						"comments_total":          commentsTotal,
+						"comments_parsed":         len(normalizedComments),
+						"comments_parse_warnings": parseWarnings,
+					},
+					"raw": commentsResp,
+				}
+				logToolResult("b24_analyze_tasks_workload", redirected)
+				return mcpresult.TextAndPayload("b24_analyze_tasks_workload", redirected), nil, nil
+			}
 			if err := validateWorkloadArgs(args.Start, args.Limit, args.OverloadTasks); err != nil {
 				return nil, nil, err
 			}
@@ -1049,6 +1111,19 @@ func parseTaskID(v any) (int, error) {
 	default:
 		return 0, fmt.Errorf("task_id has unsupported type %T", v)
 	}
+}
+
+var errTaskIDMustBePositive = fmt.Errorf("task_id должно быть > 0")
+
+func parsePositiveTaskID(v any) (int, error) {
+	taskID, err := parseTaskID(v)
+	if err != nil {
+		return 0, err
+	}
+	if taskID <= 0 {
+		return 0, errTaskIDMustBePositive
+	}
+	return taskID, nil
 }
 
 func parseOptionalTaskID(v any) (*int, error) {

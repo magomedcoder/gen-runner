@@ -162,3 +162,73 @@ func MergeStopSequences(client []string, preset []string) []string {
 
 	return out
 }
+
+func fallbackPlainChatPrompt(messages []*domain.AIChatMessage, genParams *domain.GenerationParams) string {
+	var b strings.Builder
+	for _, m := range messages {
+		if m == nil {
+			continue
+		}
+
+		var role string
+		switch m.Role {
+		case domain.AIChatMessageRoleSystem:
+			role = "System"
+		case domain.AIChatMessageRoleAssistant:
+			role = "Assistant"
+		case domain.AIChatMessageRoleTool:
+			role = "Tool"
+		default:
+			role = "User"
+		}
+
+		b.WriteString(role)
+		b.WriteString(": ")
+		if m.Role == domain.AIChatMessageRoleTool {
+			if m.ToolCallID != "" {
+				b.WriteString("(call_id=")
+				b.WriteString(m.ToolCallID)
+				b.WriteString(") ")
+			}
+			if m.ToolName != "" {
+				b.WriteString("[")
+				b.WriteString(m.ToolName)
+				b.WriteString("] ")
+			}
+		}
+		b.WriteString(FormatContentForBuiltinChatTemplate(m))
+		b.WriteString("\n")
+	}
+
+	if genParams != nil && len(genParams.Tools) > 0 {
+		b.WriteString(fallbackToolsBlock(genParams.Tools))
+	}
+	b.WriteString("Assistant: ")
+
+	return b.String()
+}
+
+func fallbackToolsBlock(tools []domain.Tool) string {
+	var b strings.Builder
+	b.WriteString("\nTools:\n")
+	for _, t := range tools {
+		b.WriteString("- ")
+		b.WriteString(t.Name)
+		if t.Description != "" {
+			b.WriteString(": ")
+			b.WriteString(t.Description)
+		}
+
+		if t.ParametersJSON != "" {
+			b.WriteString(" (params: ")
+			b.WriteString(t.ParametersJSON)
+			b.WriteString(")")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\nЧтобы вызвать инструмент, верни один JSON-массив (можно в блоке ```json), строго в формате:\n")
+	b.WriteString(`[{"tool_name":"<имя из списка>","parameters":{...}}]`)
+	b.WriteString("\n\nПоле parameters - объект JSON; если параметров нет, используй {}.\n\n")
+
+	return b.String()
+}
