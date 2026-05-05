@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	app, err := internal.NewFromEnv()
+	app, err := internal.New()
 	if err != nil {
 		log.Fatal(err)
 	}

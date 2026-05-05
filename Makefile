@@ -28,6 +28,16 @@ gen-go-proto:
 		--go-grpc_out=paths=source_relative:./api/pb/llm-runner/llmrunnerpb \
 		./api/proto/llm-runner/llmrunner.proto
 
+	# Tools
+	@for proto in ./tools/b24-llm-server/api/proto/*.proto; do \
+		name=$$(basename $$proto .proto); \
+		mkdir -p ./tools/b24-llm-server/api/pb/$${name}pb; \
+		protoc --proto_path=./tools/b24-llm-server/api/proto \
+			--go_out=paths=source_relative:./tools/b24-llm-server/api/pb/$${name}pb \
+			--go-grpc_out=paths=source_relative:./tools/b24-llm-server/api/pb/$${name}pb \
+			$$proto; \
+	done
+
 gen-dart-proto:
 	mkdir -p ./client-app/lib/generated/grpc_pb
 	protoc --proto_path=./api/proto/app \

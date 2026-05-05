@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package b24llm;
+
+option go_package = "github.com/magomedcoder/gen/tools/b24-llm-server/api/pb/b24llmpb;b24llmpb";
+
+service B24LLM {
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
+
+  rpc AnalyzeStream(AnalyzeRequest) returns (stream AnalyzeStreamChunk);
+
+  rpc SummarizeBatch(SummarizeBatchRequest) returns (SummarizeBatchResponse);
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ok = 1;
+  string error_detail = 2;
+}
+
+message Generation {
+  optional float temperature = 1;
+  optional int32 max_tokens = 2;
+  repeated string stop_sequences = 3;
+}
+
+message TaskComment {
+  string author = 1;
+  string text = 2;
+  string time = 3;
+}
+
+message ChecklistItem {
+  string title = 1;
+  string done = 2;
+}
+
+message SubtaskWire {
+  string id = 1;
+  string title = 2;
+  string status = 3;
+}
+
+message UserFieldWire {
+  string field = 1;
+  string value = 2;
+}
+
+message TaskAttachmentWire {
+  string id = 1;
+  string name = 2;
+}
+
+message ChatMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message AnalyzeRequest {
+  string task_id = 1;
+  string task_title = 2;
+  string task_description = 3;
+  string task_status = 4;
+  string task_deadline = 5;
+  string task_assignee = 6;
+  string task_priority = 7;
+  string task_group_id = 8;
+  string task_created_by = 9;
+  string task_accomplices = 10;
+  string task_auditors = 11;
+  string task_parent_id = 12;
+  string task_time_estimate = 13;
+  string task_time_spent = 14;
+  string task_tags = 15;
+
+  repeated ChecklistItem checklist = 16;
+  repeated SubtaskWire subtasks = 17;
+  repeated SubtaskWire dependencies_predecessors = 18;
+  repeated SubtaskWire dependencies_successors = 19;
+  repeated UserFieldWire task_user_fields = 20;
+  repeated TaskAttachmentWire task_attachments = 21;
+  repeated TaskComment comments = 22;
+  repeated ChatMessage history = 23;
+
+  string prompt = 24;
+  string analysis_mode = 25;
+  Generation generation = 26;
+  string output_format = 27;
+}
+
+message AnalyzeResponse {
+  string message = 1;
+}
+
+message AnalyzeStreamChunk {
+  string chunk = 1;
+  bool done = 2;
+  string error = 3;
+}
+
+message SummarizeBatchRequest {
+  repeated AnalyzeRequest items = 1;
+  Generation generation = 2;
+}
+
+message SummarizeBatchResult {
+  string task_id = 1;
+  string message = 2;
+  string error = 3;
+}
+
+message SummarizeBatchResponse {
+  repeated SummarizeBatchResult results = 1;
+}
